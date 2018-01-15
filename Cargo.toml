@@ -1,0 +1,9 @@
+[workspace]
+
+[package]
+name = "loop-drop"
+version = "0.0.0"
+publish = false
+
+[dependencies]
+midir = "0.5.0"
