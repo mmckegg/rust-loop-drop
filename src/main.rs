@@ -3,6 +3,7 @@ use std::io::{stdin};
 
 mod midi_connection;
 mod loop_grid_launchpad;
+mod loop_recorder;
 
 use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;
@@ -19,7 +20,7 @@ fn run() -> Result<(), Box<Error>> {
     let launchpad_clock_channel = launchpad.get_channel();
 
     let mut ticks = 0;
-    let clock_in = midi_connection::getInput("IAC Driver Bus 1", move |stamp, message, _| {
+    let clock_in = midi_connection::get_input("IAC Driver Bus 1", move |stamp, message, _| {
         if message[0] == 248 {
             ticks += 1;
             launchpad_clock_channel.send(LoopGridMessage::Schedule(ticks));
