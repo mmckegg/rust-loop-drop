@@ -22,7 +22,7 @@ impl PartialOrd for LoopEvent {
             Some(Ordering::Equal)
         } else if value == Ordering::Equal {
             // or insert after if different (but same position)
-            Some(Ordering::Greater)
+            Some(self.id.cmp(&other.id))
         } else {
             Some(value)
         }
@@ -57,7 +57,6 @@ impl LoopRecorder {
             },
             Err(index) => self.history.insert(index, event)
         };
-        println!("added {}", self.history.len());
     }
 
     pub fn get_range (&self, start_pos: f64, end_pos: f64) -> &[LoopEvent] {
@@ -79,23 +78,34 @@ impl LoopRecorder {
     }
 
     pub fn get_event_at (&self, id: u32, pos: f64) -> Option<&LoopEvent> {
-        let index = match self.history.binary_search_by(|v| {
-            match v.pos.partial_cmp(&pos).expect("Cannot compare events (NaN?)") {
-                Ordering::Greater => Ordering::Greater,
-                Ordering::Less => Ordering::Less,
-                Ordering::Equal => {
-                    if v.id == id {
-                        Ordering::Equal
-                    } else {
-                        Ordering::Less
+        match self.get_event_index_at_pos(pos) {
+            Some(index) => {
+                // walk back from index (including index) to check if the event matches ID
+                let to = self.history.len().min(index + 1);
+                for i in (0..to).rev() {
+                    let event = &self.history[i];
+                    if event.id == id {
+                        return Some(&event);
                     }
                 }
-            }
-        }) {
-            Ok(index) => index,
-            Err(index) => index - 1
-        };
 
-        self.history.get(index)
+                // can't find any so return none
+                None
+            },
+            None => None
+        }
+    }
+
+    pub fn get_event_index_at_pos (&self, pos: f64) -> Option<usize> {
+        match self.history.binary_search_by(|v| {
+            v.pos.partial_cmp(&pos).unwrap()
+        }) {
+            Ok(index) => Some(index),
+            Err(index) => if index > 0 {
+                Some(index - 1)
+            } else {
+                None
+            }
+        }
     }
 }
