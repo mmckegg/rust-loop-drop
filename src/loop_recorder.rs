@@ -95,6 +95,26 @@ impl LoopRecorder {
         }
     }
 
+    pub fn get_next_event_at (&self, id: u32, pos: f64) -> Option<&LoopEvent> {
+        match self.get_event_index_at_pos(pos) {
+            Some(index) => {
+                // walk forward from index to find next event matching ID
+                let from = index + 1;
+                if self.history.len() > from {
+                    for event in &self.history[from..] {
+                        if event.id == id {
+                            return Some(&event);
+                        }
+                    }
+                }
+
+                // can't find any so return none
+                None
+            },
+            None => None
+        }
+    }
+
     pub fn get_event_index_at_pos (&self, pos: f64) -> Option<usize> {
         match self.history.binary_search_by(|v| {
             v.pos.partial_cmp(&pos).unwrap()
