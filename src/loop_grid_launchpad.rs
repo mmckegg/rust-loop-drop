@@ -6,20 +6,27 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
-use ::loop_recorder::{LoopRecorder, EventType, LoopEvent};
+use ::loop_recorder::{LoopRecorder, OutputValue, LoopEvent};
 use ::midi_connection;
+use std::rc::Rc;
+use std::rc::Weak;
 
 const side_buttons: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
+const repeat_rates: [f64; 8] = [2.0, 1.0, 2.0 / 3.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 8.0];
 
 pub enum LoopGridMessage {
     Schedule(u64),
-    GridInput(u64, u8, u8),
+    GridInput(u64, u32, OutputValue),
     LoopButton(bool),
     FlattenButton(bool),
     UndoButton(bool),
     RedoButton(bool),
     Event(LoopEvent),
     InitialLoop,
+    RefreshInput(u32),
+    RefreshOverride(u32),
+    SetRepeating(bool),
+    SetRate(f64),
 }
 
 #[derive(Debug)]
@@ -29,7 +36,10 @@ pub struct Loop {
     //transforms: Vec<LoopTransform>
 }
 
+#[derive(PartialEq, Debug)]
 pub enum LoopTransform {
+    On,
+    None,
     Repeat(f64, f64),
     Suppress
 }
@@ -37,19 +47,19 @@ pub enum LoopTransform {
 pub struct LoopState {
     undos: Vec<Loop>,
     redos: Vec<Loop>,
-    transforms: HashMap<u32, Vec<LoopTransform>>,
+    transforms: HashMap<u32, Vec<Rc<LoopTransform>>>,
     on_change: Box<FnMut(&Loop) + Send>
 }
 
 impl LoopState {
     pub fn new<F> (defaultLength: f64, on_change: F) -> LoopState
     where F: FnMut(&Loop) + Send + 'static  {
-        let defaultLoop = Loop {
+        let default_loop = Loop {
             offset: 0.0 - defaultLength,
             length: defaultLength
         };
         LoopState {
-            undos: vec![defaultLoop],
+            undos: vec![default_loop],
             redos: Vec::new(),
             transforms: HashMap::new(),
             on_change: Box::new(on_change)
@@ -61,19 +71,42 @@ impl LoopState {
     }
 
     pub fn set (&mut self, value: Loop) {
+        self.clear_transforms();
         self.undos.push(value);
         (self.on_change)(self.undos.last().unwrap());
     }
 
-    pub fn add_transform (&mut self, id: u32, transform: LoopTransform) {
+    pub fn add_transform (&mut self, id: u32, transform: LoopTransform) -> Weak<LoopTransform> {
+        let transform_rc = Rc::new(transform);
+        let transform_weak = Rc::downgrade(&transform_rc);
+
         match self.transforms.entry(id) {
             Occupied(mut entry) => {
-                entry.get_mut().push(transform);
+                entry.get_mut().push(transform_rc);
             },
             Vacant(mut entry) => {
-                entry.insert(vec![transform]);
+                entry.insert(vec![transform_rc]);
             }
         };
+
+        transform_weak
+    }
+
+    pub fn remove_transform (&mut self, id: u32, transform: Weak<LoopTransform>) {
+        let mut i = 0;
+        let transforms = self.transforms.get_mut(&id).unwrap();
+        let transform_upgrade = transform.upgrade().unwrap();
+        while i < transforms.len() {
+            if transform_upgrade == transforms[i] {
+                transforms.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    pub fn clear_transforms (&mut self) {
+        self.transforms.clear();
     }
 
     pub fn undo (&mut self) {
@@ -132,7 +165,22 @@ impl LoopGridLaunchpad {
         let mut output = midi_connection::get_output(&port_name).unwrap();
         let input = midi_connection::get_input(&port_name, move |stamp, message, _| {
             if message[0] == 144 || message[0] == 128 {
-                tx_input.send(LoopGridMessage::GridInput(stamp, message[1], message[2])).unwrap();
+                let side_button = side_buttons.binary_search(&message[1]);
+                if side_button.is_ok() {
+                    let rate_index = side_button.unwrap();
+                    let rate = repeat_rates[rate_index];
+                    if message[2] > 0 {
+                        tx_input.send(LoopGridMessage::SetRate(rate)).unwrap();
+                        tx_input.send(LoopGridMessage::SetRepeating(rate_index > 0)).unwrap();
+                    }
+                } else {
+                    let value = if message[2] > 0 {
+                        OutputValue::On
+                    } else {
+                        OutputValue::Off
+                    };
+                    tx_input.send(LoopGridMessage::GridInput(stamp, message[1] as u32, value)).unwrap();
+                } ;
             } else if message[0] == 176 {
                 if message[1] == 104 {
                     tx_input.send(LoopGridMessage::LoopButton(message[2] > 0)).unwrap();
@@ -151,15 +199,19 @@ impl LoopGridLaunchpad {
             let mut loop_state = LoopState::new(loop_length, move |_value| {
                 tx_loop_state.send(LoopGridMessage::InitialLoop).unwrap();
             });
+            let mut repeating = false;
+            let mut rate = 2.0;
             let mut last_beat = 7;
             let mut recorder = LoopRecorder::new();
             let mut last_pos = 0.0;
             let mut last_playback_pos = 0.0;
             let mut out_values: HashMap<u32, u8> = HashMap::new();
-            let mut override_values: HashMap<u32, u8> = HashMap::new();
+            let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
+            let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
+
             let tick_pos_increment = 1.0 / 24.0;
 
-            loop_state.add_transform(0, LoopTransform::Repeat(0.5, 0.0));
+            //loop_state.add_transform(0, LoopTransform::Repeat(0.5, 0.0));
             
             // light up undo buttons
             output.send(&[176, 106, Light::RedLow as u8]).unwrap();
@@ -197,79 +249,100 @@ impl LoopGridLaunchpad {
 
                         // trigger events for current tick
                         for event in playback_range {
-                            if !transforms.contains_key(&event.id) {
+                            let override_value = override_values.get(&event.id).unwrap_or(&LoopTransform::None);
+                            if !transforms.contains_key(&event.id) && override_value == &LoopTransform::None {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                    event_type: event.event_type,
+                                    value: event.value,
                                     pos: position,
                                     id: event.id
                                 })).unwrap();
                             }
                         }
 
-                        for (key, values) in transforms {
-                            for value in values {
-                                match value {
-                                    &LoopTransform::Repeat(rate, offset) => {
-                                        let repeat_position = position % rate;
-                                        let half = rate / 2.0;
-                                        if repeat_position < tick_pos_increment {
-                                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                                event_type: EventType::On,
-                                                pos: position,
-                                                id: key.clone()
-                                            })).unwrap();
-                                        } else if repeat_position >= half && repeat_position < half + tick_pos_increment {
-                                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                                event_type: EventType::Off,
-                                                pos: position,
-                                                id: key.clone()
-                                            })).unwrap();
-                                        }
-                                    },
-                                    &LoopTransform::Suppress => ()
-                                }
+                        for (id, value) in &override_values {
+                            match value {
+                                &LoopTransform::Repeat(rate, offset) => {
+                                    let repeat_position = position % rate;
+                                    let half = rate / 2.0;
+                                    if repeat_position < tick_pos_increment {
+                                        tx_feedback.send(LoopGridMessage::Event(LoopEvent {
+                                            value: OutputValue::On,
+                                            pos: position,
+                                            id: id.clone()
+                                        })).unwrap();
+                                    } else if repeat_position >= half && repeat_position < half + tick_pos_increment {
+                                        tx_feedback.send(LoopGridMessage::Event(LoopEvent {
+                                            value: OutputValue::Off,
+                                            pos: position,
+                                            id: id.clone()
+                                        })).unwrap();
+                                    }
+                                },
+                                _ => ()
                             }
                         }
 
                         last_pos = position;
                         last_playback_pos = playback_pos;
                     },
-                    LoopGridMessage::GridInput(stamp, id, vel) => {
-                        let event_id = id as u32;
-                        if vel > 0 {
-                            override_values.insert(event_id, vel);
-                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                event_type: EventType::On,
-                                pos: last_pos,
-                                id: event_id
-                            })).unwrap();
-                        } else {
-                            override_values.remove(&event_id);
-
-                            // figure out the event_type based on playback value
-                            let event_type = match recorder.get_event_at(event_id, last_playback_pos) {
-                                Some(event) => {
-                                    event.event_type
-                                },
-                                None => EventType::Off
-                            };
-
-                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                event_type,
-                                pos: last_pos,
-                                id: event_id
-                            })).unwrap();
-                        }
+                    LoopGridMessage::GridInput(stamp, id, value) => {
+                        input_values.insert(id, value);
+                        tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
                     },
-                    LoopGridMessage::Event(event) => {
-                        let playback_value: u8 = match event.event_type {
-                            EventType::On => 127,
-                            EventType::Off => 0
+                    LoopGridMessage::RefreshInput(id) => {
+                        let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
+                        let transform = match value {
+                            &OutputValue::On => {
+                                if repeating {
+                                    LoopTransform::Repeat(rate, 0.0)
+                                } else {
+                                    LoopTransform::On
+                                }
+                            },
+                            &OutputValue::Off => LoopTransform::None
                         };
 
-                        // figure out if we should use override value
-                        let new_value = override_values.get(&event.id).unwrap_or(&playback_value).clone();
+                        let changed = match override_values.entry(id) {
+                            Occupied(mut entry) => {
+                                let different = entry.get() != &transform;
+                                entry.insert(transform);
+                                different
+                            },
+                            Vacant(entry) => {
+                                let different = transform != LoopTransform::None;
+                                entry.insert(transform);
+                                different
+                            }
+                        };
 
+                        if changed {
+                            tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
+                        }
+                    },
+                    LoopGridMessage::RefreshOverride(id) => {
+                        let transform = override_values.get(&id).unwrap_or(&LoopTransform::None);
+                        let value = match transform {
+                            &LoopTransform::On => OutputValue::On,
+                            &LoopTransform::None => {
+                                match recorder.get_event_at(id, last_playback_pos) {
+                                    Some(event) => event.value,
+                                    None => OutputValue::Off
+                                }
+                            },
+                            _ => OutputValue::Off
+                        };
+
+                        tx_feedback.send(LoopGridMessage::Event(LoopEvent {
+                            value,
+                            pos: last_pos,
+                            id
+                        })).unwrap();
+                    },    
+                    LoopGridMessage::Event(event) => {
+                        let new_value: u8 = match event.value {
+                            OutputValue::On => 127,
+                            OutputValue::Off => 0
+                        };
                         match maybe_update(&mut out_values, event.id, new_value) {
                             Some(value) => {
                                 output.send(&[144, event.id as u8, new_value]).unwrap();
@@ -298,14 +371,25 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::UndoButton(pressed) => {
                         if pressed {
-                            loop_state.undo()
+                            loop_state.undo();
                         }
                     },   
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
-                            loop_state.redo()
+                            loop_state.redo();
                         }
-                    },                                      
+                    },  
+                    LoopGridMessage::SetRate(value) => {
+                        rate = value;
+                        for (id, value) in &override_values {
+                            if value != &LoopTransform::None {
+                                tx_feedback.send(LoopGridMessage::RefreshInput(*id)).unwrap();
+                            }
+                        }
+                    },
+                    LoopGridMessage::SetRepeating(value) => {
+                        repeating = value;
+                    },                           
                     LoopGridMessage::InitialLoop => {
                         let mut used_keys = HashSet::new();
                         let current_loop = loop_state.get();
@@ -314,34 +398,38 @@ impl LoopGridLaunchpad {
                             used_keys.insert(event.id);
                         }
                         for key in out_values.keys() {
-                            if !used_keys.contains(key) {
+                            let overriding = override_values.get(&key).unwrap_or(&LoopTransform::None);
+                            if overriding == &LoopTransform::None && !used_keys.contains(key) {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                    event_type: EventType::Off,
+                                    value: OutputValue::Off,
                                     pos: last_pos,
                                     id: key.clone()
                                 })).unwrap();
                             }
                         }
                         for key in &used_keys {
-                            match recorder.get_event_at(key.clone(), last_playback_pos) {
-                                Some(event) => {
-                                    // get offset between playback time and this event's time
-                                    let playback_offset = if last_playback_pos < event.pos {
-                                        last_playback_pos + current_loop.offset - event.pos
-                                    } else {
-                                        last_playback_pos - event.pos
-                                    };
+                            let overriding = override_values.get(&key).unwrap_or(&LoopTransform::None);
+                            if overriding == &LoopTransform::None {
+                                match recorder.get_event_at(key.clone(), last_playback_pos) {
+                                    Some(event) => {
+                                        // get offset between playback time and this event's time
+                                        let playback_offset = if last_playback_pos < event.pos {
+                                            last_playback_pos + current_loop.offset - event.pos
+                                        } else {
+                                            last_playback_pos - event.pos
+                                        };
 
-                                    // use initial state if "off" or "on" for more than 1 beat
-                                    if event.event_type == EventType::Off || playback_offset > 1.0 {
-                                        tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                            event_type: event.event_type,
-                                            pos: last_pos,
-                                            id: key.clone()
-                                        })).unwrap();
-                                    }
-                                },
-                                None => ()
+                                        // use initial state if "off" or "on" for more than 1 beat
+                                        if event.value == OutputValue::Off || playback_offset > 1.0 {
+                                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
+                                                value: event.value,
+                                                pos: last_pos,
+                                                id: key.clone()
+                                            })).unwrap();
+                                        }
+                                    },
+                                    None => ()
+                                }
                             }
                         }
                     }

@@ -1,14 +1,13 @@
 use std::cmp::Ordering;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
-pub enum EventType {
-    On,
-    Off
+pub enum OutputValue {
+    On, Off
 }
 
 #[derive(Debug)]
 pub struct LoopEvent {
-    pub event_type: EventType,
+    pub value: OutputValue,
     pub pos: f64,
     pub id: u32
 }
@@ -31,7 +30,7 @@ impl PartialOrd for LoopEvent {
 
 impl PartialEq for LoopEvent {
     fn eq(&self, other: &LoopEvent) -> bool {
-        self.pos == other.pos && self.event_type == other.event_type && self.id == other.id
+        self.pos == other.pos && self.value == other.value && self.id == other.id
     }
 }
 
