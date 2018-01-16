@@ -6,13 +6,13 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
-use ::loop_recorder::{LoopRecorder, OutputValue, LoopEvent};
 use ::midi_connection;
-use std::rc::Rc;
-use std::rc::Weak;
 
-const side_buttons: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
-const repeat_rates: [f64; 8] = [2.0, 1.0, 2.0 / 3.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 8.0];
+use ::loop_recorder::{LoopRecorder, OutputValue, LoopEvent};
+use ::loop_state::{Loop, LoopState, LoopTransform};
+
+const SIDE_BUTTONS: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
+const REPEAT_RATES: [f64; 8] = [2.0, 1.0, 2.0 / 3.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 8.0];
 
 pub enum LoopGridMessage {
     Schedule(u64),
@@ -31,110 +31,6 @@ pub enum LoopGridMessage {
     SetRepeating(bool),
     SetRate(f64),
     None
-}
-
-#[derive(Debug)]
-pub struct Loop {
-    length: f64,
-    offset: f64,
-    //transforms: Vec<LoopTransform>
-}
-
-#[derive(PartialEq, Debug)]
-pub enum LoopTransform {
-    On,
-    None,
-    Repeat(f64, f64),
-    Hold(f64, f64),
-    Suppress
-}
-
-pub struct LoopState {
-    undos: Vec<Loop>,
-    redos: Vec<Loop>,
-    transforms: HashMap<u32, Vec<Rc<LoopTransform>>>,
-    on_change: Box<FnMut(&Loop) + Send>
-}
-
-impl LoopState {
-    pub fn new<F> (defaultLength: f64, on_change: F) -> LoopState
-    where F: FnMut(&Loop) + Send + 'static  {
-        let default_loop = Loop {
-            offset: 0.0 - defaultLength,
-            length: defaultLength
-        };
-        LoopState {
-            undos: vec![default_loop],
-            redos: Vec::new(),
-            transforms: HashMap::new(),
-            on_change: Box::new(on_change)
-        }
-    }
-
-    pub fn get (&self) -> &Loop {
-        &self.undos.last().unwrap()
-    }
-
-    pub fn set (&mut self, value: Loop) {
-        self.clear_transforms();
-        self.undos.push(value);
-        (self.on_change)(self.undos.last().unwrap());
-    }
-
-    pub fn add_transform (&mut self, id: u32, transform: LoopTransform) -> Weak<LoopTransform> {
-        let transform_rc = Rc::new(transform);
-        let transform_weak = Rc::downgrade(&transform_rc);
-
-        match self.transforms.entry(id) {
-            Occupied(mut entry) => {
-                entry.get_mut().push(transform_rc);
-            },
-            Vacant(mut entry) => {
-                entry.insert(vec![transform_rc]);
-            }
-        };
-
-        transform_weak
-    }
-
-    pub fn remove_transform (&mut self, id: u32, transform: Weak<LoopTransform>) {
-        let mut i = 0;
-        let transforms = self.transforms.get_mut(&id).unwrap();
-        let transform_upgrade = transform.upgrade().unwrap();
-        while i < transforms.len() {
-            if transform_upgrade == transforms[i] {
-                transforms.remove(i);
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    pub fn clear_transforms (&mut self) {
-        self.transforms.clear();
-    }
-
-    pub fn undo (&mut self) {
-        if self.undos.len() > 1 {
-            match self.undos.pop() {
-                Some(value) => {
-                    self.redos.push(value);
-                    (self.on_change)(self.undos.last().unwrap());
-                },
-                None => ()
-            };
-        }
-    }
-
-    pub fn redo (&mut self) {
-        match self.redos.pop() {
-            Some(value) => {
-                self.undos.push(value);
-                (self.on_change)(self.undos.last().unwrap());
-            },
-            None => ()
-        };
-    }
 }
 
 enum Light {
@@ -164,19 +60,19 @@ impl LoopGridLaunchpad {
         let (tx, rx) = mpsc::channel();
         
         let tx_input =  mpsc::Sender::clone(&tx);
-        let mut tx_feedback =  mpsc::Sender::clone(&tx);
-        let mut tx_loop_state =  mpsc::Sender::clone(&tx);
+        let tx_feedback =  mpsc::Sender::clone(&tx);
+        let tx_loop_state =  mpsc::Sender::clone(&tx);
 
         let (midi_to_id, id_to_midi) = get_grid_map();
 
         let mut output = midi_connection::get_output(&port_name).unwrap();
         let input = midi_connection::get_input(&port_name, move |stamp, message, _| {
             if message[0] == 144 || message[0] == 128 {
-                let side_button = side_buttons.binary_search(&message[1]);
+                let side_button = SIDE_BUTTONS.binary_search(&message[1]);
                 let grid_button = midi_to_id.get(&message[1]);
                 if side_button.is_ok() {
                     let rate_index = side_button.unwrap();
-                    let rate = repeat_rates[rate_index];
+                    let rate = REPEAT_RATES[rate_index];
                     if message[2] > 0 {
                         tx_input.send(LoopGridMessage::SetRate(rate)).unwrap();
                         tx_input.send(LoopGridMessage::SetRepeating(rate_index > 0)).unwrap();
@@ -243,9 +139,9 @@ impl LoopGridLaunchpad {
                         let current_loop = loop_state.get();
 
                         // visual beat ticker
-                        let last_beat_light = side_buttons[last_beat % 8];
+                        let last_beat_light = SIDE_BUTTONS[last_beat % 8];
                         if last_beat != beat {
-                            let beat_light = side_buttons[beat % 8];
+                            let beat_light = SIDE_BUTTONS[beat % 8];
                             output.send(&[144, last_beat_light, 0]).unwrap();
                             output.send(&[144, beat_light, Light::Green as u8]).unwrap();
                             last_beat = beat
@@ -262,8 +158,6 @@ impl LoopGridLaunchpad {
                         if playback_pos == current_loop.offset {
                             tx_feedback.send(LoopGridMessage::InitialLoop).unwrap();
                         }
-
-                        let transforms = &loop_state.transforms;
 
                         // trigger events for current tick
                         for event in playback_range {
@@ -326,7 +220,7 @@ impl LoopGridLaunchpad {
                         last_pos = position;
                         last_playback_pos = playback_pos;
                     },
-                    LoopGridMessage::GridInput(stamp, id, value) => {
+                    LoopGridMessage::GridInput(_stamp, id, value) => {
                         input_values.insert(id, value);
                         tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
                     },
@@ -361,7 +255,6 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::RefreshOverride(id) => {
-                        let current_loop = loop_state.get();
                         let value = match get_transform(&id, &override_values, &selection, &selection_override) {
                             &LoopTransform::On => OutputValue::On,
                             &LoopTransform::None => {

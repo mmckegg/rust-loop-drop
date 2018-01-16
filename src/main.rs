@@ -6,6 +6,7 @@ use std::time;
 mod midi_connection;
 mod loop_grid_launchpad;
 mod loop_recorder;
+mod loop_state;
 
 use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;
