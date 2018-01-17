@@ -106,7 +106,7 @@ pub struct LoopGridLaunchpad {
 }
 
 impl LoopGridLaunchpad {
-    pub fn new(port_name: &str) -> Self {
+    pub fn new(launchpad_port_name: &str, output_port_name: &str) -> Self {
         let (tx, rx) = mpsc::channel();
         
         let tx_input =  mpsc::Sender::clone(&tx);
@@ -115,8 +115,10 @@ impl LoopGridLaunchpad {
 
         let (midi_to_id, id_to_midi) = get_grid_map();
 
-        let mut output = midi_connection::get_output(&port_name).unwrap();
-        let input = midi_connection::get_input(&port_name, move |stamp, message, _| {
+        let mut midi_output = midi_connection::get_output(&output_port_name).unwrap();
+        let mut launchpad_output = midi_connection::get_output(&launchpad_port_name).unwrap();
+
+        let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message, _| {
             if message[0] == 144 || message[0] == 128 {
                 let side_button = SIDE_BUTTONS.binary_search(&message[1]);
                 let grid_button = midi_to_id.get(&message[1]);
@@ -195,9 +197,9 @@ impl LoopGridLaunchpad {
             let tick_pos_increment = 1.0 / 24.0;
             
             // default button lights
-            output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
-            output.send(&[176, 106, Light::RedLow as u8]).unwrap();
-            output.send(&[176, 107, Light::RedLow as u8]).unwrap();
+            launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
+            launchpad_output.send(&[176, 106, Light::RedLow as u8]).unwrap();
+            launchpad_output.send(&[176, 107, Light::RedLow as u8]).unwrap();
 
             for received in rx {
                 match received {
@@ -293,8 +295,8 @@ impl LoopGridLaunchpad {
                         let rate_color = if repeat_off_beat { Light::RedMed } else { Light::YellowMed };
 
                         if current_repeat_light != last_repeat_light || last_repeat_light_out != rate_color {
-                            output.send(&[144, last_repeat_light, 0]).unwrap();
-                            output.send(&[144, current_repeat_light, rate_color as u8]).unwrap();
+                            launchpad_output.send(&[144, last_repeat_light, 0]).unwrap();
+                            launchpad_output.send(&[144, current_repeat_light, rate_color as u8]).unwrap();
                         }
 
                         let beat_start = last_tick % 24 == 0;
@@ -303,16 +305,16 @@ impl LoopGridLaunchpad {
                         let base_beat_light = rate_color.maybe(current_repeat_light == current_beat_light);
 
                         if current_beat_light != last_beat_light {
-                            output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
+                            launchpad_output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
                             if !beat_start {
-                                output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                                launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
                             }
                         }
 
                         if beat_start {
-                            output.send(&[144, current_beat_light, Light::Green as u8]).unwrap();
+                            launchpad_output.send(&[144, current_beat_light, Light::Green as u8]).unwrap();
                         } else if last_tick % 24 == 3 {
-                            output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                            launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
                         }
 
                         last_beat_light = current_beat_light;
@@ -408,7 +410,7 @@ impl LoopGridLaunchpad {
 
                         if new_value != old_value {
                             let midi_id = id_to_midi.get(&id);
-                            output.send(&[144, *midi_id.unwrap(), new_value as u8]).unwrap();
+                            launchpad_output.send(&[144, *midi_id.unwrap(), new_value as u8]).unwrap();
                         }
 
                         grid_out.insert(id, new_value);
@@ -464,7 +466,7 @@ impl LoopGridLaunchpad {
                         };
 
                         if select_out != new_state {
-                            output.send(&[176, 111, new_state as u8]).unwrap();
+                            launchpad_output.send(&[176, 111, new_state as u8]).unwrap();
                             select_out = new_state;
                         }
                     },
@@ -479,6 +481,7 @@ impl LoopGridLaunchpad {
                                 Some(value) => {
                                     tx_feedback.send(LoopGridMessage::RefreshGridButton(event.id)).unwrap();
                                     // TODO: actual playback here
+                                    midi_output.send(&[144 + 1, (event.id + 30) as u8, new_value]).unwrap();
                                     recorder.add(event);
                                 },
                                 None => ()
@@ -508,7 +511,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 Light::Off
                             };
-                            output.send(&[176, 105, color as u8]).unwrap();
+                            launchpad_output.send(&[176, 105, color as u8]).unwrap();
                         }
                     },
                     LoopGridMessage::FlattenButton(pressed) => {
@@ -606,7 +609,7 @@ impl LoopGridLaunchpad {
         });
 
         LoopGridLaunchpad {
-            port_name: String::from(port_name),
+            port_name: String::from(launchpad_port_name),
             tx,
             input
         }
