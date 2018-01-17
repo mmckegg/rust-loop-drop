@@ -1,11 +1,23 @@
-#[derive(Debug)]
+use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
 pub struct Loop {
     pub length: f64,
     pub offset: f64,
-    //transforms: Vec<LoopTransform>
+    pub transforms: HashMap<u32, LoopTransform>
 }
 
-#[derive(PartialEq, Debug)]
+impl Loop {
+    pub fn new (offset: f64, length: f64) -> Loop {
+        Loop {
+            offset,
+            length,
+            transforms: HashMap::new()
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum LoopTransform {
     On,
     None,
@@ -23,10 +35,7 @@ pub struct LoopState {
 impl LoopState {
     pub fn new<F> (default_length: f64, on_change: F) -> LoopState
     where F: FnMut(&Loop) + Send + 'static  {
-        let default_loop = Loop {
-            offset: 0.0 - default_length,
-            length: default_length
-        };
+        let default_loop = Loop::new(0.0 - default_length, default_length);
         LoopState {
             undos: vec![default_loop],
             redos: Vec::new(),

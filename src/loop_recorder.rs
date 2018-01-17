@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum OutputValue {
@@ -66,6 +67,18 @@ impl LoopRecorder {
             },
             Err(index) => self.history.insert(index, event)
         };
+    }
+
+    pub fn get_ids_in_range (&self, start_pos: f64, end_pos: f64) -> HashSet<u32> {
+        let mut result: HashSet<u32> = HashSet::new();
+
+        for event in self.get_range(start_pos, end_pos) {
+            if event.value != OutputValue::Off {
+                result.insert(event.id);
+            }
+        }
+
+        result 
     }
 
     pub fn get_range (&self, start_pos: f64, end_pos: f64) -> &[LoopEvent] {
