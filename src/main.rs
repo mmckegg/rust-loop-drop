@@ -13,14 +13,6 @@ use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;
 
 fn main() {
-    match run() {
-        Ok(_) => (),
-        Err(err) => println!("Error: {}", err.description())
-    }
-}
-
-fn run() -> Result<(), Box<Error>> {
-
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
 
@@ -44,9 +36,8 @@ fn run() -> Result<(), Box<Error>> {
     //     }
     // });
 
-
-    let mut input = String::new();
-    stdin().read_line(&mut input)?; // wait for next enter key press
-    println!("Closing connections");
-    Ok(())
+    loop {
+        // keep app alive
+        thread::sleep(time::Duration::from_millis(500));
+    }
 }
