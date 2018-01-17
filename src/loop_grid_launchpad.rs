@@ -22,6 +22,7 @@ pub enum LoopGridMessage {
     UndoButton(bool),
     RedoButton(bool),
     SuppressButton(bool),
+    SelectButton(bool),
     HoldButton(bool),
     Event(LoopEvent),
     InitialLoop,
@@ -117,6 +118,7 @@ impl LoopGridLaunchpad {
                     107 => LoopGridMessage::RedoButton(active),
                     108 => LoopGridMessage::HoldButton(active),
                     109 => LoopGridMessage::SuppressButton(active),
+                    111 => LoopGridMessage::SelectButton(active),
                     _ => LoopGridMessage::None
                 };
                 tx_input.send(to_send).unwrap();
@@ -136,6 +138,7 @@ impl LoopGridLaunchpad {
             let mut selection: HashSet<u32> = HashSet::new();
             let mut suppressing = false;
             let mut holding = false;
+            let mut selecting = false;
 
             let mut rate = 2.0;
             let mut last_beat = 7;
@@ -267,8 +270,13 @@ impl LoopGridLaunchpad {
                         last_playback_pos = playback_pos;
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
-                        input_values.insert(id, value);
-                        tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
+                        if selecting && value == OutputValue::On {
+                            println!("add to selection {}", id);
+                            selection.insert(id);
+                        } else {
+                            input_values.insert(id, value);
+                            tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
+                        }
                     },
                     LoopGridMessage::RefreshInput(id) => {
                         let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
@@ -386,6 +394,12 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::SuppressButton(pressed) => {
                         suppressing = pressed;
                         tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
+                    },
+                    LoopGridMessage::SelectButton(pressed) => {
+                        selecting = pressed;
+                        if pressed {
+                            selection.clear();
+                        }
                     },
                     LoopGridMessage::SetRepeating(value) => {
                         repeating = value;
