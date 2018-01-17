@@ -29,6 +29,7 @@ pub enum LoopGridMessage {
     RefreshInput(u32),
     RefreshOverride(u32),
     RefreshSelectionOverride,
+    RefreshSideButtons,
     SetRepeating(bool),
     SetRate(f64),
     None
@@ -57,6 +58,7 @@ impl PlaybackRange {
     }
 }
 
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Light {
     Yellow = 127,
     YellowMed = 110,
@@ -70,7 +72,26 @@ enum Light {
     OrangeLow = 93,
     Red = 79,
     RedMed = 78,
-    RedLow = 77
+    RedLow = 77,
+    Off = 0,
+    None
+}
+
+impl Light {
+    pub fn unwrap_or (self, value: Light) -> Light {
+        match self {
+            Light::None => value,
+            _ => self
+        }
+    }
+
+    pub fn maybe (self, expr: bool) -> Light {
+        if expr {
+            self
+        } else {
+            Light::None
+        }
+    }
 }
 
 pub struct LoopGridLaunchpad {
@@ -127,7 +148,8 @@ impl LoopGridLaunchpad {
 
         thread::spawn(move || {
             let mut loop_length = 8.0;
-            let mut loop_state = LoopState::new(loop_length, move |_value| {
+            let mut loop_state = LoopState::new(loop_length, move |value| {
+                loop_length = value.length;
                 tx_loop_state.send(LoopGridMessage::InitialLoop).unwrap();
             });
             let mut repeating = false;
@@ -141,13 +163,16 @@ impl LoopGridLaunchpad {
             let mut selecting = false;
 
             let mut rate = 2.0;
-            let mut last_beat = 7;
             let mut recorder = LoopRecorder::new();
             let mut last_pos = 0.0;
+            let mut last_tick = 0;
             let mut last_playback_pos = 0.0;
             let mut out_values: HashMap<u32, u8> = HashMap::new();
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
+
+            let mut last_beat_light = SIDE_BUTTONS[7];
+            let mut last_repeat_light = SIDE_BUTTONS[7];
 
             let tick_pos_increment = 1.0 / 24.0;
 
@@ -161,19 +186,7 @@ impl LoopGridLaunchpad {
                 match received {
                     LoopGridMessage::Schedule(tick) => {
                         let position = (tick as f64) / 24.0;
-                        let beat = position.floor() as usize;
                         let current_loop = loop_state.get();
-
-                        // visual beat ticker
-                        let last_beat_light = SIDE_BUTTONS[last_beat % 8];
-                        if last_beat != beat {
-                            let beat_light = SIDE_BUTTONS[beat % 8];
-                            output.send(&[144, last_beat_light, 0]).unwrap();
-                            output.send(&[144, beat_light, Light::Green as u8]).unwrap();
-                            last_beat = beat
-                        } else if tick % 24 == 3 {
-                            output.send(&[144, last_beat_light, Light::GreenLow as u8]).unwrap();
-                        }
 
                         // loop playback
                         let offset = current_loop.offset % current_loop.length;
@@ -267,11 +280,46 @@ impl LoopGridLaunchpad {
                         }
 
                         last_pos = position;
+                        last_tick = tick;
                         last_playback_pos = playback_pos;
+
+                        tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
+                    },
+                    LoopGridMessage::RefreshSideButtons => {
+                        let beat_display_multiplier = 8.0 / loop_length;
+                        let shifted_beat_position = (last_pos * beat_display_multiplier) as usize;
+                        let current_beat_light = SIDE_BUTTONS[shifted_beat_position % 8];
+                        let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
+                        let rate_color = Light::YellowMed;
+
+                        if current_repeat_light != last_repeat_light {
+                            output.send(&[144, last_repeat_light, 0]).unwrap();
+                            output.send(&[144, current_repeat_light, Light::Yellow as u8]).unwrap();
+                        }
+
+                        let beat_start = last_tick % 24 == 0;
+
+                        let base_last_beat_light = rate_color.maybe(current_repeat_light == last_beat_light);
+                        let base_beat_light = rate_color.maybe(current_repeat_light == current_beat_light);
+
+                        if current_beat_light != last_beat_light {
+                            output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
+                            if !beat_start {
+                                output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                            }
+                        }
+
+                        if beat_start {
+                            output.send(&[144, current_beat_light, Light::Green as u8]).unwrap();
+                        } else if last_tick % 24 == 3 {
+                            output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                        }
+
+                        last_beat_light = current_beat_light;
+                        last_repeat_light = current_repeat_light;
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         if selecting && value == OutputValue::On {
-                            println!("add to selection {}", id);
                             selection.insert(id);
                         } else {
                             input_values.insert(id, value);
@@ -379,12 +427,20 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::UndoButton(pressed) => {
                         if pressed {
-                            loop_state.undo();
+                            if selecting {
+                                loop_length = (loop_length / 2.0).max(1.0 / 4.0);
+                            } else {
+                                loop_state.undo();
+                            }
                         }
                     },   
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
-                            loop_state.redo();
+                            if selecting {
+                                loop_length = (loop_length * 2.0).min(4.0 * 8.0);
+                            } else {
+                                loop_state.redo();
+                            }
                         }
                     },  
                     LoopGridMessage::HoldButton(pressed) => {
@@ -407,6 +463,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::SetRate(value) => {
                         rate = value;
                         tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
+                        tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
                         for (id, value) in &override_values {
                             if value != &LoopTransform::None {
                                 tx_feedback.send(LoopGridMessage::RefreshInput(*id)).unwrap();
