@@ -682,7 +682,6 @@ impl LoopGridLaunchpad {
                                         for id in sp404_b_out.values() {
                                             let message = [144 + 12, *id, 0];
                                             midi_output.send(&message).unwrap();
-                                            println!("MIDI: {:?}", message);
                                         }
                                         sp404_b_out.clear();
 
@@ -691,7 +690,6 @@ impl LoopGridLaunchpad {
                                         let message = [144 + 12, note_id, midi_value];
 
                                         midi_output.send(&message).unwrap();
-                                        println!("MIDI: {:?}", message);
 
                                         sp404_b_out.insert(map.id, note_id);
                                     }
