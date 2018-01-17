@@ -215,6 +215,9 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(tick) => {
+                        // rebroadcast tick
+                        midi_output.send(&[248]);
+
                         let position = (tick as f64) / 24.0;
                         let current_loop = loop_state.get();
 
