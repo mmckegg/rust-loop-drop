@@ -159,6 +159,7 @@ impl LoopGridLaunchpad {
                 tx_loop_state.send(LoopGridMessage::RefreshActive).unwrap();
             });
             let mut repeating = false;
+            let mut repeat_off_beat = false;
             let (midi_to_id, id_to_midi) = get_grid_map();
 
             // selecton
@@ -182,6 +183,7 @@ impl LoopGridLaunchpad {
             let mut out_values: HashMap<u32, u8> = HashMap::new();
             let mut grid_out: HashMap<u32, Light> = HashMap::new();
             let mut select_out = Light::Off;
+            let mut last_repeat_light_out = Light::Off;
 
             // display state
             let mut active: HashSet<u32> = HashSet::new();
@@ -220,7 +222,7 @@ impl LoopGridLaunchpad {
                             let transform = get_transform(&id, &override_values, &selection, &selection_override, &current_loop.transforms);
                             match transform {
                                 &LoopTransform::Repeat(rate, offset) => {
-                                    let repeat_position = position % rate;
+                                    let repeat_position = (position + offset) % rate;
                                     let half = rate / 2.0;
                                     if repeat_position < tick_pos_increment {
                                         tx_feedback.send(LoopGridMessage::Event(LoopEvent {
@@ -288,11 +290,11 @@ impl LoopGridLaunchpad {
                         let shifted_beat_position = (last_pos * beat_display_multiplier) as usize;
                         let current_beat_light = SIDE_BUTTONS[shifted_beat_position % 8];
                         let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
-                        let rate_color = Light::YellowMed;
+                        let rate_color = if repeat_off_beat { Light::RedMed } else { Light::YellowMed };
 
-                        if current_repeat_light != last_repeat_light {
+                        if current_repeat_light != last_repeat_light || last_repeat_light_out != rate_color {
                             output.send(&[144, last_repeat_light, 0]).unwrap();
-                            output.send(&[144, current_repeat_light, Light::Yellow as u8]).unwrap();
+                            output.send(&[144, current_repeat_light, rate_color as u8]).unwrap();
                         }
 
                         let beat_start = last_tick % 24 == 0;
@@ -315,6 +317,7 @@ impl LoopGridLaunchpad {
 
                         last_beat_light = current_beat_light;
                         last_repeat_light = current_repeat_light;
+                        last_repeat_light_out = rate_color;
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         if selecting && value == OutputValue::On {
@@ -335,7 +338,8 @@ impl LoopGridLaunchpad {
                         let transform = match value {
                             &OutputValue::On => {
                                 if repeating {
-                                    LoopTransform::Repeat(rate, 0.0)
+                                    let repeat_offset = if repeat_off_beat { rate / 2.0 } else { 0.0 };
+                                    LoopTransform::Repeat(rate, repeat_offset)
                                 } else {
                                     LoopTransform::On
                                 }
@@ -578,6 +582,7 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
                     },
                     LoopGridMessage::SetRepeating(value) => {
+                        repeat_off_beat = selecting;
                         repeating = value;
                     },
                     LoopGridMessage::SetRate(value) => {
