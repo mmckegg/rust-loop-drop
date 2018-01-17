@@ -1,5 +1,7 @@
 extern crate midir;
+extern crate regex;
 
+use self::regex::Regex;
 use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError};
 
 const APP_NAME: &str = "Loop Drop";
@@ -28,7 +30,7 @@ pub fn get_outputs () -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..output.port_count() {
-        result.push(output.port_name(i).unwrap());
+        result.push(normalize_port_name(&output.port_name(i).unwrap()));
     }
 
     result
@@ -39,15 +41,16 @@ pub fn get_inputs () -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..input.port_count() {
-        result.push(input.port_name(i).unwrap());
+        result.push(normalize_port_name(&input.port_name(i).unwrap()));
     }
 
     result
 }
 
 fn get_input_port_index (input: &MidiInput, name: &str) -> Result<usize, PortInfoError> {
+    let normalized_name = normalize_port_name(name);
     for i in 0..input.port_count() {
-        if input.port_name(i).unwrap() == name {
+        if normalize_port_name(&input.port_name(i).unwrap()) == normalized_name {
             return Ok(i);
         }
     }
@@ -55,10 +58,18 @@ fn get_input_port_index (input: &MidiInput, name: &str) -> Result<usize, PortInf
 }
 
 fn get_output_port_index (output: &MidiOutput, name: &str) -> Result<usize, PortInfoError> {
+    let normalized_name = normalize_port_name(name);
     for i in 0..output.port_count() {
-        if output.port_name(i).unwrap() == name {
+        if normalize_port_name(&output.port_name(i).unwrap()) == normalized_name {
             return Ok(i);
         }
     }
     return Err(PortInfoError::CannotRetrievePortName)
+}
+
+fn normalize_port_name (name: &str) -> String {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"^(.+) ([0-9]+:[0-9]+)$").unwrap();
+    }
+    RE.replace(name, "${1}").into_owned()
 }

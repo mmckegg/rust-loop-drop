@@ -7,3 +7,5 @@ publish = false
 
 [dependencies]
 midir = "0.5.0"
+lazy_static = "1.0"
+regex = "0.2.5"

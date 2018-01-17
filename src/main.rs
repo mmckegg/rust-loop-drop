@@ -1,3 +1,4 @@
+#[macro_use] extern crate lazy_static;
 use std::error::Error;
 use std::io::{stdin};
 use std::thread;
