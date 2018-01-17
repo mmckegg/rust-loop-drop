@@ -33,6 +33,29 @@ pub enum LoopGridMessage {
     None
 }
 
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+pub struct PlaybackRange {
+    from_tick: i32,
+    to_tick: i32
+}
+
+impl PlaybackRange {
+    pub fn new (from: f64, to: f64) -> PlaybackRange {
+        PlaybackRange {
+            from_tick: (from * 24.0) as i32, 
+            to_tick: (to * 24.0) as i32
+        }
+    }
+
+    pub fn from (&self) -> f64 {
+        (self.from_tick as f64) / 24.0
+    }
+
+    pub fn to (&self) -> f64 {
+        (self.to_tick as f64) / 24.0
+    }
+}
+
 enum Light {
     Yellow = 127,
     YellowMed = 110,
@@ -163,13 +186,11 @@ impl LoopGridLaunchpad {
                         for event in playback_range {
                             let transform = get_transform(&event.id, &override_values, &selection, &selection_override);
                             if transform == &LoopTransform::None {
-                                tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                    value: event.value,
-                                    pos: position,
-                                    id: event.id
-                                })).unwrap();
+                                tx_feedback.send(LoopGridMessage::Event(event.with_pos(position))).unwrap();
                             }
                         }
+
+                        let mut playback_cache: HashMap<PlaybackRange, &[LoopEvent]> = HashMap::new();
 
                         for id in id_to_midi.keys() {
                             match get_transform(&id, &override_values, &selection, &selection_override) {
@@ -188,6 +209,31 @@ impl LoopGridLaunchpad {
                                             pos: position,
                                             id: id.clone()
                                         })).unwrap();
+                                    }
+                                },
+                                &LoopTransform::Hold(hold_position, rate) => {
+                                    let offset = hold_position % rate;
+                                    let from = hold_position + ((position - offset) % rate);
+                                    let to = from + tick_pos_increment;
+                                    let playback_range = PlaybackRange::new(from, to);
+                                    let events = match playback_cache.entry(playback_range) {
+                                        Occupied(mut entry) => entry.into_mut(),
+                                        Vacant(entry) => entry.insert(recorder.get_range(from, to))
+                                    };
+
+                                    if playback_pos % rate < tick_pos_increment {
+                                        match recorder.get_event_at(*id, last_playback_pos) {
+                                            Some(event) if event.value == OutputValue::Off => {
+                                                tx_feedback.send(LoopGridMessage::Event(event.with_pos(position))).unwrap();
+                                            },
+                                            _ => ()
+                                        }
+                                    }
+
+                                    for event in events.iter() {
+                                        if event.id == *id {
+                                            tx_feedback.send(LoopGridMessage::Event(event.with_pos(position))).unwrap();
+                                        }
                                     }
                                 },
                                 _ => ()

@@ -12,6 +12,16 @@ pub struct LoopEvent {
     pub id: u32
 }
 
+impl LoopEvent {
+    pub fn with_pos (&self, new_pos: f64) -> LoopEvent {
+        LoopEvent {
+            id: self.id,
+            value: self.value.clone(),
+            pos: new_pos
+        }
+    }
+}
+
 impl PartialOrd for LoopEvent {
     fn partial_cmp(&self, other: &LoopEvent) -> Option<Ordering> {
         // Some(self.cmp(other))
