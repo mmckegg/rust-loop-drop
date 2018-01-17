@@ -26,9 +26,8 @@ fn run() -> Result<(), Box<Error>> {
 
     let launchpad = LoopGridLaunchpad::new("Launchpad Mini", "UM-ONE");
     let launchpad_clock_channel = launchpad.get_channel();
-    let tempo = 120;
-
     let mut ticks = 0;
+
     let clock_in = midi_connection::get_input("UM-ONE", move |stamp, message, _| {
         if message[0] == 248 {
             ticks += 1;
@@ -36,6 +35,7 @@ fn run() -> Result<(), Box<Error>> {
         }
     }, ());
 
+    // let tempo = 120;
     // thread::spawn(move || {
     //     loop {
     //         launchpad_clock_channel.send(LoopGridMessage::Schedule(ticks));

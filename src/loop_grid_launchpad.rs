@@ -37,6 +37,7 @@ pub enum LoopGridMessage {
     RefreshSelectState,
     SetRepeating(bool),
     SetRate(f64),
+    TriggerChunk(MidiMap, OutputValue),
     None
 }
 
@@ -115,6 +116,8 @@ impl LoopGridLaunchpad {
 
         let (midi_to_id, id_to_midi) = get_grid_map();
 
+        let mapping = get_mapping();
+
         let mut midi_output = midi_connection::get_output(&output_port_name).unwrap();
         let mut launchpad_output = midi_connection::get_output(&launchpad_port_name).unwrap();
 
@@ -182,10 +185,18 @@ impl LoopGridLaunchpad {
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
 
             // out state
-            let mut out_values: HashMap<u32, u8> = HashMap::new();
+            let mut out_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut grid_out: HashMap<u32, Light> = HashMap::new();
             let mut select_out = Light::Off;
             let mut last_repeat_light_out = Light::Off;
+
+            // midi state
+            let mut volca_keys_offset: HashMap<u32, i32> = HashMap::new();
+            let mut sp404_a_offset: HashMap<u32, i32> = HashMap::new();
+            let mut sp404_b_offset: HashMap<u32, i32> = HashMap::new();
+            let mut volca_keys_out: HashMap<u32, u8> = HashMap::new();
+            let mut sp404_a_out: HashMap<u32, u8> = HashMap::new();
+            let mut sp404_b_out: HashMap<u32, u8> = HashMap::new();
 
             // display state
             let mut active: HashSet<u32> = HashSet::new();
@@ -339,7 +350,13 @@ impl LoopGridLaunchpad {
                         let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
                         let transform = match value {
                             &OutputValue::On => {
-                                if repeating {
+                                let allows_repeat = match mapping.get(&Coords::from(id)) {
+                                    Some(map) if map.group == Group::VolcaKeysOffset => false,
+                                    Some(map) if map.group == Group::SP404AOffset => false,
+                                    Some(map) if map.group == Group::SP404BOffset => false,
+                                    _ => true
+                                };
+                                if repeating && allows_repeat {
                                     let repeat_offset = if repeat_off_beat { rate / 2.0 } else { 0.0 };
                                     LoopTransform::Repeat(rate, repeat_offset)
                                 } else {
@@ -394,9 +411,9 @@ impl LoopGridLaunchpad {
                         }
                     },  
                     LoopGridMessage::RefreshGridButton(id) => {
-                        let out_value = out_values.get(&id).unwrap_or(&0);
+                        let out_value = out_values.get(&id).unwrap_or(&OutputValue::Off);
                         let old_value = grid_out.remove(&id).unwrap_or(Light::Off);
-                        let new_value = if out_value > &0 {
+                        let new_value = if out_value != &OutputValue::Off {
                             Light::Yellow
                         } else if selection.contains(&id) {
                             Light::Green
@@ -471,17 +488,16 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::Event(event) => {
-                        let new_value: u8 = match event.value {
-                            OutputValue::On => 127,
-                            OutputValue::Off => 0
-                        };
+                        let new_value = event.value.clone();
                         let midi_id = id_to_midi.get(&event.id);
                         if midi_id.is_some() {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(value) => {
                                     tx_feedback.send(LoopGridMessage::RefreshGridButton(event.id)).unwrap();
                                     // TODO: actual playback here
-                                    midi_output.send(&[144 + 1, (event.id + 30) as u8, new_value]).unwrap();
+                                    if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
+                                        tx_feedback.send(LoopGridMessage::TriggerChunk(*mapped, new_value)).unwrap();
+                                    }
                                     recorder.add(event);
                                 },
                                 None => ()
@@ -603,6 +619,100 @@ impl LoopGridLaunchpad {
                             tx_feedback.send(LoopGridMessage::RefreshOverride(*id)).unwrap();
                         }
                     },
+                    LoopGridMessage::TriggerChunk(map, value) => {
+                        let midi_value: u8 = match value {
+                            OutputValue::Off => 0,
+                            OutputValue::On => 100
+                        };
+                        match map.group {
+                            Group::VolcaKeys => {
+                                match value {
+                                    OutputValue::Off => {
+                                        if volca_keys_out.contains_key(&map.id) {
+                                            let note_id = *volca_keys_out.get(&map.id).unwrap();
+                                            midi_output.send(&[144 + 1, note_id, 0]).unwrap();
+                                            volca_keys_out.remove(&map.id);
+                                        }
+                                    },
+                                    OutputValue::On => {
+                                        let offset_value: i32 = volca_keys_offset.values().sum();
+                                        let octave = -2;
+                                        let note_id = get_scaled(69 + (octave * 12), (map.id as i32) + offset_value) as u8;
+                                        midi_output.send(&[144 + 1, note_id, midi_value]).unwrap();
+                                        volca_keys_out.insert(map.id, note_id);
+                                    }
+                                }
+                            },
+                            Group::VolcaKeysOffset => {
+                                let offsets = [-4, -3, -2, -1, 1, 2, 3, 4];
+                                let offset_value = match value { 
+                                    OutputValue::On => offsets[map.id as usize],
+                                    OutputValue::Off => 0 
+                                };
+                                volca_keys_offset.insert(map.id, offset_value);
+                            },
+                            Group::SP404A => {
+                                match value {
+                                    OutputValue::Off => {
+                                        if sp404_a_out.contains_key(&map.id) {
+                                            let note_id = *sp404_a_out.get(&map.id).unwrap();
+                                            midi_output.send(&[144 + 11, note_id, 0]).unwrap();
+                                            sp404_a_out.remove(&map.id);
+                                        }
+                                    },
+                                    OutputValue::On => {
+                                        let offset_value: i32 = *sp404_a_offset.values().max().unwrap_or(&0);
+                                        let note_id = 47 + offset_value as u8;
+                                        midi_output.send(&[144 + 11, note_id, midi_value]).unwrap();
+                                        sp404_a_out.insert(map.id, note_id);
+                                    }
+                                }
+                            },
+                            Group::SP404B => {
+                                match value {
+                                    OutputValue::Off => {
+                                        // ignore off events, choke instead!
+                                    },
+                                    OutputValue::On => {
+
+                                        // choke
+                                        for id in sp404_b_out.values() {
+                                            let message = [144 + 12, *id, 0];
+                                            midi_output.send(&message).unwrap();
+                                            println!("MIDI: {:?}", message);
+                                        }
+                                        sp404_b_out.clear();
+
+                                        let offset_value: i32 = *sp404_b_offset.values().max().unwrap_or(&0);
+                                        let note_id = (47 + offset_value + map.id as i32) as u8;
+                                        let message = [144 + 12, note_id, midi_value];
+
+                                        midi_output.send(&message).unwrap();
+                                        println!("MIDI: {:?}", message);
+
+                                        sp404_b_out.insert(map.id, note_id);
+                                    }
+                                }
+                            },
+                            Group::SP404AOffset => {
+                                let offsets = [12, 24, 36, 48];
+                                let offset_value = match value { 
+                                    OutputValue::On => offsets[map.id as usize],
+                                    OutputValue::Off => 0 
+                                };
+                                sp404_a_offset.insert(map.id, offset_value);
+                            },
+                            Group::SP404BOffset => {
+                                let offsets = [12, 24, 36, 48];
+                                let offset_value = match value { 
+                                    OutputValue::On => offsets[map.id as usize],
+                                    OutputValue::Off => 0 
+                                };
+                                sp404_b_offset.insert(map.id, offset_value);
+                            },
+                            _ => ()
+                        }
+                    },
                     LoopGridMessage::None => ()
                 }
             }
@@ -620,7 +730,7 @@ impl LoopGridLaunchpad {
     }
 }
 
-fn maybe_update (hash_map: &mut HashMap<u32, u8>, key: u32, new_value: u8) -> Option<u8> {
+fn maybe_update (hash_map: &mut HashMap<u32, OutputValue>, key: u32, new_value: OutputValue) -> Option<OutputValue> {
     let entry = hash_map.entry(key);
     match entry {
         Entry::Occupied(mut entry) => {
@@ -710,4 +820,114 @@ fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, 
     }
 
     (added, removed)
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+enum Group {
+    VolcaKeys,
+    VolcaKeysOffset,
+    SP404A,
+    SP404AOffset,
+    SP404B,
+    SP404BOffset
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+struct Coords {
+    row: u32,
+    col: u32
+}
+
+impl Coords {
+    pub fn new (row: u32, col: u32) -> Coords {
+        Coords { row, col }
+    }
+
+    pub fn from (id: u32) -> Coords {
+        Coords {
+            row: id / 8, 
+            col: id % 8
+        }
+    }
+}
+
+struct Shape {
+    rows: u32,
+    cols: u32
+}
+
+impl Shape {
+    pub fn new (rows: u32, cols: u32) -> Shape {
+        Shape { rows, cols }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+struct MidiMap {
+    group: Group,
+    id: u32
+}
+
+fn get_mapping () -> HashMap<Coords, MidiMap> {
+    let mut result = HashMap::new();
+
+    put_map(&mut result, 
+        Group::SP404A, 
+        Coords::new(0, 0), 
+        Shape::new(3, 4)
+    );
+
+    put_map(&mut result, 
+        Group::SP404B, 
+        Coords::new(0, 4), 
+        Shape::new(3, 4)
+    );
+
+    put_map(&mut result, 
+        Group::SP404AOffset, 
+        Coords::new(3, 0), 
+        Shape::new(1, 4)
+    );
+    
+    put_map(&mut result, 
+        Group::SP404BOffset, 
+        Coords::new(3, 4), 
+        Shape::new(1, 4)
+    );
+
+    put_map(&mut result, 
+        Group::VolcaKeys, 
+        Coords::new(4, 0), 
+        Shape::new(3, 8)
+    );
+
+    put_map(&mut result, 
+        Group::VolcaKeysOffset, 
+        Coords::new(7, 0), 
+        Shape::new(1, 8)
+    );
+
+    result
+}
+
+fn put_map (map: &mut HashMap<Coords, MidiMap>, group: Group, pos: Coords, size: Shape) {
+    let mut id = 0;
+    for row in (pos.row)..(pos.row + size.rows) {
+        for col in (pos.col)..(pos.col + size.cols) {
+            map.insert(Coords::new(row, col), MidiMap {group, id});
+            id += 1;
+        }
+    }
+}
+
+fn get_scaled (root: i32, value: i32) -> i32 {
+    let default_scale = [0, 2, 4, 5, 7, 9, 11];
+    let length = default_scale.len() as i32;
+    let interval = default_scale[modulo(value, length) as usize];
+    let octave = (value as f64 / length as f64).floor() as i32;
+    root + (octave * 12) + interval
+}
+
+fn modulo (n: i32, m: i32) -> i32 {
+    ((n % m) + m) % m
 }
