@@ -23,6 +23,28 @@ where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
     input.connect(port_number, port_name, callback, data)
 }
 
+pub fn get_outputs () -> Vec<String> {
+    let output = MidiOutput::new(APP_NAME).unwrap();
+    let mut result = Vec::new();
+
+    for i in 0..output.port_count() {
+        result.push(output.port_name(i).unwrap());
+    }
+
+    result
+}
+
+pub fn get_inputs () -> Vec<String> {
+    let input = MidiInput::new(APP_NAME).unwrap();
+    let mut result = Vec::new();
+
+    for i in 0..input.port_count() {
+        result.push(input.port_name(i).unwrap());
+    }
+
+    result
+}
+
 fn get_input_port_index (input: &MidiInput, name: &str) -> Result<usize, PortInfoError> {
     for i in 0..input.port_count() {
         if input.port_name(i).unwrap() == name {

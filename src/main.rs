@@ -19,6 +19,10 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<Error>> {
+
+    println!("Midi Outputs: {:?}", midi_connection::get_outputs());
+    println!("Midi Inputs: {:?}", midi_connection::get_inputs());
+
     let launchpad = LoopGridLaunchpad::new("Launchpad Mini");
     let launchpad_clock_channel = launchpad.get_channel();
     let tempo = 120;
