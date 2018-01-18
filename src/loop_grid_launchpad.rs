@@ -24,6 +24,7 @@ pub enum LoopGridMessage {
     SuppressButton(bool),
     SelectButton(bool),
     HoldButton(bool),
+    ScaleButton(bool),
     Event(LoopEvent),
     InitialLoop,
     RefreshInput(u32),
@@ -35,6 +36,7 @@ pub enum LoopGridMessage {
     RefreshActive,
     RefreshRecording,
     RefreshSelectState,
+    ClearSelection,
     SetRepeating(bool),
     SetRate(f64),
     TriggerChunk(MidiMap, OutputValue),
@@ -149,6 +151,7 @@ impl LoopGridLaunchpad {
                     107 => LoopGridMessage::RedoButton(active),
                     108 => LoopGridMessage::HoldButton(active),
                     109 => LoopGridMessage::SuppressButton(active),
+                    110 => LoopGridMessage::ScaleButton(active),
                     111 => LoopGridMessage::SelectButton(active),
                     _ => LoopGridMessage::None
                 };
@@ -176,6 +179,10 @@ impl LoopGridLaunchpad {
             let mut loop_from = 0.0;
             let mut should_flatten = false;
 
+            let mut selecting_scale = false;
+            let mut current_scale: i32 = 0;
+            let mut current_scale_root: i32 = 69;
+
             let mut rate = 2.0;
             let mut recorder = LoopRecorder::new();
             let mut last_pos = 0.0;
@@ -197,6 +204,7 @@ impl LoopGridLaunchpad {
             let mut volca_keys_out: HashMap<u32, u8> = HashMap::new();
             let mut sp404_a_out: HashMap<u32, u8> = HashMap::new();
             let mut sp404_b_out: HashMap<u32, u8> = HashMap::new();
+            let mut tr08_out: HashMap<u32, u8> = HashMap::new();
 
             // display state
             let mut active: HashSet<u32> = HashSet::new();
@@ -206,7 +214,8 @@ impl LoopGridLaunchpad {
             let mut last_repeat_light = SIDE_BUTTONS[7];
 
             let tick_pos_increment = 1.0 / 24.0;
-            
+            let half_tick_increment = tick_pos_increment / 2.0;
+
             // default button lights
             launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
             launchpad_output.send(&[176, 106, Light::RedLow as u8]).unwrap();
@@ -224,7 +233,7 @@ impl LoopGridLaunchpad {
                         // loop playback
                         let offset = current_loop.offset % current_loop.length;
                         let playback_pos = current_loop.offset + ((position - offset) % current_loop.length);
-                        let playback_range = recorder.get_range(playback_pos, playback_pos + tick_pos_increment);
+                        let playback_range = recorder.get_range(playback_pos - half_tick_increment, playback_pos + half_tick_increment);
 
                         // restart loop
                         if playback_pos == current_loop.offset {
@@ -240,13 +249,13 @@ impl LoopGridLaunchpad {
                                 &LoopTransform::Repeat(rate, offset) => {
                                     let repeat_position = (position + offset) % rate;
                                     let half = rate / 2.0;
-                                    if repeat_position < tick_pos_increment {
+                                    if repeat_position < half_tick_increment || repeat_position > (rate - half_tick_increment) {
                                         tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                             value: OutputValue::On,
                                             pos: position,
                                             id: id.clone()
                                         })).unwrap();
-                                    } else if repeat_position >= half && repeat_position < half + tick_pos_increment {
+                                    } else if repeat_position >= (half - half_tick_increment) && repeat_position < (half + half_tick_increment) {
                                         tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                             value: OutputValue::Off,
                                             pos: position,
@@ -256,15 +265,17 @@ impl LoopGridLaunchpad {
                                 },
                                 &LoopTransform::Hold(hold_position, rate) => {
                                     let offset = hold_position % rate;
-                                    let from = hold_position + ((position - offset) % rate);
-                                    let to = from + tick_pos_increment;
+                                    let from = hold_position + ((position - offset) % rate) - half_tick_increment;
+                                    let to = from + half_tick_increment;
                                     let playback_range = PlaybackRange::new(from, to);
                                     let events = match playback_cache.entry(playback_range) {
                                         Occupied(mut entry) => entry.into_mut(),
                                         Vacant(entry) => entry.insert(recorder.get_range(from, to))
                                     };
+                                    
+                                    let pos = (playback_pos % rate);
 
-                                    if playback_pos % rate < tick_pos_increment {
+                                    if pos < half_tick_increment || pos > (rate - half_tick_increment) {
                                         match recorder.get_event_at(*id, last_playback_pos) {
                                             Some(event) if event.value == OutputValue::Off => {
                                                 tx_feedback.send(LoopGridMessage::Event(event.with_pos(position))).unwrap();
@@ -336,7 +347,13 @@ impl LoopGridLaunchpad {
                         last_repeat_light_out = rate_color;
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
-                        if selecting && value == OutputValue::On {
+                        if selecting_scale && value == OutputValue::On {
+                            if id < 8 {
+                                current_scale = (id as i32);
+                            } else {
+                                current_scale_root = (id as i32) + 24;
+                            }
+                        } else if selecting && value == OutputValue::On {
                             if selection.contains(&id) {
                                 selection.remove(&id);
                             } else {
@@ -510,17 +527,26 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::LoopButton(pressed) => {
                         if pressed {
                             loop_from = last_pos;
+                            tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                         } else {
                             let beats_since_press = last_pos - loop_from;
                             let threshold = tick_pos_increment * 12.0;
                             if beats_since_press > threshold {
                                 let quantized_length = quantize_length(last_pos - loop_from);
+                                loop_length = quantized_length;
                                 loop_state.set(Loop::new(last_pos - quantized_length, quantized_length));
                             } else {
                                 loop_state.set(Loop::new(loop_from - loop_length, loop_length));
                             }
                         }
                     },
+                    LoopGridMessage::ClearSelection => {
+                        for id in &selection {
+                            tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
+                        }
+                        selection.clear();
+                        tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
+                    }
                     LoopGridMessage::RefreshShouldFlatten => {
                         let new_value = &selection_override != &LoopTransform::None || override_values.values().any(|value| value != &LoopTransform::None);
                         if new_value != should_flatten {
@@ -563,6 +589,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 loop_state.set(Loop::new(0.0 - loop_length, loop_length));
                             }
+                            tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                         }
                     },
                     LoopGridMessage::UndoButton(pressed) => {
@@ -596,12 +623,12 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::SelectButton(pressed) => {
                         selecting = pressed;
                         if pressed {
-                            for id in &selection {
-                                tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
-                            }
-                            selection.clear();
+                            tx_feedback.send(LoopGridMessage::ClearSelection).unwrap()
                         }
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
+                    },
+                    LoopGridMessage::ScaleButton(pressed) => {
+                        selecting_scale = pressed;
                     },
                     LoopGridMessage::SetRepeating(value) => {
                         repeat_off_beat = selecting;
@@ -640,7 +667,7 @@ impl LoopGridLaunchpad {
                                     OutputValue::On => {
                                         let offset_value: i32 = volca_keys_offset.values().sum();
                                         let octave = -2;
-                                        let note_id = get_scaled(69 + (octave * 12), (map.id as i32) + offset_value) as u8;
+                                        let note_id = get_scaled(current_scale_root + (octave * 12), current_scale, (map.id as i32) + offset_value) as u8;
                                         midi_output.send(&[144 + 1, note_id, midi_value]).unwrap();
                                         volca_keys_out.insert(map.id, note_id);
                                     }
@@ -654,6 +681,28 @@ impl LoopGridLaunchpad {
                                 };
                                 volca_keys_offset.insert(map.id, offset_value);
                             },
+                            Group::TR08 => {
+                                match value {
+                                    OutputValue::Off => {
+                                        if sp404_a_out.contains_key(&map.id) {
+                                            let note_id = *tr08_out.get(&map.id).unwrap();
+                                            midi_output.send(&[128 + 10 - 1, note_id, 0]).unwrap();
+                                            tr08_out.remove(&map.id);
+                                        }
+                                    },
+                                    OutputValue::On => {
+                                        let tr08_map: [u8; 16] = [
+                                          36, 38, 42, 46,
+                                          43, 39, 70, 49,
+                                          47, 37, 75, 56,
+                                          50, 64, 63, 62
+                                        ];
+                                        let note_id = tr08_map[map.id as usize];
+                                        midi_output.send(&[144 + 10 - 1, note_id, midi_value]).unwrap();
+                                        tr08_out.insert(map.id, note_id);
+                                    }
+                                }
+                            },
                             Group::SP404A => {
                                 match value {
                                     OutputValue::Off => {
@@ -665,7 +714,7 @@ impl LoopGridLaunchpad {
                                     },
                                     OutputValue::On => {
                                         let offset_value: i32 = *sp404_a_offset.values().max().unwrap_or(&0);
-                                        let note_id = 47 + offset_value as u8;
+                                        let note_id = (47 + offset_value + map.id as i32) as u8;
                                         midi_output.send(&[144 + 11, note_id, midi_value]).unwrap();
                                         sp404_a_out.insert(map.id, note_id);
                                     }
@@ -768,16 +817,14 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
 
 fn get_transform<'a> (id: &u32, override_values: &'a HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &'a LoopTransform, loop_transforms: &'a HashMap<u32, LoopTransform>) -> &'a LoopTransform {
     let in_selection = selection.len() == 0 || selection.contains(&id);
+    let id_override = override_values.get(&id).unwrap_or(&LoopTransform::None);
 
-    if (selection_override != &LoopTransform::None) && in_selection {
+    if id_override != &LoopTransform::None {
+        id_override
+    } else if (selection_override != &LoopTransform::None) && in_selection {
         selection_override
     } else {
-        let id_override = override_values.get(&id).unwrap_or(&LoopTransform::None);
-        if id_override != &LoopTransform::None {
-            id_override
-        } else {
-            loop_transforms.get(id).unwrap_or(&LoopTransform::None)
-        }
+        loop_transforms.get(id).unwrap_or(&LoopTransform::None)
     }
 }
 
@@ -827,6 +874,7 @@ fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, 
 enum Group {
     VolcaKeys,
     VolcaKeysOffset,
+    TR08,
     SP404A,
     SP404AOffset,
     SP404B,
@@ -873,10 +921,16 @@ fn get_mapping () -> HashMap<Coords, MidiMap> {
     let mut result = HashMap::new();
 
     put_map(&mut result, 
-        Group::SP404A, 
+        Group::TR08, 
         Coords::new(0, 0), 
-        Shape::new(3, 4)
+        Shape::new(4, 4)
     );
+
+    // put_map(&mut result, 
+    //     Group::SP404A, 
+    //     Coords::new(0, 0), 
+    //     Shape::new(3, 4)
+    // );
 
     put_map(&mut result, 
         Group::SP404B, 
@@ -884,11 +938,11 @@ fn get_mapping () -> HashMap<Coords, MidiMap> {
         Shape::new(3, 4)
     );
 
-    put_map(&mut result, 
-        Group::SP404AOffset, 
-        Coords::new(3, 0), 
-        Shape::new(1, 4)
-    );
+    // put_map(&mut result, 
+    //     Group::SP404AOffset, 
+    //     Coords::new(3, 0), 
+    //     Shape::new(1, 4)
+    // );
     
     put_map(&mut result, 
         Group::SP404BOffset, 
@@ -921,10 +975,16 @@ fn put_map (map: &mut HashMap<Coords, MidiMap>, group: Group, pos: Coords, size:
     }
 }
 
-fn get_scaled (root: i32, value: i32) -> i32 {
-    let default_scale = [0, 2, 4, 5, 7, 9, 11];
-    let length = default_scale.len() as i32;
-    let interval = default_scale[modulo(value, length) as usize];
+fn get_scaled (root: i32, scale: i32, value: i32) -> i32 {
+    let intervals = [2, 2, 1, 2, 2, 1];
+    let mut scale_notes = vec![0];
+    let mut last_value = 0;
+    for i in 0..6 {
+        last_value += intervals[modulo(i + scale, 6) as usize];
+        scale_notes.push(last_value);
+    }
+    let length = scale_notes.len() as i32;
+    let interval = scale_notes[modulo(value, length) as usize];
     let octave = (value as f64 / length as f64).floor() as i32;
     root + (octave * 12) + interval
 }
