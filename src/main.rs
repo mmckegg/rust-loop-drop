@@ -8,9 +8,11 @@ mod midi_connection;
 mod loop_grid_launchpad;
 mod loop_recorder;
 mod loop_state;
+mod midi_time;
 
 use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;
+use midi_time::MidiTime;
 
 fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
@@ -23,7 +25,7 @@ fn main() {
     let clock_in = midi_connection::get_input("UM-ONE", move |stamp, message, _| {
         if message[0] == 248 {
             ticks += 1;
-            launchpad_clock_channel.send(LoopGridMessage::Schedule(ticks));
+            launchpad_clock_channel.send(LoopGridMessage::Schedule(MidiTime::from_ticks(ticks)));
         }
     }, ());
 

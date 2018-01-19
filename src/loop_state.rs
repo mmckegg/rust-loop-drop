@@ -1,14 +1,15 @@
 use std::collections::HashMap;
+use ::midi_time::MidiTime;
 
 #[derive(Debug, Clone)]
 pub struct Loop {
-    pub length: f64,
-    pub offset: f64,
+    pub length: MidiTime,
+    pub offset: MidiTime,
     pub transforms: HashMap<u32, LoopTransform>
 }
 
 impl Loop {
-    pub fn new (offset: f64, length: f64) -> Loop {
+    pub fn new (offset: MidiTime, length: MidiTime) -> Loop {
         Loop {
             offset,
             length,
@@ -21,8 +22,8 @@ impl Loop {
 pub enum LoopTransform {
     On,
     None,
-    Repeat(f64, f64),
-    Hold(f64, f64),
+    Repeat(MidiTime, MidiTime),
+    Hold(MidiTime, MidiTime),
     Suppress
 }
 
@@ -33,9 +34,9 @@ pub struct LoopState {
 }
 
 impl LoopState {
-    pub fn new<F> (default_length: f64, on_change: F) -> LoopState
+    pub fn new<F> (default_length: MidiTime, on_change: F) -> LoopState
     where F: FnMut(&Loop) + Send + 'static  {
-        let default_loop = Loop::new(0.0 - default_length, default_length);
+        let default_loop = Loop::new(MidiTime::zero() - default_length, default_length);
         LoopState {
             undos: vec![default_loop],
             redos: Vec::new(),
