@@ -208,6 +208,7 @@ impl LoopGridLaunchpad {
             let mut grid_out: HashMap<u32, Light> = HashMap::new();
             let mut select_out = Light::Off;
             let mut last_repeat_light_out = Light::Off;
+            let mut last_scale_light_out = Light::Off;
 
             // midi state
             let mut volca_keys_offset: HashMap<u32, i32> = HashMap::new();
@@ -226,6 +227,7 @@ impl LoopGridLaunchpad {
 
             let mut last_beat_light = SIDE_BUTTONS[7];
             let mut last_repeat_light = SIDE_BUTTONS[7];
+            let mut last_scale_light = SIDE_BUTTONS[7];
 
             let tick_pos_increment = MidiTime::tick();
             let half_tick_increment = MidiTime::half_tick();
@@ -329,17 +331,38 @@ impl LoopGridLaunchpad {
                         let shifted_beat_position = (last_pos.ticks() * beat_display_multiplier / 24) as usize;
                         let current_beat_light = SIDE_BUTTONS[shifted_beat_position % 8];
                         let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
+                        let current_scale_light = *SIDE_BUTTONS.get(current_scale as usize).unwrap_or(&SIDE_BUTTONS[0]);
+
                         let rate_color = if repeat_off_beat { Light::RedMed } else { Light::YellowMed };
+                        let scale_color = Light::RedLow;
 
                         if current_repeat_light != last_repeat_light || last_repeat_light_out != rate_color {
                             launchpad_output.send(&[144, last_repeat_light, 0]).unwrap();
                             launchpad_output.send(&[144, current_repeat_light, rate_color as u8]).unwrap();
                         }
 
+                        if current_scale_light != last_scale_light || last_scale_light_out != scale_color {
+                            launchpad_output.send(&[144, last_scale_light, 0]).unwrap();
+                            launchpad_output.send(&[144, current_scale_light, scale_color as u8]).unwrap();
+                        }
+
                         let beat_start = last_pos.is_whole_beat();
 
-                        let base_last_beat_light = rate_color.maybe(current_repeat_light == last_beat_light);
-                        let base_beat_light = rate_color.maybe(current_repeat_light == current_beat_light);
+                        let base_last_beat_light = if current_repeat_light == last_beat_light {
+                            rate_color
+                        } else if current_scale_light == last_beat_light {
+                            scale_color
+                        } else {
+                            Light::None
+                        };
+                        
+                        let base_beat_light = if current_repeat_light == current_beat_light {
+                            rate_color
+                        } else if current_scale_light == current_beat_light {
+                            scale_color
+                        } else {
+                            Light::None
+                        };
 
                         if current_beat_light != last_beat_light {
                             launchpad_output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
@@ -357,6 +380,8 @@ impl LoopGridLaunchpad {
                         last_beat_light = current_beat_light;
                         last_repeat_light = current_repeat_light;
                         last_repeat_light_out = rate_color;
+                        last_scale_light = current_scale_light;
+                        last_scale_light_out = scale_color;
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         if selecting && value == OutputValue::On {
@@ -380,6 +405,7 @@ impl LoopGridLaunchpad {
                                     Some(map) if map.group == Group::VolcaKeysOffset => false,
                                     Some(map) if map.group == Group::SP404AOffset => false,
                                     Some(map) if map.group == Group::SP404BOffset => false,
+                                    Some(map) if map.group == Group::VolcaBassOffset => false,
                                     _ => true
                                 };
                                 if repeating && allows_repeat {
