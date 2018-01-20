@@ -2,12 +2,12 @@ use std::cmp::Ordering;
 use std::collections::{HashSet, HashMap};
 use ::midi_time::MidiTime;
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Ord, PartialOrd, Debug, Eq, PartialEq, Copy, Clone)]
 pub enum OutputValue {
-    On, Off
+    Off, On
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Eq, Debug, Copy, Clone)]
 pub struct LoopEvent {
     pub value: OutputValue,
     pub pos: MidiTime,
@@ -24,19 +24,25 @@ impl LoopEvent {
     }
 }
 
-impl PartialOrd for LoopEvent {
-    fn partial_cmp(&self, other: &LoopEvent) -> Option<Ordering> {
+impl Ord for LoopEvent {
+    fn cmp(&self, other: &LoopEvent) -> Ordering {
         // Some(self.cmp(other))
-        let value = self.pos.partial_cmp(&other.pos).unwrap();
+        let value = self.pos.cmp(&other.pos);
         if self.eq(other) {
             // replace the item if same type, 
-            Some(Ordering::Equal)
+            Ordering::Equal
         } else if value == Ordering::Equal {
             // or insert after if different (but same position)
-            Some(self.id.cmp(&other.id))
+            self.id.cmp(&other.id)
         } else {
-            Some(value)
+            value
         }
+    }
+}
+
+impl PartialOrd for LoopEvent {
+    fn partial_cmp(&self, other: &LoopEvent) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -123,6 +129,35 @@ impl LoopRecorder {
         &self.history[start_index..end_index]
     }
 
+    pub fn get_range_for (&self, id: u32, start_pos: MidiTime, end_pos: MidiTime) -> Option<&[LoopEvent]> {
+        if let Some(collection) = self.per_id.get(&id) {
+            let start_index = match collection.binary_search_by(|v| {
+                if v.pos < start_pos {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }) {
+                Ok(index) | Err(index) => index,
+            };
+
+            let end_index = match collection.binary_search_by(|v| {
+                if v.pos < end_pos {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }) {
+                Ok(index) | Err(index) => index,
+            };
+
+            Some(&collection[start_index..end_index])
+        } else {
+            None
+        }
+
+    }
+
     pub fn get_event_at (&self, id: u32, pos: MidiTime) -> Option<&LoopEvent> {
         if let Some(collection) = self.per_id.get(&id) {
             match collection.binary_search_by(|v| {
@@ -143,13 +178,13 @@ impl LoopRecorder {
     pub fn get_next_event_at (&self, id: u32, pos: MidiTime) -> Option<&LoopEvent> {
         if let Some(collection) = self.per_id.get(&id) {
             match collection.binary_search_by(|v| {
-                v.pos.partial_cmp(&pos).unwrap()
+                v.pos.cmp(&pos)
             }) {
-                Ok(index) => collection.get(index + 1),
-                Err(index) => if index > 0 {
+                Ok(index) => {
+                    collection.get(index + 1)
+                },
+                Err(index) => {
                     collection.get(index)
-                } else {
-                    None
                 }
             }
         } else {
