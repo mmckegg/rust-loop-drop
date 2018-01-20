@@ -627,9 +627,6 @@ impl LoopGridLaunchpad {
                         if midi_id.is_some() {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(value) => {
-                                    // if event.value == OutputValue::On {
-                                        println!("EVENT {:?} {}, {}", event.value, event.pos.ticks(), event.id);
-                                    // }
                                     tx_feedback.send(LoopGridMessage::RefreshGridButton(event.id)).unwrap();
                                     // TODO: actual playback here
                                     if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
@@ -655,8 +652,6 @@ impl LoopGridLaunchpad {
                                 loop_state.set(Loop::new(last_pos - quantized_length, quantized_length));
                             } else {
                                 loop_state.set(Loop::new(loop_from - loop_length, loop_length));
-                                println!("LOOP END {:?}", loop_from);
-                                println!("LOOP EVENTS {:?}", recorder.get_range(loop_from - loop_length, loop_from))
                             }
                         }
                     },
@@ -691,7 +686,7 @@ impl LoopGridLaunchpad {
                                 loop_state.set(new_loop);
                             } else if should_flatten {
                                 let mut new_loop = loop_state.get().clone();
-                                
+
                                 if &selection_override != &LoopTransform::None {
                                     for id in id_to_midi.keys() {
                                         new_loop.transforms.insert(id.clone(), selection_override.clone());
