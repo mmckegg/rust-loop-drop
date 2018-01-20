@@ -240,7 +240,7 @@ impl LoopGridLaunchpad {
 
             // default button lights
             launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
-            launchpad_output.send(&[176, 1010, Light::RedLow as u8]).unwrap();
+            launchpad_output.send(&[176, 110, Light::RedLow as u8]).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
 
             for received in rx {
