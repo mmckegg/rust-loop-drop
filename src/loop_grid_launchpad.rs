@@ -494,10 +494,6 @@ impl LoopGridLaunchpad {
                             &LoopTransform::Suppress => Some(OutputValue::Off)
                         };
 
-                        if id == 32 {
-                            println!("VALUE {}: {:?}, {:?}", id, value, fallback);
-                        }
-
                         if let Some(v) = value {
                             tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                 value: v,
