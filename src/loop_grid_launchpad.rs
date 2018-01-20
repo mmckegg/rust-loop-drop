@@ -55,7 +55,6 @@ pub enum LoopGridMessage {
     RefreshSelectState,
     ClearSelection,
     RefreshUndoRedoLights,
-    SetRepeating(bool),
     SetRate(MidiTime),
     RateButton(usize, bool),
     TriggerChunk(MidiMap, OutputValue),
@@ -203,6 +202,7 @@ impl LoopGridLaunchpad {
             let mut last_playback_pos = MidiTime::from_ticks(0);
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
+            let mut currently_held_inputs: Vec<u32> = Vec::new();
 
             // nudge
             let mut nudge_next_tick: i32 = 0;
@@ -423,12 +423,42 @@ impl LoopGridLaunchpad {
                         launchpad_output.send(&[176, 107, color as u8]).unwrap();
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
+                        let current_index = currently_held_inputs.iter().position(|v| v == &id);
+                        
+                        if value == OutputValue::On && current_index == None {
+                            currently_held_inputs.push(id);
+                        } else if let Some(index) = current_index {
+                            currently_held_inputs.remove(index);
+                        }
+
+
                         if selecting && value == OutputValue::On {
                             if selection.contains(&id) {
                                 selection.remove(&id);
                             } else {
                                 selection.insert(id);
                             }
+
+                            // range selection
+                            if currently_held_inputs.len() == 2 {
+
+                                let from = Coords::from(currently_held_inputs[0]);
+                                let to = Coords::from(currently_held_inputs[1]);
+
+                                let from_row = u32::min(from.row, to.row);
+                                let to_row = u32::max(from.row, to.row) + 1;
+                                let from_col = u32::min(from.col, to.col);
+                                let to_col = u32::max(from.col, to.col) + 1;
+
+                                for row in from_row..to_row {
+                                    for col in from_col..to_col {
+                                        let id = Coords::id_from(row, col);
+                                        selection.insert(id);
+                                        tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
+                                    }
+                                }
+                            }
+
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
                             input_values.insert(id, value);
@@ -481,7 +511,7 @@ impl LoopGridLaunchpad {
                             Some(event) if event.value != OutputValue::Off => {
                                 match recorder.get_next_event_at(id, last_playback_pos)  {
                                     Some(next_event) if (next_event.pos - last_playback_pos) > MidiTime::from_measure(1, 2) => Some(event.value.clone()),
-                                    _ => Some(OutputValue::Off)
+                                    _ => Some(event.value)
                                 }
                             },
                             _ => Some(OutputValue::Off)
@@ -493,7 +523,7 @@ impl LoopGridLaunchpad {
                             &LoopTransform::Repeat(_, _) | &LoopTransform::Hold(_, _) => None,
                             &LoopTransform::Suppress => Some(OutputValue::Off)
                         };
-
+                        
                         if let Some(v) = value {
                             tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                 value: v,
@@ -662,7 +692,13 @@ impl LoopGridLaunchpad {
 
                                 loop_state.set(new_loop);
                             } else {
-                                loop_state.set(Loop::new(MidiTime::zero() - loop_length, loop_length));
+                                let mut new_loop = loop_state.get().clone();
+
+                                for id in id_to_midi.keys() {
+                                    new_loop.transforms.insert(id.clone(), LoopTransform::Suppress);
+                                }
+
+                                loop_state.set(new_loop);
                             }
                             tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                         }
@@ -715,10 +751,6 @@ impl LoopGridLaunchpad {
                         selecting_scale = pressed;
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
-                    LoopGridMessage::SetRepeating(value) => {
-                        repeat_off_beat = selecting;
-                        repeating = value;
-                    },
                     LoopGridMessage::RateButton(index, pressed) => {
                         if pressed {
                             if selecting_scale {
@@ -727,7 +759,7 @@ impl LoopGridLaunchpad {
                                 let rate = REPEAT_RATES[index];
                                 tx_feedback.send(LoopGridMessage::SetRate(rate)).unwrap();
                                 repeat_off_beat = selecting;
-                                repeating = index > 0;
+                                repeating = index > 0 || repeat_off_beat;
                             }
                         }
                     },
@@ -1034,6 +1066,14 @@ impl Coords {
             row: id / 8, 
             col: id % 8
         }
+    }
+
+    pub fn id_from (row: u32, col: u32) -> u32 {
+        (row * 8) + col
+    }
+
+    pub fn id (&self) -> u32 {
+        Coords::id_from(self.row, self.col)
     }
 }
 
