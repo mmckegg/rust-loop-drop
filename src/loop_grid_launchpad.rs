@@ -203,6 +203,7 @@ impl LoopGridLaunchpad {
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut currently_held_inputs: Vec<u32> = Vec::new();
+            let mut currently_held_rates: Vec<usize> = Vec::new();
 
             // nudge
             let mut nudge_next_tick: i32 = 0;
@@ -751,15 +752,24 @@ impl LoopGridLaunchpad {
                         selecting_scale = pressed;
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
-                    LoopGridMessage::RateButton(index, pressed) => {
-                        if pressed {
+                    LoopGridMessage::RateButton(button_id, pressed) => {
+                        let current_index = currently_held_rates.iter().position(|v| v == &button_id);
+
+                        if pressed && current_index == None {
+                            currently_held_rates.push(button_id);
+                        } else if let Some(index) = current_index {
+                            currently_held_rates.remove(index);
+                        }
+
+                        if currently_held_rates.len() > 0 {
+                            let id = *currently_held_rates.iter().last().unwrap();
                             if selecting_scale {
-                                current_scale = (index as i32);
+                                current_scale = (id as i32);
                             } else {
-                                let rate = REPEAT_RATES[index];
+                                let rate = REPEAT_RATES[id];
                                 tx_feedback.send(LoopGridMessage::SetRate(rate)).unwrap();
                                 repeat_off_beat = selecting;
-                                repeating = index > 0 || repeat_off_beat;
+                                repeating = id > 0 || repeat_off_beat;
                             }
                         }
                     },
