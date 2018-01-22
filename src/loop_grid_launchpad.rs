@@ -273,9 +273,9 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::ResetBeat => {
                         let offset = last_pos % MidiTime::from_beats(1);
                         if offset >= MidiTime::from_ticks(12) {
-                            last_pos = last_pos + (MidiTime::from_beats(1) - last_pos);
+                            nudge_offset = nudge_offset + (MidiTime::from_beats(1) - last_pos).ticks();
                         } else {
-                            last_pos = last_pos - offset;
+                            nudge_offset = nudge_offset - offset.ticks();
                         }
                         tx_feedback.send(LoopGridMessage::InitialLoop).unwrap();
                     },
