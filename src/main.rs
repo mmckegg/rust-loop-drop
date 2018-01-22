@@ -9,6 +9,7 @@ mod loop_grid_launchpad;
 mod loop_recorder;
 mod loop_state;
 mod midi_time;
+mod clock_source;
 
 use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;

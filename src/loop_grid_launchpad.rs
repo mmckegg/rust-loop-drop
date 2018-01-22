@@ -1,16 +1,19 @@
 extern crate midir;
 use self::midir::{MidiInputConnection};
+use std::time::{Duration, SystemTime};
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashSet;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+
 use ::midi_connection;
 use ::midi_time::MidiTime;
 
 use ::loop_recorder::{LoopRecorder, OutputValue, LoopEvent};
 use ::loop_state::{Loop, LoopState, LoopTransform};
+use ::clock_source::ClockSource;
 
 const SIDE_BUTTONS: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
 
@@ -31,7 +34,10 @@ lazy_static! {
     ];
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum LoopGridMessage {
+    TickFromExternal,
+    TickFromInternal,
     Schedule(MidiTime),
     GridInput(u64, u32, OutputValue),
     LoopButton(bool),
@@ -128,8 +134,11 @@ impl LoopGridLaunchpad {
         let (tx, rx) = mpsc::channel();
         
         let tx_input =  mpsc::Sender::clone(&tx);
+        let tx_clock =  mpsc::Sender::clone(&tx);
         let tx_feedback =  mpsc::Sender::clone(&tx);
         let tx_loop_state =  mpsc::Sender::clone(&tx);
+
+        let mut tick_pos = MidiTime::zero();
 
         let (midi_to_id, id_to_midi) = get_grid_map();
 
@@ -171,6 +180,9 @@ impl LoopGridLaunchpad {
                 tx_input.send(to_send).unwrap();
             }
         }, ()).unwrap();
+
+        let clock = ClockSource::new(tx_clock, LoopGridMessage::TickFromInternal);
+        clock.start();
 
         thread::spawn(move || {
             let mut loop_length = MidiTime::from_beats(8);
@@ -237,6 +249,7 @@ impl LoopGridLaunchpad {
 
             let tick_pos_increment = MidiTime::tick();
             let half_tick_increment = MidiTime::half_tick();
+            let mut internal_clock_suppressed_to = SystemTime::now();
 
             // default button lights
             launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
@@ -245,6 +258,17 @@ impl LoopGridLaunchpad {
 
             for received in rx {
                 match received {
+                    LoopGridMessage::TickFromExternal => {
+                        internal_clock_suppressed_to = SystemTime::now() + Duration::new(0, 100 * 1_000_000);
+                        tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
+                        tick_pos = tick_pos + MidiTime::tick();
+                    },
+                    LoopGridMessage::TickFromInternal => {
+                        if internal_clock_suppressed_to < SystemTime::now() {
+                            tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
+                            tick_pos = tick_pos + MidiTime::tick();
+                        }
+                    },
                     LoopGridMessage::Schedule(position) => {
                         // rebroadcast tick
                         midi_output.send(&[248]);
