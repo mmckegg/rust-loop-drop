@@ -271,12 +271,13 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::ResetBeat => {
-                        let offset = last_pos % MidiTime::from_beats(2);
-                        if offset >= MidiTime::from_beats(1) {
-                            nudge_next_tick += (MidiTime::from_beats(2) - last_pos).ticks()
+                        let offset = last_pos % MidiTime::from_beats(1);
+                        if offset >= MidiTime::from_ticks(12) {
+                            last_pos = last_pos + (MidiTime::from_beats(2) - last_pos);
                         } else {
-                            nudge_next_tick -= offset.ticks()
+                            last_pos = last_pos - offset;
                         }
+                        tx_feedback.send(LoopGridMessage::InitialLoop).unwrap();
                     },
                     LoopGridMessage::Schedule(position) => {
                         // rebroadcast tick
