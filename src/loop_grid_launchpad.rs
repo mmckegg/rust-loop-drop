@@ -260,7 +260,7 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::TickFromExternal => {
-                        internal_clock_suppressed_to = SystemTime::now() + Duration::new(0, 100 * 1_000_000);
+                        internal_clock_suppressed_to = SystemTime::now() + Duration::new(0, 500 * 1_000_000);
                         tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
                         tick_pos = tick_pos + MidiTime::tick();
                     },
