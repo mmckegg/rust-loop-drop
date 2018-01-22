@@ -181,7 +181,7 @@ impl LoopGridLaunchpad {
             }
         }, ()).unwrap();
 
-        let clock = ClockSource::new(tx_clock, LoopGridMessage::TickFromInternal);
+        let mut clock = ClockSource::new(tx_clock, LoopGridMessage::TickFromInternal);
         clock.start();
 
         thread::spawn(move || {
@@ -664,18 +664,24 @@ impl LoopGridLaunchpad {
                         recorder.add(event);
                     },
                     LoopGridMessage::LoopButton(pressed) => {
-                        if pressed {
-                            loop_from = last_pos;
-                            tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
+                        if selecting_scale && selecting {
+                            if pressed {
+                                clock.tap();
+                            }
                         } else {
-                            let since_press = last_pos - loop_from;
-                            let threshold = MidiTime::from_ticks(12);
-                            if since_press > threshold {
-                                let quantized_length = MidiTime::quantize_length(last_pos - loop_from);
-                                loop_length = quantized_length;
-                                loop_state.set(Loop::new(last_pos - quantized_length, quantized_length));
+                            if pressed {
+                                loop_from = last_pos;
+                                tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                             } else {
-                                loop_state.set(Loop::new(loop_from - loop_length, loop_length));
+                                let since_press = last_pos - loop_from;
+                                let threshold = MidiTime::from_ticks(12);
+                                if since_press > threshold {
+                                    let quantized_length = MidiTime::quantize_length(last_pos - loop_from);
+                                    loop_length = quantized_length;
+                                    loop_state.set(Loop::new(last_pos - quantized_length, quantized_length));
+                                } else {
+                                    loop_state.set(Loop::new(loop_from - loop_length, loop_length));
+                                }
                             }
                         }
                     },

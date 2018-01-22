@@ -21,12 +21,10 @@ fn main() {
 
     let launchpad = LoopGridLaunchpad::new("Launchpad Mini", "UM-ONE");
     let launchpad_clock_channel = launchpad.get_channel();
-    let mut ticks = 0;
 
     let clock_in = midi_connection::get_input("UM-ONE", move |stamp, message, _| {
         if message[0] == 248 {
-            ticks += 1;
-            launchpad_clock_channel.send(LoopGridMessage::Schedule(MidiTime::from_ticks(ticks)));
+            launchpad_clock_channel.send(LoopGridMessage::TickFromExternal);
         }
     }, ());
 
