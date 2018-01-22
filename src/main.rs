@@ -25,6 +25,8 @@ fn main() {
     let clock_in = midi_connection::get_input("UM-ONE", move |stamp, message, _| {
         if message[0] == 248 {
             launchpad_clock_channel.send(LoopGridMessage::TickFromExternal);
+        } else if message[0] == 250 {
+            launchpad_clock_channel.send(LoopGridMessage::ResetBeat);
         }
     }, ());
 

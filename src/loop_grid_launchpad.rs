@@ -38,6 +38,7 @@ lazy_static! {
 pub enum LoopGridMessage {
     TickFromExternal,
     TickFromInternal,
+    ResetBeat,
     Schedule(MidiTime),
     GridInput(u64, u32, OutputValue),
     LoopButton(bool),
@@ -267,6 +268,14 @@ impl LoopGridLaunchpad {
                         if internal_clock_suppressed_to < SystemTime::now() {
                             tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
                             tick_pos = tick_pos + MidiTime::tick();
+                        }
+                    },
+                    LoopGridMessage::ResetBeat => {
+                        let offset = last_pos % MidiTime::from_beats(2);
+                        if offset >= MidiTime::from_beats(1) {
+                            nudge_next_tick += (MidiTime::from_beats(2) - last_pos).ticks()
+                        } else {
+                            nudge_next_tick -= offset.ticks()
                         }
                     },
                     LoopGridMessage::Schedule(position) => {
