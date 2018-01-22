@@ -273,7 +273,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::ResetBeat => {
                         let offset = last_pos % MidiTime::from_beats(1);
                         if offset >= MidiTime::from_ticks(12) {
-                            last_pos = last_pos + (MidiTime::from_beats(2) - last_pos);
+                            last_pos = last_pos + (MidiTime::from_beats(1) - last_pos);
                         } else {
                             last_pos = last_pos - offset;
                         }
