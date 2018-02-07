@@ -44,7 +44,6 @@ impl MidiKeys {
                 let scale_offset = third_offset + offset.offset;
                 let note_id = (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8;
                 self.midi_output.send(&[144 + self.midi_channel - 1, note_id, midi_value]).unwrap();
-                println!("TRIGGER VolcaKeys {:?}", [144 + self.midi_channel - 1, note_id, midi_value]);
                 self.output_values.insert(id, note_id);
             }
         }
