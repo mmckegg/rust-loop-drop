@@ -1,11 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{HashSet, HashMap};
 use ::midi_time::MidiTime;
-
-#[derive(Ord, PartialOrd, Debug, Eq, PartialEq, Copy, Clone)]
-pub enum OutputValue {
-    Off, On
-}
+use ::output_value::OutputValue;
 
 #[derive(Eq, Debug, Copy, Clone)]
 pub struct LoopEvent {

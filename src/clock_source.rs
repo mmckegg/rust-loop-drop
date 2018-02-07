@@ -2,8 +2,7 @@ use std::time::{Duration, SystemTime};
 use std::thread;
 use std::sync::mpsc;
 use std::fmt::Debug;
-use std::marker::Sync;
-use std::sync::{Mutex, Arc};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct ClockSource<T> where T: Copy + Debug + Send + 'static {

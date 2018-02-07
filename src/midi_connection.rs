@@ -2,7 +2,7 @@ extern crate midir;
 extern crate regex;
 
 use self::regex::Regex;
-use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError};
+pub use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError};
 
 const APP_NAME: &str = "Loop Drop";
 

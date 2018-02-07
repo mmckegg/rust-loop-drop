@@ -1,5 +1,4 @@
 use std::ops::{Add, Sub, Mul, Div, Rem};
-use std::cmp;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]
 pub struct MidiTime {
@@ -53,7 +52,7 @@ impl MidiTime {
         } else {
             let fraction = ((self.fraction / 2) as i32) + 127;
             let mut ticks = self.ticks;
-            ticks += (fraction / 256);
+            ticks += fraction / 256;
 
             MidiTime {ticks: self.ticks / 2, fraction: fraction as u8 }
         }
