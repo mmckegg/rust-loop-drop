@@ -17,7 +17,7 @@ impl Triggerable for VolcaSample {
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
         match value {
             OutputValue::Off => {},
-            OutputValue::On => {
+            OutputValue::On(velocity) => {
                 let channel_map: [u8; 16] = [
                   0, 1, 8, 9, 
                   2, 3, 4, 5, 
@@ -38,7 +38,7 @@ impl Triggerable for VolcaSample {
                     self.midi_port.send(&[176 + channel, 43, (64 + offset) as u8]).unwrap();
                 } 
 
-                self.midi_port.send(&[144 + channel, 0, 127]).unwrap();
+                self.midi_port.send(&[144 + channel, 0, velocity]).unwrap();
             }
         }
     }

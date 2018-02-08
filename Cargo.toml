@@ -9,3 +9,4 @@ publish = false
 midir = "0.5.0"
 lazy_static = "1.0"
 regex = "0.2.5"
+bus = "1.4.1"

@@ -16,6 +16,7 @@ mod devices;
 mod scale;
 
 use scale::{Scale, Offset};
+use clock_source::ClockSource;
 use loop_grid_launchpad::LoopGridLaunchpad;
 use loop_grid_launchpad::LoopGridMessage;
 use chunk::{Shape, Coords, ChunkMap};
@@ -24,6 +25,7 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
 
+    let clock_port_name = "UM-ONE";
     let output_port_name = "UM-ONE";
 
     let scale = Scale::new(69, 0);
@@ -31,13 +33,15 @@ fn main() {
     let mother_offset = Offset::new(-2);
     let keys_offset = Offset::new(-1);
 
+    let mut clock = ClockSource::new(clock_port_name);
+
     let twister = devices::Twister::new("Midi Fighter Twister", vec![
         Arc::clone(&bass_offset),
         Arc::clone(&keys_offset),
         Arc::clone(&mother_offset)
-    ], Arc::clone(&scale));
+    ], Arc::clone(&scale), clock.add_rx());
 
-    let launchpad = LoopGridLaunchpad::new("Launchpad Mini", output_port_name, vec![
+    let launchpad = LoopGridLaunchpad::new("Launchpad Mini", vec![
         ChunkMap::new( 
             Box::new(devices::TR08::new(output_port_name, 11)), 
             Coords::new(0, 0), 
@@ -67,20 +71,7 @@ fn main() {
             Coords::new(4, 4), 
             Shape::new(4, 4)
         )
-    ], Arc::clone(&scale));
+    ], Arc::clone(&scale), clock.add_rx());
 
-    let launchpad_clock_channel = launchpad.get_channel();
-
-    let _clock_in = midi_connection::get_input("UM-ONE", move |_stamp, message, _| {
-        if message[0] == 248 {
-            launchpad_clock_channel.send(LoopGridMessage::TickFromExternal);
-        } else if message[0] == 250 {
-            launchpad_clock_channel.send(LoopGridMessage::ResetBeat);
-        }
-    }, ());
-
-    loop {
-        // keep app alive
-        thread::sleep(time::Duration::from_millis(500));
-    }
+    clock.start();
 }

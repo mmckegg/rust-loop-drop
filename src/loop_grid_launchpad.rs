@@ -15,11 +15,12 @@ use ::midi_time::MidiTime;
 use ::output_value::OutputValue;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::loop_state::{Loop, LoopState, LoopTransform};
-use ::clock_source::ClockSource;
+use ::clock_source::{RemoteClock, ToClock, FromClock};
 use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords};
 use ::scale::Scale;
 
 const SIDE_BUTTONS: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
+const DEFAULT_VELOCITY: u8 = 100;
 
 static volca_keys_channel: u8 = 13;
 static sp404_channel: u8 = 11;
@@ -40,10 +41,7 @@ lazy_static! {
 
 #[derive(Debug, Copy, Clone)]
 pub enum LoopGridMessage {
-    TickFromExternal,
-    TickFromInternal,
-    ResetBeat,
-    Schedule(MidiTime),
+    Schedule(MidiTime, MidiTime),
     GridInput(u64, u32, OutputValue),
     LoopButton(bool),
     FlattenButton(bool),
@@ -135,7 +133,7 @@ pub struct LoopGridLaunchpad {
 }
 
 impl LoopGridLaunchpad {
-    pub fn new(launchpad_port_name: &str, output_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>) -> Self {
+    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         
         let tx_input =  mpsc::Sender::clone(&tx);
@@ -147,7 +145,6 @@ impl LoopGridLaunchpad {
 
         let (midi_to_id, id_to_midi) = get_grid_map();
 
-        let mut midi_output = midi_connection::get_output(&output_port_name).unwrap();
         let mut launchpad_output = midi_connection::get_output(&launchpad_port_name).unwrap();
 
         let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message, _| {
@@ -160,7 +157,7 @@ impl LoopGridLaunchpad {
                     tx_input.send(LoopGridMessage::RateButton(rate_index, active)).unwrap();
                 } else if grid_button.is_some() {
                     let value = if message[2] > 0 {
-                        OutputValue::On
+                        OutputValue::On(DEFAULT_VELOCITY)
                     } else {
                         OutputValue::Off
                     };
@@ -184,8 +181,24 @@ impl LoopGridLaunchpad {
             }
         }, ()).unwrap();
 
-        let mut clock = ClockSource::new(tx_clock, LoopGridMessage::TickFromInternal);
-        clock.start();
+        let mut clock_sender = clock.sender.clone();
+
+        // receive updates from clock
+        thread::spawn(move || {
+            for msg in clock.receiver {
+                match msg {
+                    FromClock::Schedule {pos, length} => {
+                        tx_clock.send(LoopGridMessage::Schedule(pos, length)).unwrap();
+                    },
+                    FromClock::Tempo(value) => {
+
+                    },
+                    FromClock::Jump => {
+                        tx_clock.send(LoopGridMessage::InitialLoop).unwrap();
+                    }
+                }
+            }
+        });
 
         thread::spawn(move || {
             let mut mapping: HashMap<Coords, MidiMap> = HashMap::new();
@@ -237,7 +250,6 @@ impl LoopGridLaunchpad {
 
             // nudge
             let mut nudge_next_tick: i32 = 0;
-            let mut nudge_offset: i32 = 0;
 
             // out state
             let mut out_values: HashMap<u32, OutputValue> = HashMap::new();
@@ -256,7 +268,6 @@ impl LoopGridLaunchpad {
 
             let tick_pos_increment = MidiTime::tick();
             let half_tick_increment = MidiTime::half_tick();
-            let mut internal_clock_suppressed_to = SystemTime::now();
 
             // default button lights
             launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
@@ -265,47 +276,9 @@ impl LoopGridLaunchpad {
 
             for received in rx {
                 match received {
-                    LoopGridMessage::TickFromExternal => {
-                        internal_clock_suppressed_to = SystemTime::now() + Duration::new(0, 500 * 1_000_000);
-                        tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
-                        tick_pos = tick_pos + MidiTime::tick();
-                    },
-                    LoopGridMessage::TickFromInternal => {
-                        if internal_clock_suppressed_to < SystemTime::now() {
-                            tx_feedback.send(LoopGridMessage::Schedule(tick_pos));
-                            tick_pos = tick_pos + MidiTime::tick();
-                        }
-                    },
-                    LoopGridMessage::ResetBeat => {
-                        let offset = last_pos % MidiTime::from_beats(1);
-                        if offset >= MidiTime::from_ticks(12) {
-                            nudge_offset = nudge_offset + (MidiTime::from_beats(1) - last_pos).ticks();
-                        } else {
-                            nudge_offset = nudge_offset - offset.ticks();
-                        }
-                        tx_feedback.send(LoopGridMessage::InitialLoop).unwrap();
-                    },
-                    LoopGridMessage::Schedule(position) => {
-                        // rebroadcast tick
-                        midi_output.send(&[248]);
-
-                        // nudge sync
-                        let length = if nudge_next_tick > 0 {
-                            nudge_next_tick -= 1;
-                            nudge_offset += 1;
-                            MidiTime::tick() * 2
-                        } else if nudge_next_tick < 0 {
-                            nudge_next_tick += 1;
-                            nudge_offset -= 1;
-                            MidiTime::zero()
-                        } else {
-                            MidiTime::tick()
-                        };
-
+                    LoopGridMessage::Schedule(position, length) => {
                         if length > MidiTime::zero() {
                             let mut to_trigger = Vec::new();
-                            let position = position + MidiTime::from_ticks(nudge_offset);
-
                             let current_loop = loop_state.get();
 
                             // loop playback
@@ -323,12 +296,12 @@ impl LoopGridLaunchpad {
                             for id in id_to_midi.keys() {
                                 let transform = get_transform(&id, &override_values, &selection, &selection_override, &current_loop.transforms);
                                 match transform {
-                                    &LoopTransform::Repeat(rate, offset) => {
+                                    &LoopTransform::Repeat(rate, offset, output_value) => {
                                         let repeat_position = (position + offset) % rate;
                                         let half = rate.half().whole();
                                         if repeat_position.is_zero() {
                                             to_trigger.push(LoopEvent {
-                                                value: OutputValue::On,
+                                                value: output_value,
                                                 pos: position,
                                                 id: id.clone()
                                             });
@@ -466,14 +439,14 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         let current_index = currently_held_inputs.iter().position(|v| v == &id);
                         
-                        if value == OutputValue::On && current_index == None {
+                        if value.is_on() && current_index == None {
                             currently_held_inputs.push(id);
                         } else if let Some(index) = current_index {
                             currently_held_inputs.remove(index);
                         }
 
 
-                        if selecting && value == OutputValue::On {
+                        if selecting && value.is_on() {
                             if selection.contains(&id) {
                                 selection.remove(&id);
                             } else {
@@ -510,12 +483,12 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RefreshInput(id) => {
                         let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
                         let transform = match value {
-                            &OutputValue::On => {
+                            &OutputValue::On(velocity) => {
                                 if repeating {
                                     let repeat_offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
-                                    LoopTransform::Repeat(rate, repeat_offset)
+                                    LoopTransform::Repeat(rate, repeat_offset, OutputValue::On(velocity))
                                 } else {
-                                    LoopTransform::On
+                                    LoopTransform::Value(OutputValue::On(velocity))
                                 }
                             },
                             &OutputValue::Off => LoopTransform::None
@@ -560,10 +533,9 @@ impl LoopGridLaunchpad {
                         };
 
                         let value = match transform {
-                            &LoopTransform::On => Some(OutputValue::On),
+                            &LoopTransform::Value(value) => Some(value),
                             &LoopTransform::None => fallback,
-                            &LoopTransform::Repeat(_, _) | &LoopTransform::Hold(_, _) => None,
-                            &LoopTransform::Suppress => Some(OutputValue::Off)
+                            &LoopTransform::Repeat(..) | &LoopTransform::Hold(..) => None
                         };
                         
                         if let Some(v) = value {
@@ -598,7 +570,7 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshSelectionOverride => {
                         selection_override = if suppressing {
-                            LoopTransform::Suppress
+                            LoopTransform::Value(OutputValue::Off)
                         } else if holding {
                             LoopTransform::Hold(last_playback_pos, rate)
                         } else {
@@ -613,7 +585,7 @@ impl LoopGridLaunchpad {
                         let current_loop = loop_state.get();
                         let mut ids = HashSet::new();
                         for id in recorder.get_ids_in_range(current_loop.offset, current_loop.offset + current_loop.length) {
-                            if current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::Suppress {
+                            if current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::Value(OutputValue::Off) {
                                 ids.insert(id);
                             }
                         }                        
@@ -676,7 +648,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::LoopButton(pressed) => {
                         if selecting_scale && selecting {
                             if pressed {
-                                clock.tap();
+                                clock_sender.send(ToClock::TapTempo).unwrap();
                             }
                         } else {
                             if pressed {
@@ -720,7 +692,7 @@ impl LoopGridLaunchpad {
                                 let mut new_loop = loop_state.get().clone();
 
                                 for id in &selection {
-                                    new_loop.transforms.insert(id.clone(), LoopTransform::Suppress);
+                                    new_loop.transforms.insert(id.clone(), LoopTransform::Value(OutputValue::Off));
                                 }
 
                                 loop_state.set(new_loop);
@@ -745,7 +717,7 @@ impl LoopGridLaunchpad {
                                 let mut new_loop = loop_state.get().clone();
 
                                 for id in id_to_midi.keys() {
-                                    new_loop.transforms.insert(id.clone(), LoopTransform::Suppress);
+                                    new_loop.transforms.insert(id.clone(), LoopTransform::Value(OutputValue::Off));
                                 }
 
                                 loop_state.set(new_loop);
@@ -756,7 +728,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::UndoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale {
-                                nudge_next_tick -= 1;
+                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1)));
                             } else if selecting {
                                 loop_length = (loop_length / 2).max(MidiTime::from_measure(1, 4));
                             } else if selecting_scale {
@@ -770,7 +742,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale {
-                                nudge_next_tick += 1;
+                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1)));
                             } else if selecting {
                                 loop_length = (loop_length * 2).min(MidiTime::from_beats(32));
                             } else if selecting_scale {

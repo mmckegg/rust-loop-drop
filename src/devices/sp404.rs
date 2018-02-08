@@ -31,8 +31,7 @@ impl Triggerable for SP404 {
                     self.output_values.remove(&id);
                 }
             },
-            OutputValue::On => {
-                let midi_value = 100;
+            OutputValue::On(velocity) => {
                 let mut offset_value = self.offset_value;
                 let mut channel = self.midi_channel;
 
@@ -42,8 +41,8 @@ impl Triggerable for SP404 {
                 }
 
                 let note_id = 47 + (offset_value * 12) + (id as u8);
-                self.midi_port.send(&[144 - 1 + channel, note_id, midi_value]).unwrap();
-                self.output_values.insert(id, (channel, note_id, midi_value));
+                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
+                self.output_values.insert(id, (channel, note_id, velocity));
             }
         }
     }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use ::midi_time::MidiTime;
+use ::output_value::OutputValue;
 
 #[derive(Debug, Clone)]
 pub struct Loop {
@@ -20,11 +21,10 @@ impl Loop {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum LoopTransform {
-    On,
-    None,
-    Repeat(MidiTime, MidiTime),
+    Value(OutputValue),
+    Repeat(MidiTime, MidiTime, OutputValue),
     Hold(MidiTime, MidiTime),
-    Suppress
+    None
 }
 
 pub struct LoopState {

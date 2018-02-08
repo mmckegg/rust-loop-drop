@@ -36,13 +36,12 @@ impl Triggerable for TR08 {
                     self.output_values.remove(&id);
                 }
             },
-            OutputValue::On => {
-                let midi_value = 100;
+            OutputValue::On(velocity) => {
                 let channel = self.midi_channel;
                 let note_id = TR08_MAP[id as usize];
 
-                self.midi_port.send(&[144 - 1 + channel, note_id, midi_value]).unwrap();
-                self.output_values.insert(id, (channel, note_id, midi_value));
+                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
+                self.output_values.insert(id, (channel, note_id, velocity));
             }
         }
     }

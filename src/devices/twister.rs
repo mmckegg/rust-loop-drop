@@ -1,6 +1,7 @@
 use ::midi_connection;
 use std::sync::mpsc;
 use ::midi_keys::{Offset, Scale};
+use ::clock_source::{RemoteClock, FromClock, ToClock};
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -11,8 +12,26 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, offsets: Vec<Arc<Mutex<Offset>>>, scale: Arc<Mutex<Scale>>) -> Self {
+    pub fn new (port_name: &str, offsets: Vec<Arc<Mutex<Offset>>>, scale: Arc<Mutex<Scale>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
+        let clock_sender = clock.sender.clone();
+
+        let tx_clock = tx.clone();
+
+        thread::spawn(move || {
+            for msg in clock.receiver {
+                match msg {
+                    FromClock::Schedule {pos, length} => {
+
+                    },
+                    FromClock::Tempo(value) => {
+                        let msg = UpdateMessage::Tempo(value);
+                        tx_clock.send(TwisterMessage::Update(msg)).unwrap();
+                    },
+                    FromClock::Jump => ()
+                }
+            }
+        });
 
         let mut output = midi_connection::get_output(port_name).unwrap();
 
@@ -52,6 +71,8 @@ impl Twister {
                         };
 
                         tx.send(result).unwrap();
+                    } else if message[0] == 177 && row == 0 && message[2] == 0 {
+                        tx.send(TwisterMessage::TapTempo).unwrap();
                     }
                 }
             }
@@ -131,10 +152,20 @@ impl Twister {
                         current_scale.scale = value;
                     },
                     TwisterMessage::Tempo(value) => {
-
+                        clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
+                    },
+                    TwisterMessage::TapTempo => {
+                        clock_sender.send(ToClock::TapTempo).unwrap();
                     },
                     TwisterMessage::Swing(value) => {
 
+                    },
+                    TwisterMessage::Update(value) => {
+                        match value {
+                            UpdateMessage::Tempo(value) => {
+                                output.send(&[176, 3, (value - 60) as u8]);
+                            }
+                        }
                     }
                 }
             }
@@ -160,7 +191,15 @@ enum TwisterMessage {
     ResetOffset(usize),
     ResetPitchOffset(usize),
     Tempo(u8),
-    Swing(u8)
+    Swing(u8),
+    TapTempo,
+
+    Update(UpdateMessage)
+}
+
+#[derive(Debug)]
+enum UpdateMessage {
+    Tempo(usize)
 }
 
 fn get_offset (midi_value: u8) -> i32 {
