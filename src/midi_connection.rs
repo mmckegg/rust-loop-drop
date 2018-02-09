@@ -69,7 +69,7 @@ fn get_output_port_index (output: &MidiOutput, name: &str) -> Result<usize, Port
 
 fn normalize_port_name (name: &str) -> String {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"^(.+) ([0-9]+:[0-9]+)$").unwrap();
+        static ref RE: Regex = Regex::new(r"^([0-9]- )?(.+?)( [0-9]+:[0-9]+)?$").unwrap();
     }
-    RE.replace(name, "${1}").into_owned()
+    RE.replace(name, "${2}").into_owned()
 }
