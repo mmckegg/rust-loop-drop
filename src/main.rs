@@ -30,9 +30,8 @@ fn main() {
     let mother_offset = Offset::new(-2);
     let keys_offset = Offset::new(-1);
 
-    let mut clock = ClockSource::new(clock_port_name);
-
     let output_port = midi_connection::get_shared_output(output_port_name).unwrap();
+    let mut clock = ClockSource::new(clock_port_name, output_port.clone());
 
     let _twister = devices::Twister::new("Midi Fighter Twister", vec![
         Arc::clone(&bass_offset),
