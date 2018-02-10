@@ -4,16 +4,16 @@ use ::midi_connection;
 use std::collections::HashMap;
 
 pub struct SP404 {
-    midi_port: midi_connection::MidiOutputConnection,
+    midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     output_values: HashMap<u32, (u8, u8, u8)>,
     offset_value: u8
 }
 
 impl SP404 {
-    pub fn new (midi_port_name: &str, channel: u8) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8) -> Self {
         SP404 {
-            midi_port: midi_connection::get_output(midi_port_name).unwrap(),
+            midi_port,
             midi_channel: channel,
             output_values: HashMap::new(),
             offset_value: 0
@@ -22,7 +22,7 @@ impl SP404 {
 }
 
 impl Triggerable for SP404 {
-    fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {

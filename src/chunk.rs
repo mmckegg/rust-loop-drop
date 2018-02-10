@@ -28,9 +28,9 @@ impl Coords {
         (row * 8) + col
     }
 
-    pub fn id (&self) -> u32 {
-        Coords::id_from(self.row, self.col)
-    }
+    // pub fn id (&self) -> u32 {
+    //     Coords::id_from(self.row, self.col)
+    // }
 }
 
 pub struct Shape {

@@ -2,19 +2,19 @@ use ::chunk::{Triggerable, OutputValue, SystemTime};
 use ::midi_connection;
 
 pub struct VolcaSample {
-    midi_port: midi_connection::MidiOutputConnection
+    midi_port: midi_connection::SharedMidiOutputConnection
 }
 
 impl VolcaSample {
-    pub fn new (midi_port_name: &str) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection) -> Self {
         VolcaSample {
-            midi_port: midi_connection::get_output(midi_port_name).unwrap()
+            midi_port
         }
     }
 }
 
 impl Triggerable for VolcaSample {
-    fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
         match value {
             OutputValue::Off => {},
             OutputValue::On(velocity) => {

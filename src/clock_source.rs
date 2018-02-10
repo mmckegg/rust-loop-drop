@@ -6,8 +6,7 @@ pub use ::midi_time::MidiTime;
 use std::time::{Duration, SystemTime};
 use std::thread;
 use std::sync::mpsc;
-use std::fmt::Debug;
-use std::sync::{Arc, Weak};
+use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use ::midi_connection;
 
@@ -19,7 +18,7 @@ pub struct ClockSource {
     broadcast: mpsc::Sender<ClockMessage>,
     to_broadcast: mpsc::Receiver<ClockMessage>,
     tempo: Arc<AtomicUsize>,
-    midi_input: midi_connection::MidiInputConnection<()>,
+    _midi_input: midi_connection::MidiInputConnection<()>,
     midi_output: midi_connection::MidiOutputConnection,
     internal_clock_suppressed_to: SystemTime,
     tick_pos: MidiTime
@@ -40,9 +39,9 @@ impl ClockSource {
 
         let external_input = midi_connection::get_input(midi_port_name, move |_stamp, message, _| {
             if message[0] == 248 {
-                broadcast_external.send(ClockMessage::ExternalTick);
+                broadcast_external.send(ClockMessage::ExternalTick).unwrap();
             } else if message[0] == 250 {
-                broadcast_external.send(ClockMessage::ExternalPlay);
+                broadcast_external.send(ClockMessage::ExternalPlay).unwrap();
             }
         }, ()).unwrap();
 
@@ -54,7 +53,7 @@ impl ClockSource {
                 match msg {
                     ToClock::SetTempo(value) => {
                         tempo_ref.store(value, Ordering::Relaxed);
-                        broadcast_rx.send(ClockMessage::Tempo(value));
+                        broadcast_rx.send(ClockMessage::Tempo(value)).unwrap();
                     },
                     ToClock::TapTempo => {
                         let tap_time = SystemTime::now();
@@ -63,13 +62,13 @@ impl ClockSource {
                         if duration < Duration::from_millis(1500) {
                             let ms = duration_as_ms(duration);
                             let value = ((60.0 / ms as f64) * 1000.0) as usize;
-                            tx_feedback.send(ToClock::SetTempo(value));
+                            tx_feedback.send(ToClock::SetTempo(value)).unwrap();
                         }
 
                         last_tap = tap_time;
                     },
                     ToClock::Nudge(offset) => {
-                        broadcast_rx.send(ClockMessage::Nudge(offset));
+                        broadcast_rx.send(ClockMessage::Nudge(offset)).unwrap();
                     }
                 }
             }
@@ -78,7 +77,7 @@ impl ClockSource {
         ClockSource {
             bus: Bus::new(10),
             internal_clock_suppressed_to: SystemTime::now(),
-            midi_input: external_input,
+            _midi_input: external_input,
             midi_output: external_output,
             tick_pos: MidiTime::zero(),
             tx,

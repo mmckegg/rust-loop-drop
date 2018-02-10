@@ -2,12 +2,13 @@ use ::midi_connection;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
-
 use ::output_value::OutputValue;
+
 pub use ::scale::{Scale, Offset};
+pub use ::midi_connection::SharedMidiOutputConnection;
 
 pub struct MidiKeys {
-    midi_output: midi_connection::MidiOutputConnection,
+    midi_output: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     output_values: HashMap<u32, u8>,
     scale: Arc<Mutex<Scale>>,
@@ -15,9 +16,9 @@ pub struct MidiKeys {
 }
 
 impl MidiKeys {
-    pub fn new (port_name: &str, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
+    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
         MidiKeys {
-            midi_output: midi_connection::get_output(port_name).unwrap(),
+            midi_output,
             midi_channel: channel,
             output_values: HashMap::new(),
             offset,
@@ -25,7 +26,7 @@ impl MidiKeys {
         }
     }
 
-    pub fn note (&mut self, id: u32, value: OutputValue, at: SystemTime) {
+    pub fn note (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
@@ -35,7 +36,6 @@ impl MidiKeys {
                 }
             },
             OutputValue::On(velocity) => {
-                let octave = -2;
                 let offsets = [-9, -7, -5, -4, -3, 0, 2, 3, 4, 7, 9];
                 let scale = self.scale.lock().unwrap();
                 let offset = self.offset.lock().unwrap();
@@ -48,11 +48,7 @@ impl MidiKeys {
         }
     }
 
-    pub fn midi_output (&self) -> &midi_connection::MidiOutputConnection {
-        &self.midi_output
-    }
-}
-
-fn modulo (n: i32, m: i32) -> i32 {
-    ((n % m) + m) % m
+    // pub fn midi_output (&self) -> &midi_connection::SharedMidiOutputConnection {
+    //     &self.midi_output
+    // }
 }

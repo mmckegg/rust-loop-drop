@@ -7,7 +7,7 @@ impl OutputValue {
     pub fn is_on (&self) -> bool {
         match self {
             &OutputValue::Off => false,
-            &OutputValue::On(value) => true
+            &OutputValue::On(_) => true
         }
     }
 

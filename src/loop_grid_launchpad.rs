@@ -1,6 +1,6 @@
 extern crate midir;
 use self::midir::{MidiInputConnection};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashSet;
@@ -21,10 +21,6 @@ use ::scale::Scale;
 
 const SIDE_BUTTONS: [u8; 8] = [8, 24, 40, 56, 72, 88, 104, 120];
 const DEFAULT_VELOCITY: u8 = 100;
-
-static volca_keys_channel: u8 = 13;
-static sp404_channel: u8 = 11;
-static volca_bass_channel: u8 = 14;
 
 lazy_static! {
     static ref REPEAT_RATES: [MidiTime; 8] = [
@@ -70,26 +66,7 @@ pub enum LoopGridMessage {
     None
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
-pub struct PlaybackRange {
-    from: MidiTime,
-    to: MidiTime
-}
-
-impl PlaybackRange {
-    pub fn new (from: MidiTime, to: MidiTime) -> PlaybackRange {
-        PlaybackRange { from, to }
-    }
-
-    pub fn from (&self) -> MidiTime {
-        self.from
-    }
-
-    pub fn to (&self) -> MidiTime {
-        self.to
-    }
-}
-
+#[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Light {
     Yellow = 127,
@@ -116,20 +93,10 @@ impl Light {
             _ => self
         }
     }
-
-    pub fn maybe (self, expr: bool) -> Light {
-        if expr {
-            self
-        } else {
-            Light::None
-        }
-    }
 }
 
 pub struct LoopGridLaunchpad {
-    port_name: String,
-    input: MidiInputConnection<()>,
-    tx: mpsc::Sender<LoopGridMessage>
+    _input: MidiInputConnection<()>
 }
 
 impl LoopGridLaunchpad {
@@ -141,9 +108,7 @@ impl LoopGridLaunchpad {
         let tx_feedback =  mpsc::Sender::clone(&tx);
         let tx_loop_state =  mpsc::Sender::clone(&tx);
 
-        let mut tick_pos = MidiTime::zero();
-
-        let (midi_to_id, id_to_midi) = get_grid_map();
+        let (midi_to_id, _id_to_midi) = get_grid_map();
 
         let mut launchpad_output = midi_connection::get_output(&launchpad_port_name).unwrap();
 
@@ -181,7 +146,7 @@ impl LoopGridLaunchpad {
             }
         }, ()).unwrap();
 
-        let mut clock_sender = clock.sender.clone();
+        let clock_sender = clock.sender.clone();
 
         // receive updates from clock
         thread::spawn(move || {
@@ -190,7 +155,7 @@ impl LoopGridLaunchpad {
                     FromClock::Schedule {pos, length} => {
                         tx_clock.send(LoopGridMessage::Schedule(pos, length)).unwrap();
                     },
-                    FromClock::Tempo(value) => {
+                    FromClock::Tempo(_value) => {
 
                     },
                     FromClock::Jump => {
@@ -203,7 +168,7 @@ impl LoopGridLaunchpad {
         thread::spawn(move || {
             let mut mapping: HashMap<Coords, MidiMap> = HashMap::new();
             let mut chunks: Vec<Box<Triggerable>> = Vec::new();
-            let mut scale = scale;
+            let scale = scale;
 
             for item in chunk_map {
                 let mut id = 0;
@@ -248,9 +213,6 @@ impl LoopGridLaunchpad {
             let mut currently_held_inputs: Vec<u32> = Vec::new();
             let mut currently_held_rates: Vec<usize> = Vec::new();
 
-            // nudge
-            let mut nudge_next_tick: i32 = 0;
-
             // out state
             let mut out_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut grid_out: HashMap<u32, Light> = HashMap::new();
@@ -265,9 +227,6 @@ impl LoopGridLaunchpad {
             let mut last_beat_light = SIDE_BUTTONS[7];
             let mut last_repeat_light = SIDE_BUTTONS[7];
             let mut last_scale_light = SIDE_BUTTONS[7];
-
-            let tick_pos_increment = MidiTime::tick();
-            let half_tick_increment = MidiTime::half_tick();
 
             // default button lights
             launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
@@ -401,7 +360,7 @@ impl LoopGridLaunchpad {
                         } else {
                             Light::None
                         };
-
+ 
                         if current_beat_light != last_beat_light {
                             launchpad_output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
                             if !beat_start {
@@ -600,7 +559,6 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::RefreshRecording => {
-                        let current_loop = loop_state.get();
                         let ids = recorder.get_ids_in_range(last_pos - loop_length, last_pos);
 
                         let (added, removed) = update_ids(&ids, &mut recording);
@@ -632,7 +590,7 @@ impl LoopGridLaunchpad {
                         let midi_id = id_to_midi.get(&event.id);
                         if midi_id.is_some() {
                             match maybe_update(&mut out_values, event.id, new_value) {
-                                Some(value) => {
+                                Some(_) => {
                                     tx_feedback.send(LoopGridMessage::RefreshGridButton(event.id)).unwrap();
                                     // TODO: actual playback here
                                     if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
@@ -728,7 +686,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::UndoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale {
-                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1)));
+                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
                             } else if selecting {
                                 loop_length = (loop_length / 2).max(MidiTime::from_measure(1, 4));
                             } else if selecting_scale {
@@ -742,7 +700,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale {
-                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1)));
+                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting {
                                 loop_length = (loop_length * 2).min(MidiTime::from_beats(32));
                             } else if selecting_scale {
@@ -830,14 +788,8 @@ impl LoopGridLaunchpad {
         });
 
         LoopGridLaunchpad {
-            port_name: String::from(launchpad_port_name),
-            tx,
-            input
+            _input: input
         }
-    }
-
-    pub fn get_channel(&self) -> mpsc::Sender<LoopGridMessage> {
-        mpsc::Sender::clone(&self.tx)
     }
 }
 

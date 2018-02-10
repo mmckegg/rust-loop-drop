@@ -1,5 +1,5 @@
 use ::chunk::{Triggerable, OutputValue, SystemTime};
-use ::midi_keys::{MidiKeys, Scale, Offset};
+use ::midi_keys::{MidiKeys, Scale, Offset, SharedMidiOutputConnection};
 
 use std::sync::{Arc, Mutex};
 
@@ -8,9 +8,9 @@ pub struct Mother32 {
 }
 
 impl Mother32 {
-    pub fn new (midi_port_name: &str, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
+    pub fn new (midi_port: SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
         Mother32 {
-            midi_keys: MidiKeys::new(midi_port_name, channel, scale, offset)
+            midi_keys: MidiKeys::new(midi_port, channel, scale, offset)
         }
     }
 }

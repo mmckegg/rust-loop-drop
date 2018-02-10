@@ -8,11 +8,9 @@ use ::output_value::OutputValue;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::collections::HashMap;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 
 pub struct Twister {
-    port_name: String,
-    midi_input: midi_connection::MidiInputConnection<()>
+    _midi_input: midi_connection::MidiInputConnection<()>
 }
 
 impl Twister {
@@ -32,7 +30,7 @@ impl Twister {
 
         let mut output = midi_connection::get_output(port_name).unwrap();
 
-        let input = midi_connection::get_input(port_name, move |stamp, message, _| {
+        let input = midi_connection::get_input(port_name, move |_stamp, message, _| {
             let control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
                 tx.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
@@ -46,16 +44,16 @@ impl Twister {
         }, ()).unwrap();
 
         // Refresh Display
-        tx_feedback.send(TwisterMessage::Refresh(Control::Tempo));
-        tx_feedback.send(TwisterMessage::Refresh(Control::Swing));
-        tx_feedback.send(TwisterMessage::Refresh(Control::ScaleOffset));
-        tx_feedback.send(TwisterMessage::Refresh(Control::RootOffset));
+        tx_feedback.send(TwisterMessage::Refresh(Control::Tempo)).unwrap();
+        tx_feedback.send(TwisterMessage::Refresh(Control::Swing)).unwrap();
+        tx_feedback.send(TwisterMessage::Refresh(Control::ScaleOffset)).unwrap();
+        tx_feedback.send(TwisterMessage::Refresh(Control::RootOffset)).unwrap();
         for row in 0..4 {
             for col in 0..3 {
-                tx_feedback.send(TwisterMessage::Refresh(Control::ScaleParam(col, row)));
+                tx_feedback.send(TwisterMessage::Refresh(Control::ScaleParam(col, row))).unwrap();
             }
             for col in 0..4 {
-                tx_feedback.send(TwisterMessage::Refresh(Control::Param(col, row)));
+                tx_feedback.send(TwisterMessage::Refresh(Control::Param(col, row))).unwrap();
             }
         }
 
@@ -130,7 +128,7 @@ impl Twister {
                                 let mut current_scale = scale.lock().unwrap();
                                 current_scale.root = 69 + get_offset(value);
                             },
-                            Control::Param(channel, index) => {
+                            Control::Param(_channel, _index) => {
 
                             }
                         }
@@ -181,10 +179,10 @@ impl Twister {
                                     0
                                 }
                             },
-                            Control::Param(channel, index) => 0
+                            Control::Param(_channel, _index) => 0
                         };
 
-                        output.send(&[176, control.id() as u8, value]);
+                        output.send(&[176, control.id() as u8, value]).unwrap();
                     },
 
                     TwisterMessage::Clock(msg) => {
@@ -220,8 +218,7 @@ impl Twister {
         });
 
         Twister {
-            port_name: String::from(port_name),
-            midi_input: input
+            _midi_input: input
         }
     }
 }

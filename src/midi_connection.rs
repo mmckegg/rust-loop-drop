@@ -2,9 +2,31 @@ extern crate midir;
 extern crate regex;
 
 use self::regex::Regex;
-pub use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError};
+pub use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError, SendError};
+use std::sync::mpsc;
+use std::thread;
 
 const APP_NAME: &str = "Loop Drop";
+
+// lazy_static! {
+//     static ref outputs: HashMap<String, mpsc::Sender<MidiMessage>> = HashMap::new();
+// }
+
+pub fn get_shared_output (port_name: &str) -> Result<SharedMidiOutputConnection, ConnectError<MidiOutput>> {
+    let mut output = try!(get_output(port_name));
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        for msg in rx {
+            (match msg {
+                MidiMessage::One(a) => output.send(&[a]),
+                MidiMessage::Two(a, b) => output.send(&[a, b]),
+                MidiMessage::Three(a, b, c) => output.send(&[a, b, c]),
+                MidiMessage::Sysex(data) => output.send(data.as_slice())
+            }).unwrap();
+        }
+    });
+    Ok(SharedMidiOutputConnection { tx })
+}
 
 pub fn get_output (port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
     let output = MidiOutput::new(APP_NAME).unwrap();
@@ -72,4 +94,52 @@ fn normalize_port_name (name: &str) -> String {
         static ref RE: Regex = Regex::new(r"^([0-9]- )?(.+?)( [0-9]+:[0-9]+)?$").unwrap();
     }
     RE.replace(name, "${2}").into_owned()
+}
+
+#[derive(Debug, Clone)]
+pub struct SharedMidiOutputConnection {
+    tx: mpsc::Sender<MidiMessage>
+}
+
+impl SharedMidiOutputConnection {
+    pub fn send(&mut self, message: &[u8]) -> Result<(), SendError> {
+        let nbytes = message.len();
+        if nbytes == 0 {
+            return Err(SendError::InvalidData("message to be sent must not be empty"));
+        }
+
+        if message[0] == 0xF0 { // Sysex message
+            // Allocate buffer for sysex data and copy message
+            if let Err(_) = self.tx.send(MidiMessage::Sysex(message.to_vec())) {
+                return Err(SendError::Other("could not send message, thread might be dead"));
+            }
+        } else { // Channel or system message.
+            // Make sure the message size isn't too big.
+            if nbytes > 3 {
+                return Err(SendError::InvalidData("non-sysex message must not be longer than 3 bytes"));
+            } 
+            
+            let msg = if nbytes == 3 {
+                MidiMessage::Three(message[0], message[1], message[2])
+            } else if nbytes == 2 {
+                MidiMessage::Two(message[0], message[1])
+            } else {
+                MidiMessage::One(message[0])
+            };
+
+            if let Err(_) = self.tx.send(msg) {
+                return Err(SendError::Other("could not send message, thread might be dead"));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+enum MidiMessage {
+    One(u8),
+    Two(u8, u8),
+    Three(u8, u8, u8),
+    Sysex(Vec<u8>)
 }

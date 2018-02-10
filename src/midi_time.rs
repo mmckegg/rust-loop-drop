@@ -11,11 +11,6 @@ impl MidiTime {
         MidiTime { ticks, fraction: 0 }
     }
 
-    pub fn fraction (fraction: u8) -> MidiTime {
-        MidiTime { ticks: 0, fraction }
-    }
-
-
     pub fn zero () -> MidiTime {
         MidiTime::from_ticks(0)
     }
@@ -24,16 +19,8 @@ impl MidiTime {
         MidiTime::from_ticks(1)
     }
 
-    pub fn half_tick () -> MidiTime {
-        MidiTime { ticks: 0, fraction: 128 }
-    }
-
     pub fn from_beats (beats: i32) -> MidiTime {
         MidiTime::from_ticks(beats * 24)
-    }
-
-    pub fn from_beats_and_ticks (beats: i32, ticks: i32) -> MidiTime {
-        MidiTime::from_ticks((beats * 24) + ticks)
     }
 
     pub fn from_measure (beats: i32, divider: i32) -> MidiTime {
@@ -53,8 +40,7 @@ impl MidiTime {
             let fraction = ((self.fraction / 2) as i32) + 127;
             let mut ticks = self.ticks;
             ticks += fraction / 256;
-
-            MidiTime {ticks: self.ticks / 2, fraction: fraction as u8 }
+            MidiTime {ticks: ticks / 2, fraction: fraction as u8 }
         }
     }
 
