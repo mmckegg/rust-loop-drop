@@ -147,7 +147,7 @@ impl LoopRecorder {
                 Ok(index) | Err(index) => index,
             };
 
-            Some(&collection[start_index..end_index])
+            Some(&collection[start_index..start_index.max(end_index)])
         } else {
             None
         }

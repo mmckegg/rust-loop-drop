@@ -1,5 +1,7 @@
 extern crate bus;
+
 pub use self::bus::{Bus, BusReader};
+pub use ::midi_time::MidiTime;
 
 use std::time::{Duration, SystemTime};
 use std::thread;
@@ -7,7 +9,6 @@ use std::sync::mpsc;
 use std::fmt::Debug;
 use std::sync::{Arc, Weak};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use ::midi_time::MidiTime;
 use ::midi_connection;
 
 const DEFAULT_TEMPO: usize = 120;
@@ -19,6 +20,7 @@ pub struct ClockSource {
     to_broadcast: mpsc::Receiver<ClockMessage>,
     tempo: Arc<AtomicUsize>,
     midi_input: midi_connection::MidiInputConnection<()>,
+    midi_output: midi_connection::MidiOutputConnection,
     internal_clock_suppressed_to: SystemTime,
     tick_pos: MidiTime
 }
@@ -43,6 +45,8 @@ impl ClockSource {
                 broadcast_external.send(ClockMessage::ExternalPlay);
             }
         }, ()).unwrap();
+
+        let external_output = midi_connection::get_output(midi_port_name).unwrap();
 
         thread::spawn(move || {
             let mut last_tap = SystemTime::now();
@@ -75,6 +79,7 @@ impl ClockSource {
             bus: Bus::new(10),
             internal_clock_suppressed_to: SystemTime::now(),
             midi_input: external_input,
+            midi_output: external_output,
             tick_pos: MidiTime::zero(),
             tx,
             tempo,
@@ -113,6 +118,7 @@ impl ClockSource {
                             length: MidiTime::tick()
                         });
                         self.tick_pos = self.tick_pos + MidiTime::tick();
+                        self.midi_output.send(&[248]).unwrap();
                     }
                 },
                 ClockMessage::ExternalTick => {
@@ -121,6 +127,7 @@ impl ClockSource {
                         pos: self.tick_pos, 
                         length: MidiTime::tick()
                     });
+                    self.midi_output.send(&[248]).unwrap();
                     self.tick_pos = self.tick_pos + MidiTime::tick();
                 },
                 ClockMessage::ExternalPlay => {
@@ -130,6 +137,7 @@ impl ClockSource {
                     } else {
                         self.tick_pos = self.tick_pos - offset;
                     }
+                    //self.midi_output.send(&[250]).unwrap();
                     self.bus.broadcast(FromClock::Jump);
                 },
                 ClockMessage::Tempo(value) => {
@@ -159,7 +167,7 @@ fn duration_from_float (float: f64) -> Duration {
     Duration::new(0, (float * 1_000_000.0) as u32) 
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FromClock {
     Schedule { 
         pos: MidiTime, 
@@ -169,6 +177,7 @@ pub enum FromClock {
     Jump
 }
 
+#[derive(Debug)]
 pub enum ToClock {
     TapTempo,
     SetTempo(usize),
