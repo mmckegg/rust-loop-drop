@@ -20,14 +20,14 @@ impl Triggerable for VolcaSample {
             OutputValue::On(velocity) => {
                 let channel_map: [u8; 16] = [
                   0, 1, 8, 9, 
-                  2, 3, 4, 5, 
                   6, 6, 6, 6,
+                  2, 3, 4, 5, 
                   7, 7, 7, 7
                 ];
 
                 let channel = channel_map[id as usize];
 
-                if id >= 8 {
+                if (id >= 4 && id < 8) || id > 12 {
                     let pos = id % 4;
                     let offset: i32 = match pos {
                         1 => -14,
