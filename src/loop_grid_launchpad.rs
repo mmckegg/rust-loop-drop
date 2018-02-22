@@ -110,7 +110,7 @@ impl LoopGridLaunchpad {
 
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
-        let mut launchpad_output = midi_connection::get_output(&launchpad_port_name).unwrap();
+        let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name).unwrap();
 
         let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message, _| {
             if message[0] == 144 || message[0] == 128 {
