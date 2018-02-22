@@ -19,14 +19,14 @@ pub struct ClockSource {
     to_broadcast: mpsc::Receiver<ClockMessage>,
     tempo: Arc<AtomicUsize>,
     _midi_input: midi_connection::MidiInputConnection<()>,
-    midi_output: midi_connection::MidiOutputConnection,
+    midi_output: midi_connection::SharedMidiOutputConnection,
     internal_clock_suppressed_to: SystemTime,
     tick_pos: MidiTime
 }
 
 impl ClockSource {
     
-    pub fn new (midi_port_name: &str) -> ClockSource {
+    pub fn new (midi_port_name: &str, output_port: midi_connection::SharedMidiOutputConnection) -> ClockSource {
         let tempo = Arc::new(AtomicUsize::new(DEFAULT_TEMPO));
         let tempo_ref = Arc::clone(&tempo);
 
@@ -44,8 +44,6 @@ impl ClockSource {
                 broadcast_external.send(ClockMessage::ExternalPlay).unwrap();
             }
         }, ()).unwrap();
-
-        let external_output = midi_connection::get_output(midi_port_name).unwrap();
 
         thread::spawn(move || {
             let mut last_tap = SystemTime::now();
@@ -78,7 +76,7 @@ impl ClockSource {
             bus: Bus::new(10),
             internal_clock_suppressed_to: SystemTime::now(),
             _midi_input: external_input,
-            midi_output: external_output,
+            midi_output: output_port,
             tick_pos: MidiTime::zero(),
             tx,
             tempo,

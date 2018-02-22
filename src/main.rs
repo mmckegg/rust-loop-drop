@@ -30,9 +30,10 @@ fn main() {
     let mother_offset = Offset::new(-4);
     let keys_offset = Offset::new(-1);
 
-    let mut clock = ClockSource::new(clock_port_name);
+    let tr08_port = midi_connection::get_shared_output("TR-08").unwrap();
 
     let output_port = midi_connection::get_shared_output(output_port_name).unwrap();
+    let mut clock = ClockSource::new(clock_port_name, output_port.clone());
 
     // let _twister = devices::Twister::new("Midi Fighter Twister", vec![
     //     Arc::clone(&bass_offset),
@@ -75,7 +76,7 @@ fn main() {
 
     let _launchpad = LoopGridLaunchpad::new("Launchpad Mini", vec![
         ChunkMap::new( 
-            Box::new(devices::VolcaSample::new(output_port.clone())), 
+            Box::new(devices::TR08::new(tr08_port.clone(), 11)), 
             Coords::new(0, 0), 
             Shape::new(2, 8)
         ),
