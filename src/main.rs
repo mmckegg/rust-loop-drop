@@ -4,7 +4,9 @@ use std::sync::Arc;
 mod midi_connection;
 mod loop_grid_launchpad;
 mod loop_recorder;
+mod loop_event;
 mod loop_state;
+mod loop_transform;
 mod midi_time;
 mod midi_keys;
 mod clock_source;
@@ -23,7 +25,6 @@ fn main() {
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
 
     let clock_port_name = "UM-ONE";
-    let output_port_name = "UM-ONE";
 
     let scale = Scale::new(69, 0);
     let bass_offset = Offset::new(-3);
@@ -31,8 +32,8 @@ fn main() {
     let keys_offset = Offset::new(-1);
 
     let tr08_port = midi_connection::get_shared_output("TR-08").unwrap();
+    let output_port = midi_connection::get_shared_output("UM-ONE").unwrap();
 
-    let output_port = midi_connection::get_shared_output(output_port_name).unwrap();
     let mut clock = ClockSource::new(clock_port_name, output_port.clone());
 
     let _twister = devices::Twister::new("Midi Fighter Twister", vec![

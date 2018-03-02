@@ -1,42 +1,32 @@
 use std::collections::HashMap;
 use ::midi_time::MidiTime;
-use ::output_value::OutputValue;
+pub use ::loop_transform::LoopTransform;
 
 #[derive(Debug, Clone)]
-pub struct Loop {
+pub struct LoopCollection {
     pub length: MidiTime,
-    pub offset: MidiTime,
     pub transforms: HashMap<u32, LoopTransform>
 }
 
-impl Loop {
-    pub fn new (offset: MidiTime, length: MidiTime) -> Loop {
-        Loop {
-            offset,
+impl LoopCollection {
+    pub fn new (length: MidiTime) -> LoopCollection {
+        LoopCollection {
             length,
             transforms: HashMap::new()
         }
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
-pub enum LoopTransform {
-    Value(OutputValue),
-    Repeat(MidiTime, MidiTime, OutputValue),
-    Hold(MidiTime, MidiTime),
-    None
-}
-
 pub struct LoopState {
-    undos: Vec<Loop>,
-    redos: Vec<Loop>,
-    on_change: Box<FnMut(&Loop) + Send>
+    undos: Vec<LoopCollection>,
+    redos: Vec<LoopCollection>,
+    on_change: Box<FnMut(&LoopCollection) + Send>
 }
 
 impl LoopState {
     pub fn new<F> (default_length: MidiTime, on_change: F) -> LoopState
-    where F: FnMut(&Loop) + Send + 'static  {
-        let default_loop = Loop::new(MidiTime::zero() - default_length, default_length);
+    where F: FnMut(&LoopCollection) + Send + 'static  {
+        let default_loop = LoopCollection::new(default_length);
         LoopState {
             undos: vec![default_loop],
             redos: Vec::new(),
@@ -44,11 +34,11 @@ impl LoopState {
         }
     }
 
-    pub fn get (&self) -> &Loop {
+    pub fn get (&self) -> &LoopCollection {
         &self.undos.last().unwrap()
     }
 
-    pub fn set (&mut self, value: Loop) {
+    pub fn set (&mut self, value: LoopCollection) {
         self.undos.push(value);
         (self.on_change)(self.undos.last().unwrap());
     }

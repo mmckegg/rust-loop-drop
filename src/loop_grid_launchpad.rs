@@ -14,7 +14,7 @@ use ::midi_time::MidiTime;
 
 use ::output_value::OutputValue;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
-use ::loop_state::{Loop, LoopState, LoopTransform};
+use ::loop_state::{LoopCollection, LoopState, LoopTransform};
 use ::clock_source::{RemoteClock, ToClock, FromClock};
 use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords};
 use ::scale::Scale;
@@ -207,13 +207,14 @@ impl LoopGridLaunchpad {
             let mut rate = MidiTime::from_beats(2);
             let mut recorder = LoopRecorder::new();
             let mut last_pos = MidiTime::from_ticks(0);
-            let mut last_playback_pos = MidiTime::from_ticks(0);
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut currently_held_inputs: Vec<u32> = Vec::new();
             let mut currently_held_rates: Vec<usize> = Vec::new();
+            let mut last_changed_triggers: HashMap<u32, MidiTime> = HashMap::new();
 
             // out state
+            let mut out_transforms: HashMap<u32, LoopTransform> = HashMap::new();
             let mut out_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut grid_out: HashMap<u32, Light> = HashMap::new();
             let mut select_out = Light::Off;
@@ -236,90 +237,13 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
-                        if length > MidiTime::zero() {
-                            let mut to_trigger = Vec::new();
-                            let current_loop = loop_state.get();
-
-                            // loop playback
-                            let offset = current_loop.offset % current_loop.length;
-                            let playback_pos = current_loop.offset + ((position - offset) % current_loop.length);
-                            let playback_range = recorder.get_range(playback_pos, playback_pos + length);
-
-                            // restart loop
-                            if playback_pos == current_loop.offset {
-                                tx_feedback.send(LoopGridMessage::InitialLoop).unwrap();
-                            }
-
-                            let mut transformed: HashSet<&u32> = HashSet::new();
-
-                            for id in id_to_midi.keys() {
-                                let transform = get_transform(&id, &override_values, &selection, &selection_override, &current_loop.transforms);
-                                match transform {
-                                    &LoopTransform::Repeat(rate, offset, output_value) => {
-                                        let repeat_position = (position + offset) % rate;
-                                        let half = rate.half().whole();
-                                        if repeat_position.is_zero() {
-                                            to_trigger.push(LoopEvent {
-                                                value: output_value,
-                                                pos: position,
-                                                id: id.clone()
-                                            });
-                                        } else if repeat_position == half {
-                                            to_trigger.push(LoopEvent {
-                                                value: OutputValue::Off,
-                                                pos: position,
-                                                id: id.clone()
-                                            });
-                                        }
-                                    },
-                                    &LoopTransform::Hold(hold_position, rate) => {
-                                        let offset = hold_position % rate;
-                                        let playback_pos = hold_position + ((position - offset) % rate);
-                                        let playback_range = recorder.get_range(playback_pos, playback_pos + length);
-                                        
-                                        if playback_pos == hold_position {
-                                            match recorder.get_event_at(*id, playback_pos) {
-                                                Some(event) if event.value == OutputValue::Off => {
-                                                    to_trigger.push(event.with_pos(position))
-                                                },
-                                                _ => ()
-                                            }
-                                        }
-
-                                        for event in playback_range {
-                                            if event.id == *id {
-                                                to_trigger.push(event.with_pos(position));
-                                            }
-                                        }
-                                    },
-                                    _ => ()
-                                }
-
-                                if transform != &LoopTransform::None {
-                                    transformed.insert(id);
-                                }
-                            }
-
-                            // trigger events for current tick if not overriden above
-                            for event in playback_range {
-                                if !transformed.contains(&event.id) {
-                                    to_trigger.push(event.with_pos(position));
-                                }
-                            }
-
-                            to_trigger.sort_unstable();
-
-                            for event in to_trigger {
-                                tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
-                            }
-
-                            last_pos = position;
-                            last_playback_pos = playback_pos;
-
-                            tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
-                            tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
+                        for event in get_events(position, length, &recorder, &out_transforms) {
+                            tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                         }
 
+                        last_pos = position;
+                        tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
+                        tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
                     },
                     LoopGridMessage::RefreshSideButtons => {
                         let current_scale = scale.lock().unwrap();
@@ -444,8 +368,8 @@ impl LoopGridLaunchpad {
                         let transform = match value {
                             &OutputValue::On(velocity) => {
                                 if repeating {
-                                    let repeat_offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
-                                    LoopTransform::Repeat(rate, repeat_offset, OutputValue::On(velocity))
+                                    let offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
+                                    LoopTransform::Repeat {rate, offset, value: OutputValue::On(velocity)}
                                 } else {
                                     LoopTransform::Value(OutputValue::On(velocity))
                                 }
@@ -471,38 +395,19 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::RefreshOverride(id) => {
-                        let current_loop = loop_state.get();
-                        let transform = get_transform(&id, &override_values, &selection, &selection_override, &current_loop.transforms);
-                        let fallback = match recorder.get_event_at(id, last_playback_pos) {
-                            Some(event) if event.value != OutputValue::Off => {
-                                match recorder.get_next_event_at(id, last_playback_pos) {
-                                    Some(next_event) => {
-                                        if (next_event.pos - last_playback_pos) > MidiTime::from_beats(1) {
-                                            Some(event.value.clone())
-                                        } else {
-                                            None
-                                        }
-                                    },
-                                    _ => {
-                                        Some(event.value)
-                                    }
-                                }
-                            },
-                            _ => Some(OutputValue::Off)
-                        };
-
-                        let value = match transform {
-                            &LoopTransform::Value(value) => Some(value),
-                            &LoopTransform::None => fallback,
-                            &LoopTransform::Repeat(..) | &LoopTransform::Hold(..) => None
-                        };
+                        let loop_collection = loop_state.get();
+                        let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
                         
-                        if let Some(v) = value {
-                            tx_feedback.send(LoopGridMessage::Event(LoopEvent {
-                                value: v,
-                                pos: last_pos,
-                                id
-                            })).unwrap();
+                        if out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
+                            out_transforms.insert(id, transform);
+                            last_changed_triggers.insert(id, last_pos);
+
+                            // send new value
+                            if let Some(value) = get_value(id, last_pos, &recorder, &out_transforms) {
+                                tx_feedback.send(LoopGridMessage::Event(LoopEvent {
+                                    id, value, pos: last_pos
+                                })).unwrap();
+                            }
                         }
                     },  
                     LoopGridMessage::RefreshGridButton(id) => {
@@ -512,10 +417,10 @@ impl LoopGridLaunchpad {
                             Light::Yellow
                         } else if selection.contains(&id) {
                             Light::Green
-                        } else if active.contains(&id) {
-                            Light::GreenLow
                         } else if recording.contains(&id) {
                             Light::RedLow
+                        } else if active.contains(&id) {
+                            Light::GreenLow
                         } else {
                             Light::Off
                         };
@@ -531,7 +436,7 @@ impl LoopGridLaunchpad {
                         selection_override = if suppressing {
                             LoopTransform::Value(OutputValue::Off)
                         } else if holding {
-                            LoopTransform::Hold(last_playback_pos, rate)
+                            LoopTransform::Range {pos: last_pos, length: rate}
                         } else {
                             LoopTransform::None
                         };
@@ -543,9 +448,9 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RefreshActive => {
                         let current_loop = loop_state.get();
                         let mut ids = HashSet::new();
-                        for id in recorder.get_ids_in_range(current_loop.offset, current_loop.offset + current_loop.length) {
-                            if current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::Value(OutputValue::Off) {
-                                ids.insert(id);
+                        for (id, transform) in &current_loop.transforms {
+                            if transform.is_active() {
+                                ids.insert(*id);
                             }
                         }                        
                         let (added, removed) = update_ids(&ids, &mut active);
@@ -559,7 +464,13 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::RefreshRecording => {
-                        let ids = recorder.get_ids_in_range(last_pos - loop_length, last_pos);
+                        let mut ids = HashSet::new();
+
+                        for (id, last_changed) in &last_changed_triggers {
+                            if last_changed >= &(last_pos - loop_length) {
+                                ids.insert(*id);
+                            }
+                        }
 
                         let (added, removed) = update_ids(&ids, &mut recording);
 
@@ -615,13 +526,28 @@ impl LoopGridLaunchpad {
                             } else {
                                 let since_press = last_pos - loop_from;
                                 let threshold = MidiTime::from_ticks(12);
+                                let mut new_loop = loop_state.get().clone();
+
                                 if since_press > threshold {
+                                    // loop range between loop button down and up
                                     let quantized_length = MidiTime::quantize_length(last_pos - loop_from);
                                     loop_length = quantized_length;
-                                    loop_state.set(Loop::new(last_pos - quantized_length, quantized_length));
                                 } else {
-                                    loop_state.set(Loop::new(loop_from - loop_length, loop_length));
+                                    // loop range to loop button down using last loop_length
+                                    loop_from = loop_from - loop_length
                                 }
+
+                                for (id, last_change) in &last_changed_triggers {
+                                    if last_change > &loop_from {
+                                        new_loop.transforms.insert(*id, LoopTransform::Range {
+                                            pos: loop_from, 
+                                            length: loop_length
+                                        });
+                                    }
+                                }
+
+                                new_loop.length = loop_length;
+                                loop_state.set(new_loop);
                             }
                         }
                     },
@@ -631,7 +557,7 @@ impl LoopGridLaunchpad {
                         }
                         selection.clear();
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
-                    }
+                    },
                     LoopGridMessage::RefreshShouldFlatten => {
                         let new_value = &selection_override != &LoopTransform::None || override_values.values().any(|value| value != &LoopTransform::None);
                         if new_value != should_flatten {
@@ -646,28 +572,19 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::FlattenButton(pressed) => {
                         if pressed {
-                            if selection.len() > 0 {
+                            if should_flatten {
+                                let mut new_loop = loop_state.get().clone();
+
+                                for id in id_to_midi.keys() {
+                                    new_loop.transforms.insert(id.clone(), out_transforms.get(id).unwrap_or(&LoopTransform::None).clone());
+                                }
+
+                                loop_state.set(new_loop);
+                            } else if selection.len() > 0 {
                                 let mut new_loop = loop_state.get().clone();
 
                                 for id in &selection {
                                     new_loop.transforms.insert(id.clone(), LoopTransform::Value(OutputValue::Off));
-                                }
-
-                                loop_state.set(new_loop);
-                            } else if should_flatten {
-                                let mut new_loop = loop_state.get().clone();
-
-                                if &selection_override != &LoopTransform::None {
-                                    for id in id_to_midi.keys() {
-                                        new_loop.transforms.insert(id.clone(), selection_override.clone());
-                                    }
-                                }
-
-                                // repeaters
-                                for (id, transform) in &override_values {
-                                    if transform != &LoopTransform::None {
-                                        new_loop.transforms.insert(id.clone(), transform.clone());
-                                    }
                                 }
 
                                 loop_state.set(new_loop);
@@ -828,17 +745,22 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform<'a> (id: &u32, override_values: &'a HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &'a LoopTransform, loop_transforms: &'a HashMap<u32, LoopTransform>) -> &'a LoopTransform {
-    let in_selection = selection.len() == 0 || selection.contains(&id);
-    let id_override = override_values.get(&id).unwrap_or(&LoopTransform::None);
+fn get_transform (id: u32, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection) -> LoopTransform {
+    let mut result = LoopTransform::None;
 
-    if id_override != &LoopTransform::None {
-        id_override
-    } else if (selection_override != &LoopTransform::None) && in_selection {
-        selection_override
-    } else {
-        loop_transforms.get(id).unwrap_or(&LoopTransform::None)
+    if let Some(ref transform) = loop_collection.transforms.get(&id) {
+        result = transform.apply(&result);
     }
+
+    if selection.len() == 0 || selection.contains(&id) {
+        result = selection_override.apply(&result);
+    }
+
+    if let Some(value) = override_values.get(&id) {
+        result = value.apply(&result);  
+    }
+
+    result
 }
 
 fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, Vec<u32>) {
@@ -866,4 +788,75 @@ fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, 
     }
 
     (added, removed)
+}
+
+fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>) -> Option<OutputValue> {
+    match transforms.get(&id).unwrap_or(&LoopTransform::None) {
+        &LoopTransform::Value(value) => Some(value),
+        &LoopTransform::Range {pos: range_pos, length: range_length} => {
+            let playback_offset = range_pos % range_length;
+            let playback_pos = range_pos + ((position - playback_offset) % range_length);
+            match recorder.get_event_at(id, playback_pos) {
+                Some(event) if event.is_on() => {
+                    match recorder.get_next_event_at(id, playback_pos) {
+                        // don't force an output value if the next event is less than 1 beat away
+                        Some(next_event) if (next_event.pos - playback_pos) < MidiTime::from_beats(1) => None,
+                        _ => Some(event.value)
+                    }
+                },
+                _ => Some(OutputValue::Off)
+            }
+        },
+        _ => Some(OutputValue::Off)
+    }
+}
+
+fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>) -> Vec<LoopEvent> {
+    let mut result = Vec::new();
+
+    if length > MidiTime::zero() {        
+        for (id, transform) in transforms {
+            match transform {
+                &LoopTransform::Range {pos: range_pos, length: range_length} => {
+                    let playback_offset = range_pos % range_length;
+                    let playback_pos = range_pos + ((position - playback_offset) % range_length);
+
+                    if range_pos >= playback_pos && range_pos < (playback_pos + length) {
+                        // insert start value
+                        if let Some(value) = get_value(*id, range_pos, recorder, transforms) {
+                            LoopEvent {
+                                id: *id, pos: position, value
+                            }.insert_into(&mut result);
+                        }
+                    }
+
+                    if let Some(events) = recorder.get_range_for(*id, playback_pos, playback_pos + length) {
+                        for event in events {
+                            event.with_pos(position).insert_into(&mut result);
+                        }
+                    }
+                },
+                &LoopTransform::Repeat {rate: repeat_rate, offset: repeat_offset, value} => {
+                    let repeat_position = (position + repeat_offset) % repeat_rate;
+                    let half = repeat_rate.half().whole();
+                    if repeat_position.is_zero() {
+                        LoopEvent {
+                            value,
+                            pos: position,
+                            id: id.clone()
+                        }.insert_into(&mut result);
+                    } else if repeat_position == half {
+                        LoopEvent {
+                            value: OutputValue::Off,
+                            pos: position,
+                            id: id.clone()
+                        }.insert_into(&mut result);
+                    }
+                },
+                _ => ()
+            }
+        }
+    }
+
+    result
 }
