@@ -25,16 +25,21 @@ fn main() {
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
 
     let clock_port_name = "UM-ONE";
+    let tr08_port_name = if cfg!(target_os = "linux") {
+        "Boutique"
+    } else {
+        "TR-08"
+    };
 
     let scale = Scale::new(69, 0);
     let bass_offset = Offset::new(-3);
     let mother_offset = Offset::new(-2);
     let keys_offset = Offset::new(-1);
 
-    let tr08_port = midi_connection::get_shared_output("TR-08").unwrap();
+    let tr08_port = midi_connection::get_shared_output(tr08_port_name).unwrap();
     let output_port = midi_connection::get_shared_output("UM-ONE").unwrap();
 
-    let mut clock = ClockSource::new(clock_port_name, output_port.clone());
+    let mut clock = ClockSource::new(clock_port_name, tr08_port.clone());
 
     let _twister = devices::Twister::new("Midi Fighter Twister", vec![
         Arc::clone(&bass_offset),
