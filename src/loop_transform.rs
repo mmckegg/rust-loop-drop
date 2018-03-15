@@ -16,15 +16,15 @@ impl LoopTransform {
                 match previous {
                     &LoopTransform::Repeat {rate, offset, value} => {
                         LoopTransform::Repeat {
-                            rate: rate.max(length), offset, value
+                            rate: rate.min(length), offset, value
                         }
                     },
                     &LoopTransform::Range {pos: previous_pos, length: previous_length} => {
-                        let playback_offset = pos % previous_length;
+                        let playback_offset = previous_pos % previous_length;
                         let playback_pos = previous_pos + ((pos - playback_offset) % previous_length);
                         LoopTransform::Range {
                             pos: playback_pos,
-                            length
+                            length: length.min(previous_length)
                         }
                     },
                     _ => self.clone()
