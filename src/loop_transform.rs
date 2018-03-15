@@ -41,4 +41,12 @@ impl LoopTransform {
             _ => true
         }
     }
+
+    pub fn unwrap_or<'a> (&'a self, or_value: &'a LoopTransform) -> &'a LoopTransform {
+        if self == &LoopTransform::None {
+            or_value
+        } else {
+            self
+        }
+    }
 }

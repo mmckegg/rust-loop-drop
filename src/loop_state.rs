@@ -8,6 +8,11 @@ pub struct LoopCollection {
     pub transforms: HashMap<u32, LoopTransform>
 }
 
+#[derive(Eq, PartialEq)]
+pub enum LoopStateChange {
+    Undo, Redo, Set
+}
+
 impl LoopCollection {
     pub fn new (length: MidiTime) -> LoopCollection {
         LoopCollection {
@@ -20,12 +25,12 @@ impl LoopCollection {
 pub struct LoopState {
     undos: Vec<LoopCollection>,
     redos: Vec<LoopCollection>,
-    on_change: Box<FnMut(&LoopCollection) + Send>
+    on_change: Box<FnMut(&LoopCollection, LoopStateChange) + Send>
 }
 
 impl LoopState {
     pub fn new<F> (default_length: MidiTime, on_change: F) -> LoopState
-    where F: FnMut(&LoopCollection) + Send + 'static  {
+    where F: FnMut(&LoopCollection, LoopStateChange) + Send + 'static  {
         let default_loop = LoopCollection::new(default_length);
         LoopState {
             undos: vec![default_loop],
@@ -40,7 +45,7 @@ impl LoopState {
 
     pub fn set (&mut self, value: LoopCollection) {
         self.undos.push(value);
-        (self.on_change)(self.undos.last().unwrap());
+        (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Set);
     }
 
     pub fn undo (&mut self) {
@@ -48,7 +53,7 @@ impl LoopState {
             match self.undos.pop() {
                 Some(value) => {
                     self.redos.push(value);
-                    (self.on_change)(self.undos.last().unwrap());
+                    (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Undo);
                 },
                 None => ()
             };
@@ -59,7 +64,7 @@ impl LoopState {
         match self.redos.pop() {
             Some(value) => {
                 self.undos.push(value);
-                (self.on_change)(self.undos.last().unwrap());
+                (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Redo);
             },
             None => ()
         };

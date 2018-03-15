@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
 
+#[derive(Clone, Eq, PartialEq)]
 pub struct Scale {
     pub root: i32,
     pub scale: i32
@@ -9,6 +11,14 @@ impl Scale {
 
     pub fn new (root: i32, scale: i32) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Scale { root, scale }))
+    }
+
+    pub fn get_notes (&self) -> HashSet<i32> {
+        let mut result = HashSet::new();
+        for i in -100..100 {
+            result.insert(self.get_note_at(i));
+        }
+        result
     }
 
     pub fn get_note_at (&self, value: i32) -> i32 {
@@ -30,6 +40,7 @@ fn modulo (n: i32, m: i32) -> i32 {
     ((n % m) + m) % m
 }
 
+#[derive(Clone, Eq, PartialEq)]
 pub struct Offset {
     pub oct: i32,
     pub third: i32,

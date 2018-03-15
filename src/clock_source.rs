@@ -19,14 +19,14 @@ pub struct ClockSource {
     to_broadcast: mpsc::Receiver<ClockMessage>,
     tempo: Arc<AtomicUsize>,
     _midi_input: midi_connection::MidiInputConnection<()>,
-    midi_output: midi_connection::SharedMidiOutputConnection,
+    midi_outputs: Vec<midi_connection::SharedMidiOutputConnection>,
     internal_clock_suppressed_to: SystemTime,
     tick_pos: MidiTime
 }
 
 impl ClockSource {
     
-    pub fn new (midi_port_name: &str, output_port: midi_connection::SharedMidiOutputConnection) -> ClockSource {
+    pub fn new (midi_port_name: &str, output_ports: Vec<midi_connection::SharedMidiOutputConnection>) -> ClockSource {
         let tempo = Arc::new(AtomicUsize::new(DEFAULT_TEMPO));
         let tempo_ref = Arc::clone(&tempo);
 
@@ -76,7 +76,7 @@ impl ClockSource {
             bus: Bus::new(10),
             internal_clock_suppressed_to: SystemTime::now(),
             _midi_input: external_input,
-            midi_output: output_port,
+            midi_outputs: output_ports,
             tick_pos: MidiTime::zero(),
             tx,
             tempo,
@@ -115,7 +115,9 @@ impl ClockSource {
                             length: MidiTime::tick()
                         });
                         self.tick_pos = self.tick_pos + MidiTime::tick();
-                        self.midi_output.send(&[248]).unwrap();
+                        for port in &mut self.midi_outputs {
+                            port.send(&[248]).unwrap();
+                        }
                     }
                 },
                 ClockMessage::ExternalTick => {
@@ -124,7 +126,9 @@ impl ClockSource {
                         pos: self.tick_pos, 
                         length: MidiTime::tick()
                     });
-                    self.midi_output.send(&[248]).unwrap();
+                    for port in &mut self.midi_outputs {
+                        port.send(&[248]).unwrap();
+                    }
                     self.tick_pos = self.tick_pos + MidiTime::tick();
                 },
                 ClockMessage::ExternalPlay => {
