@@ -4,13 +4,20 @@ use std::collections::HashSet;
 #[derive(Clone, Eq, PartialEq)]
 pub struct Scale {
     pub root: i32,
-    pub scale: i32
+    pub scale: i32,
+    pub sample_group_a: u32,
+    pub sample_group_b: u32
 }
 
 impl Scale {
 
     pub fn new (root: i32, scale: i32) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Scale { root, scale }))
+        Arc::new(Mutex::new(Scale { 
+            root, 
+            scale,
+            sample_group_a: 0,
+            sample_group_b: 0
+        }))
     }
 
     pub fn get_notes (&self) -> HashSet<i32> {

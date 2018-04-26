@@ -37,7 +37,7 @@ impl KBoard {
 
         // check for changes to scale and broadcast
         thread::spawn(move || {
-            let mut last_scale = Scale {root: 0, scale: 0};
+            let mut last_scale = Scale {root: 0, scale: 0, sample_group_a: 0, sample_group_b: 0};
             loop {
                 thread::sleep(Duration::from_millis(16));
                 let current_scale = scale_poll.lock().unwrap();

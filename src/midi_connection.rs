@@ -15,12 +15,18 @@ const APP_NAME: &str = "Loop Drop";
 pub fn get_shared_output (port_name: &str) -> Result<SharedMidiOutputConnection, ConnectError<MidiOutput>> {
     let mut output = try!(get_output(port_name));
     let (tx, rx) = mpsc::channel();
+    let pname = String::from(port_name);
     thread::spawn(move || {
         for msg in rx {
             (match msg {
                 MidiMessage::One(a) => output.send(&[a]),
                 MidiMessage::Two(a, b) => output.send(&[a, b]),
-                MidiMessage::Three(a, b, c) => output.send(&[a, b, c]),
+                MidiMessage::Three(a, b, c) => {
+                    if pname == String::from("Parva Synth") {
+                        println!("{:?}", [a, b, c]);
+                    }
+                    output.send(&[a, b, c])
+                },
                 MidiMessage::Sysex(data) => output.send(data.as_slice())
             }).unwrap();
         }

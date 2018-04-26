@@ -24,28 +24,33 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
 
-    let midi_io_name = if cfg!(target_os = "linux") {
-        "pisound"
-    } else {
-        "UM-ONE"
-    }; 
+    let usb_io_name = "UM-ONE";
+    
+    // if cfg!(target_os = "linux") {
+    //     "pisound"
+    // } else {
+    //     "UM-ONE"
+    // }; 
 
-    let tr08_port_name = if cfg!(target_os = "linux") {
-        "Boutique"
-    } else {
-        "TR-08"
-    };
+    let main_io_name = "pisound";
+    // if cfg!(target_os = "linux") {
+    //     "Boutique"
+    // } else {
+    //     "TR-08"
+    // };
 
     let scale = Scale::new(69, 0);
     let bass_offset = Offset::new(-3);
     let mother_offset = Offset::new(-2);
     let keys_offset = Offset::new(-1);
 
-    let tr08_port = midi_connection::get_shared_output(tr08_port_name).unwrap();
-    let output_port = midi_connection::get_shared_output(midi_io_name).unwrap();
-    let mut clock = ClockSource::new(midi_io_name, vec![
-        output_port.clone(), 
-        tr08_port.clone(),
+    // let parva_port = midi_connection::get_shared_output("Parva").unwrap();
+
+    let main_output_port = midi_connection::get_shared_output(main_io_name).unwrap();
+    let usb_output_port = midi_connection::get_shared_output(usb_io_name).unwrap();
+    let mut clock = ClockSource::new(usb_io_name, vec![
+        usb_output_port.clone(), 
+        main_output_port.clone(),
         midi_connection::get_shared_output("Launchpad MK2").unwrap()
     ]);
 
@@ -55,37 +60,43 @@ fn main() {
         Arc::clone(&mother_offset)
     ], Arc::clone(&scale), clock.add_rx());
 
-    let _kboard = devices::KBoard::new("K-Board", output_port.clone(), 15, Arc::clone(&scale));
+    let _kboard = devices::KBoard::new("K-Board", main_output_port.clone(), 3, Arc::clone(&scale));
 
     let _launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
+        // ChunkMap::new( 
+        //     Box::new(devices::TR08::new(main_output_port.clone(), 11)), 
+        //     Coords::new(0, 0), 
+        //     Shape::new(4, 4)
+        // ),
+
+        // ChunkMap::new( 
+        //     Box::new(devices::Mother32::new(main_output_port.clone(), 14, Arc::clone(&scale), Arc::clone(&mother_offset))), 
+        //     Coords::new(0, 4), 
+        //     Shape::new(4, 4)
+        // ),
+
         ChunkMap::new( 
-            Box::new(devices::TR08::new(tr08_port.clone(), 11)), 
+        Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&scale), 0)), 
             Coords::new(0, 0), 
-            Shape::new(4, 4)
+            Shape::new(3, 4)
         ),
 
         ChunkMap::new( 
-            Box::new(devices::Mother32::new(tr08_port.clone(), 14, Arc::clone(&scale), Arc::clone(&mother_offset))), 
+            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&scale), 1)), 
             Coords::new(0, 4), 
-            Shape::new(4, 4)
+            Shape::new(3, 4)
         ),
-
+        
         ChunkMap::new( 
-            Box::new(devices::VolcaBass::new(output_port.clone(), 16, Arc::clone(&scale), Arc::clone(&bass_offset))), 
-            Coords::new(4, 0), 
+            Box::new(devices::VolcaBass::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Coords::new(3, 0), 
             Shape::new(1, 8)
         ),
 
         ChunkMap::new( 
-            Box::new(devices::SP404::new(output_port.clone(), 12)), 
-            Coords::new(5, 0), 
-            Shape::new(3, 4)
-        ),
-
-        ChunkMap::new( 
-            Box::new(devices::SP404::new(output_port.clone(), 13)), 
-            Coords::new(5, 4), 
-            Shape::new(3, 4)
+            Box::new(devices::VolcaBass::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Coords::new(4, 0), 
+            Shape::new(4, 8)
         )
     ], Arc::clone(&scale), clock.add_rx());
 

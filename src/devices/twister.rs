@@ -53,7 +53,7 @@ impl Twister {
                 tx_feedback.send(TwisterMessage::Refresh(Control::ScaleParam(col, row))).unwrap();
             }
             for col in 0..4 {
-                tx_feedback.send(TwisterMessage::Refresh(Control::Param(col, row))).unwrap();
+                tx_feedback.send(TwisterMessage::Refresh(Control::Param(row, col))).unwrap();
             }
         }
 
@@ -103,7 +103,14 @@ impl Twister {
 
                         match control {
                             Control::ScaleParam(channel, index) => {
-                                if let Some(offset) = offsets.get(channel as usize) {
+                                if channel == 2 {
+                                    let mut current_scale = scale.lock().unwrap();
+                                    if index == 0 {
+                                        current_scale.sample_group_a = (value.value() as u32 * 10) / 128;
+                                    } else if index == 1 {
+                                        current_scale.sample_group_b = (value.value() as u32 * 10) / 128;
+                                    }
+                                } else if let Some(offset) = offsets.get(channel as usize) {
                                     let mut current = offset.lock().unwrap();
                                     let offset = get_offset(value);
                                     match index {
@@ -128,8 +135,8 @@ impl Twister {
                                 let mut current_scale = scale.lock().unwrap();
                                 current_scale.root = 69 + get_offset(value);
                             },
-                            Control::Param(_channel, _index) => {
-
+                            Control::Param(row, col) => {
+        
                             }
                         }
 
@@ -277,7 +284,7 @@ impl Control {
                 }
             }
         } else { // bank 2+
-            Control::Param(col, row + 4)
+            Control::Param(row - 4, col)
         }
     }
 }

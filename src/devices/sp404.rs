@@ -1,5 +1,7 @@
 use ::chunk::{Triggerable, OutputValue, SystemTime};
 use ::midi_connection;
+use std::sync::{Arc, Mutex};
+pub use ::scale::Scale;
 
 use std::collections::HashMap;
 
@@ -7,16 +9,18 @@ pub struct SP404 {
     midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     output_values: HashMap<u32, (u8, u8, u8)>,
-    offset_value: u8
+    scale: Arc<Mutex<Scale>>,
+    index: u8
 }
 
 impl SP404 {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, index: u8) -> Self {
         SP404 {
             midi_port,
             midi_channel: channel,
             output_values: HashMap::new(),
-            offset_value: 0
+            scale,
+            index
         }
     }
 }
@@ -31,14 +35,19 @@ impl Triggerable for SP404 {
                 //     self.output_values.remove(&id);
                 // }
             },
-            OutputValue::On(velocity) => {
-                let mut offset_value = self.offset_value;
-                let mut channel = self.midi_channel;
+            OutputValue::On(_) => {
+                let scale = self.scale.lock().unwrap();
+                let mut offset_value = if self.index == 0 {
+                    scale.sample_group_a
+                } else {
+                    scale.sample_group_b
+                };
 
-                if offset_value >= 5 {
-                    channel += 1;
-                    offset_value -= 5;
-                }
+                let mut channel = if offset_value < 5 {
+                    self.midi_channel
+                } else {
+                    self.midi_channel + 1
+                };
 
                 // choke
                 for (_, &(channel, note_id, _)) in &self.output_values {
@@ -47,9 +56,9 @@ impl Triggerable for SP404 {
 
                 self.output_values.clear();
 
-                let note_id = 47 + (offset_value * 12) + (id as u8);
-                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
-                self.output_values.insert(id, (channel, note_id, velocity));
+                let note_id = (47 + ((offset_value % 5) * 12) + id) as u8;
+                self.midi_port.send(&[144 - 1 + channel, note_id, 127]).unwrap();
+                self.output_values.insert(id, (channel, note_id, 127));
             }
         }
     }
