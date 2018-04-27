@@ -1,6 +1,7 @@
 use ::chunk::{Triggerable, OutputValue, SystemTime};
 use ::midi_connection;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 pub use ::scale::Scale;
 
 use std::collections::HashMap;
@@ -9,18 +10,16 @@ pub struct SP404 {
     midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     output_values: HashMap<u32, (u8, u8, u8)>,
-    scale: Arc<Mutex<Scale>>,
-    index: u8
+    offset: Arc<AtomicUsize>
 }
 
 impl SP404 {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, index: u8) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, offset: Arc<AtomicUsize>) -> Self {
         SP404 {
             midi_port,
             midi_channel: channel,
             output_values: HashMap::new(),
-            scale,
-            index
+            offset
         }
     }
 }
@@ -36,12 +35,7 @@ impl Triggerable for SP404 {
                 // }
             },
             OutputValue::On(_) => {
-                let scale = self.scale.lock().unwrap();
-                let mut offset_value = if self.index == 0 {
-                    scale.sample_group_a
-                } else {
-                    scale.sample_group_b
-                };
+                let mut offset_value = self.offset.load(Ordering::Relaxed);
 
                 let mut channel = if offset_value < 5 {
                     self.midi_channel
@@ -56,7 +50,7 @@ impl Triggerable for SP404 {
 
                 self.output_values.clear();
 
-                let note_id = (47 + ((offset_value % 5) * 12) + id) as u8;
+                let note_id = (47 + ((offset_value % 5) * 12) + (id as usize)) as u8;
                 self.midi_port.send(&[144 - 1 + channel, note_id, 127]).unwrap();
                 self.output_values.insert(id, (channel, note_id, 127));
             }

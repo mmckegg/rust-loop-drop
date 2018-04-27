@@ -21,12 +21,7 @@ pub fn get_shared_output (port_name: &str) -> Result<SharedMidiOutputConnection,
             (match msg {
                 MidiMessage::One(a) => output.send(&[a]),
                 MidiMessage::Two(a, b) => output.send(&[a, b]),
-                MidiMessage::Three(a, b, c) => {
-                    if pname == String::from("Parva Synth") {
-                        println!("{:?}", [a, b, c]);
-                    }
-                    output.send(&[a, b, c])
-                },
+                MidiMessage::Three(a, b, c) => output.send(&[a, b, c]),
                 MidiMessage::Sysex(data) => output.send(data.as_slice())
             }).unwrap();
         }
