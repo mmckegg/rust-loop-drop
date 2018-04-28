@@ -15,6 +15,7 @@ impl Twister {
     pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
+        let kmix_port_name = String::from(kmix_port_name);
 
         let tx_clock = tx.clone();
         let tx_feedback = tx.clone();
@@ -27,7 +28,6 @@ impl Twister {
         });
 
         let mut output = midi_connection::get_output(port_name).unwrap();
-        let mut kmix_output = midi_connection::get_output(kmix_port_name);
 
         let input = midi_connection::get_input(port_name, move |_stamp, message, _| {
             let control = Control::from_id(message[1] as u32);
@@ -50,6 +50,7 @@ impl Twister {
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
             let mut aftertouch_targets = aftertouch_targets;
+            let mut kmix_output = midi_connection::get_output(&kmix_port_name);
 
             for received in rx {
                 match received {
@@ -277,31 +278,4 @@ impl Control {
 
 fn get_index(row: u32, col: u32) -> u32 {
     row * 4 + col
-}
-
-fn get_offset (midi_value: OutputValue) -> i32 {
-    let ival = midi_value.value() as i32;
-    if ival < 2 {
-        -5
-    } else if ival > 126 {
-        5
-    } else if ival < 63 {
-        -4 + ival / 16
-    }  else if ival > 64 {
-        -3 + (ival + 1) / 16
-    } else {
-        0
-    }
-}
-
-fn get_midi_value (offset: i32) -> u8 {
-    *[0, 7, 20, 40, 50, 64, 70, 85, 100, 120, 127].get((offset + 5) as usize).unwrap_or(&64)
-}
-
-fn lsb (value: u16) -> u8 {
-    (value & 0xFF) as u8
-}
-
-fn msb (value: u16) -> u8 {
-    ((value >> 8) & 0xFF) as u8
 }
