@@ -151,10 +151,10 @@ impl Twister {
                         if let &mut Ok(ref mut kmix_output) = &mut kmix_output {
                             let value = value.value();
                             let kmix_channel = match channel {
-                                0 => 1,
+                                0 => 5,
                                 1 => 2,
                                 2 => 3,
-                                _ => 5
+                                _ => 1
                             };
 
                             match control {
@@ -176,7 +176,7 @@ impl Twister {
                                     kmix_output.send(&[176 + kmix_channel - 1, 25, value]);
                                 },
                                 ParamControl::Aftertouch => {
-                                    if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut(channel as usize) {
+                                    if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut((channel - 1) as usize) {
                                         port.send(&[208 + channel - 1, value]);
                                     }
                                 }
@@ -253,8 +253,8 @@ struct Loop {
 impl Control {
     fn id (&self) -> u32 {
         match self {
-            &Control::Tempo => get_index(3, 3),
-            &Control::Swing => get_index(3, 3),
+            &Control::Tempo => get_index(0, 3),
+            &Control::Swing => get_index(0, 3),
             &Control::Param(channel, param) => get_index(channel, param as u32) 
         }
     }
@@ -263,7 +263,7 @@ impl Control {
         let col = id % 4;
         let row = id / 4;
 
-        if col == 3 && row == 3 {
+        if col == 3 && row == 0 {
             Control::Tempo
         } else {
             Control::Param(row, match col {
