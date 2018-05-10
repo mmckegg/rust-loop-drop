@@ -302,8 +302,6 @@ impl LoopGridLaunchpad {
                             a.id.cmp(&b.id)
                         });
 
-                        println!("{:?}", events);
-
                         for event in events {
                             if event.value.is_on() {
                                 if let Some(mapping) = mapping.get(&Coords::from(event.id)) {
