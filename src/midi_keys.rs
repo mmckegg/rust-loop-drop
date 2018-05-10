@@ -36,11 +36,9 @@ impl MidiKeys {
                 }
             },
             OutputValue::On(velocity) => {
-                let offsets = [-9, -7, -5, -4, -3, 0, 2, 3, 4, 7, 9];
                 let scale = self.scale.lock().unwrap();
                 let offset = self.offset.lock().unwrap();
-                let third_offset = offsets[(((offsets.len() as i32) / 2) + offset.third) as usize];
-                let scale_offset = third_offset + offset.offset;
+                let scale_offset = offset.base + offset.offset;
                 let note_id = (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8;
                 self.midi_output.send(&[144 + self.midi_channel - 1, note_id, velocity]).unwrap();
                 self.output_values.insert(id, note_id);

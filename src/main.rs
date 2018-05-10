@@ -41,8 +41,8 @@ fn main() {
     // };
 
     let scale = Scale::new(69, 0);
-    let bass_offset = Offset::new(-2);
-    let keys_offset = Offset::new(-1);
+    let bass_offset = Offset::new(-2, -4);
+    let keys_offset = Offset::new(-1, -4);
 
     let sp404a_offset = Arc::new(AtomicUsize::new(0));
     let sp404b_offset = Arc::new(AtomicUsize::new(0));
@@ -62,8 +62,6 @@ fn main() {
         (main_output_port.clone(), 2),
         (main_output_port.clone(), 3)
     ], clock.add_rx());
-
-    let _kboard = devices::KBoard::new("K-Board", main_output_port.clone(), 3, Arc::clone(&scale));
 
     let _launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
         // ChunkMap::new( 
@@ -92,7 +90,7 @@ fn main() {
 
         ChunkMap::new( 
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))), 
-            Coords::new(3 + 8, 0), 
+            Coords::new(4 + 8, 0), 
             Shape::new(1, 8)
         ),
 
@@ -117,13 +115,19 @@ fn main() {
         ChunkMap::new( 
             Box::new(devices::VolcaBass::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(3, 0), 
-            Shape::new(1, 8)
+            Shape::new(2, 8)
         ),
 
         ChunkMap::new( 
             Box::new(devices::VolcaBass::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
-            Coords::new(4, 0), 
-            Shape::new(4, 8)
+            Coords::new(5, 0), 
+            Shape::new(3, 8)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::KBoard::new("K-Board", main_output_port.clone(), 3, Arc::clone(&scale))),
+            Coords::new(16, 0),
+            Shape::new(16, 8)
         )
     ], Arc::clone(&scale), clock.add_rx());
 

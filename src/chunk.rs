@@ -4,6 +4,9 @@ pub use ::output_value::OutputValue;
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime);
+    fn listen (&mut self, listener: Box<Fn(u32, OutputValue) + 'static + Send>) {}
+    fn shouldChokeAll (&self) -> bool { false }
+    fn onTriggerModeChanged (&self, mode_change: TriggerModeChange) { }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
@@ -62,4 +65,9 @@ impl ChunkMap {
             chunk, coords, shape
         })
     }
+}
+
+pub enum TriggerModeChange {
+    Selecting(bool),
+    SelectingScale(bool)
 }

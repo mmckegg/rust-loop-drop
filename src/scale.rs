@@ -50,17 +50,17 @@ fn modulo (n: i32, m: i32) -> i32 {
 #[derive(Clone, Eq, PartialEq)]
 pub struct Offset {
     pub oct: i32,
-    pub third: i32,
+    pub base: i32,
     pub offset: i32,
     pub pitch: i32
 }
 
 impl Offset {
-    pub fn new (oct: i32) -> Arc<Mutex<Self>> {
+    pub fn new (oct: i32, base: i32) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Offset {
             oct, 
-            third: 0,
             offset: 0,
+            base,
             pitch: 0
         }))
     }

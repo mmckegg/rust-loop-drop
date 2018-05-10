@@ -1,6 +1,8 @@
+extern crate circular_queue;
 extern crate midir;
 use self::midir::{MidiInputConnection};
-use std::time::SystemTime;
+use self::circular_queue::CircularQueue;
+use std::time::{SystemTime, Duration};
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashSet;
@@ -16,7 +18,7 @@ use ::output_value::OutputValue;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::loop_state::{LoopCollection, LoopState, LoopTransform, LoopStateChange};
 use ::clock_source::{RemoteClock, ToClock, FromClock};
-use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords};
+use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, TriggerModeChange};
 use ::scale::Scale;
 
 const CHUNK_COLORS: [Light; 8] = [Light::Chunk1, Light::Chunk2, Light::Chunk3, Light::Chunk4, Light::Chunk5, Light::Chunk6, Light::Chunk7, Light::Chunk8];
@@ -65,7 +67,10 @@ pub enum LoopGridMessage {
     SetRate(MidiTime),
     RateButton(usize, bool),
     TriggerChunk(MidiMap, OutputValue),
+    ExternalInput(u32, OutputValue),
     TempoChanged(usize),
+    RefreshSelectingScale,
+    FlushChoke,
     None
 }
 
@@ -184,15 +189,26 @@ impl LoopGridLaunchpad {
             let mut chunks: Vec<Box<Triggerable>> = Vec::new();
             let scale = scale;
 
-            for item in chunk_map {
+            for mut item in chunk_map {
                 let mut id = 0;
                 let chunk_index = chunks.len();
+                let mut trigger_ids = Vec::new();
                 for row in (item.coords.row)..(item.coords.row + item.shape.rows) {
                     for col in (item.coords.col)..(item.coords.col + item.shape.cols) {
-                        mapping.insert(Coords::new(row, col), MidiMap {chunk_index, id});                        
+                        mapping.insert(Coords::new(row, col), MidiMap {chunk_index, id});   
+                        trigger_ids.push(Coords::id_from(row, col));                
                         id += 1;
                     }
                 }
+
+                let tx_chunk_listener =  mpsc::Sender::clone(&tx_loop_state);
+
+                item.chunk.listen(Box::new(move |index, value| {
+                    if let Some(id) = trigger_ids.get(index as usize) {
+                        tx_chunk_listener.send(LoopGridMessage::ExternalInput(*id, value)).unwrap();
+                    }
+                }));
+
                 chunks.push(item.chunk);
             }
 
@@ -239,6 +255,10 @@ impl LoopGridLaunchpad {
             let mut select_out = Light::Off;
             let mut last_repeat_light_out = Light::Off;
             let mut last_scale_light_out = Light::Off;
+            let mut last_triggered: CircularQueue<u32> = CircularQueue::with_capacity(16);
+
+            let mut last_choke_output = HashMap::new();
+            let mut choke_queue = HashSet::new();
 
             // display state
             let mut active: HashSet<u32> = HashSet::new();
@@ -262,19 +282,28 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::Schedule(position, length) => {
                         let mut events = get_events(position, length, &recorder, &out_transforms);
                         
+                        let mut ranked = HashMap::new();
+                        for id in last_triggered.iter() {
+                            *ranked.entry(*id).or_insert(0) += 1;
+                        }
+
                         // sort events so that earlier defined chunks schedule first
                         events.sort_by(|a, b| {
                             let a_mapping = mapping.get(&Coords::from(a.id));
                             let b_mapping = mapping.get(&Coords::from(b.id));
                             if let Some(a_mapping) = a_mapping {
                                 if let Some(b_mapping) = b_mapping {
-                                    return a_mapping.chunk_index.cmp(&b_mapping.chunk_index);
+                                    // most frequently triggered first (last n)
+                                    return ranked.get(&b.id).unwrap_or(&0).cmp(ranked.get(&a.id).unwrap_or(&0));
                                 }
                             }
                             a.id.cmp(&b.id)
                         });
 
                         for event in events {
+                            if event.value.is_on() {
+                                last_triggered.push(event.id);
+                            }
                             tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                         }
 
@@ -374,10 +403,8 @@ impl LoopGridLaunchpad {
                             } else {
                                 if selecting_scale {
                                     selection.insert(scale_id);
-                                    println!("select {:?}", scale_id);
                                 } else {
                                     selection.insert(id);
-                                    println!("select {:?}", id);
                                 }
                             }
 
@@ -396,7 +423,6 @@ impl LoopGridLaunchpad {
                                 for row in from_row..to_row {
                                     for col in from_col..to_col {
                                         let id = Coords::id_from(row + row_offset, col);
-                                        println!("select {:?}", id);
                                         selection.insert(id);
                                         tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                                     }
@@ -405,15 +431,16 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            if selecting_scale && value.is_on() {
-                                input_values.insert(id + 64, value);
+                            // switch to +64 if no selection or inside selection 
+                            if (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) {
+                                input_values.insert(scale_id, value);
                                 input_values.remove(&id);
                             } else {
                                 input_values.insert(id, value);
-                                input_values.remove(&(id + 64));
+                                input_values.remove(&(scale_id));
                             }
                             tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
-                            tx_feedback.send(LoopGridMessage::RefreshInput(id + 64)).unwrap();
+                            tx_feedback.send(LoopGridMessage::RefreshInput(scale_id)).unwrap();
                         }
                         tx_feedback.send(LoopGridMessage::RefreshShouldFlatten).unwrap();
                     },
@@ -421,7 +448,7 @@ impl LoopGridLaunchpad {
                         let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
                         let transform = match value {
                             &OutputValue::On(velocity) => {
-                                if repeating && id < 64 {
+                                if repeating && (id < 64 || id >= 128) {
                                     let offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
                                     LoopTransform::Repeat {rate, offset, value: OutputValue::On(velocity)}
                                 } else {
@@ -476,9 +503,33 @@ impl LoopGridLaunchpad {
                         let out_value = out_values.get(&id).unwrap_or(&OutputValue::Off);
                         let old_value = grid_out.remove(&id).unwrap_or(LaunchpadLight::Constant(Light::Off));
                         
-                        let base_color = if let Some(mapped) = mapping.get(&Coords::from(id)) {
-                            if active.contains(&scale_id) {
-                                Light::Chunk8
+                        let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id);
+
+                        let base_color = if in_scale_view {
+                            if let Some(mapped) = mapping.get(&Coords::from(scale_id)) {
+                                if active.contains(&id) {
+                                    Light::Chunk8
+                                } else {
+                                    CHUNK_COLORS[mapped.chunk_index]
+                                }
+                            } else {
+                                Light::Off
+                            }
+                        } else {
+                            if let Some(mapped) = mapping.get(&Coords::from(id)) {
+                                if active.contains(&scale_id) {
+                                    Light::Chunk8
+                                } else {
+                                    CHUNK_COLORS[mapped.chunk_index]
+                                }
+                            } else {
+                                Light::Off
+                            }
+                        };
+
+                        let triggering_scale_color = if let Some(mapped) = mapping.get(&Coords::from(scale_id)) {
+                            if in_scale_view {
+                                Light::White
                             } else {
                                 CHUNK_COLORS[mapped.chunk_index]
                             }
@@ -486,16 +537,20 @@ impl LoopGridLaunchpad {
                             Light::Off
                         };
 
-                        let scale_color = if let Some(mapped) = mapping.get(&Coords::from(scale_id)) {
-                            CHUNK_COLORS[mapped.chunk_index]
+                        let triggering_color = if let Some(mapped) = mapping.get(&Coords::from(id)) {
+                            if in_scale_view {
+                                CHUNK_COLORS[mapped.chunk_index]
+                            } else {
+                                Light::White
+                            }
                         } else {
                             Light::Off
                         };
 
                         let new_value = if out_value != &OutputValue::Off {
-                            LaunchpadLight::Constant(Light::White)
+                            LaunchpadLight::Constant(triggering_color)
                         } else if out_value_scale != &OutputValue::Off {
-                            LaunchpadLight::Constant(scale_color)
+                            LaunchpadLight::Constant(triggering_scale_color)
                         } else if selection.contains(&id) {
                             LaunchpadLight::Constant(Light::Green)
                         } else if selection.contains(&scale_id) {
@@ -505,11 +560,7 @@ impl LoopGridLaunchpad {
                         } else if active.contains(&id) {
                             LaunchpadLight::Pulsing(base_color)
                         } else {
-                            if let Some(mapped) = mapping.get(&Coords::from(id)) {
-                                LaunchpadLight::Constant(CHUNK_COLORS[mapped.chunk_index])
-                            } else {
-                                LaunchpadLight::Constant(Light::Off)
-                            }
+                            LaunchpadLight::Constant(base_color)
                         };
 
                         if new_value != old_value {
@@ -532,7 +583,7 @@ impl LoopGridLaunchpad {
                             LoopTransform::None
                         };
 
-                        for id in 0..128 {
+                        for id in 0..256 {
                             tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
                         }
                     },
@@ -589,7 +640,7 @@ impl LoopGridLaunchpad {
                         };
 
                         if select_out != new_state {
-                            launchpad_output.send(&[176, 111, new_state as u8]).unwrap();
+                            launchpad_output.send(&[178, 111, new_state as u8]).unwrap();
                             select_out = new_state;
                         }
                     },
@@ -668,6 +719,12 @@ impl LoopGridLaunchpad {
                         for id in &selection {
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
                         }
+
+                        if !selecting_scale {
+                            selecting_scale = false;
+                            tx_feedback.send(LoopGridMessage::RefreshSelectingScale).unwrap();
+                        }
+
                         selection.clear();
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
                     },
@@ -688,7 +745,7 @@ impl LoopGridLaunchpad {
                             if should_flatten {
                                 let mut new_loop = loop_state.get().clone();
 
-                                for id in 0..128 {
+                                for id in 0..256 {
                                     new_loop.transforms.insert(id.clone(), out_transforms.get(&id).unwrap_or(&LoopTransform::None).clone());
                                 }
 
@@ -704,7 +761,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 let mut new_loop = loop_state.get().clone();
 
-                                for id in 0..128 {
+                                for id in 0..256 {
                                     new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
                                 }
 
@@ -761,16 +818,27 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
                     LoopGridMessage::ScaleButton(pressed) => {
-                        let new_state = if pressed {
+                        selecting_scale = pressed;
+                        tx_feedback.send(LoopGridMessage::RefreshSelectingScale).unwrap();
+                        tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
+                    },
+                    LoopGridMessage::RefreshSelectingScale => {
+                        let new_state = if selecting_scale {
                             Light::Yellow
                         } else {
                             Light::Off
                         };
-                        launchpad_output.send(&[176, 110, new_state as u8]).unwrap();
 
-                        selecting_scale = pressed;
-                        tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
-                    },
+                        launchpad_output.send(&[178, 110, new_state as u8]).unwrap();
+
+                        for id in 0..64 {
+                            tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
+                        }
+
+                        for chunk in &chunks {
+                            chunk.onTriggerModeChanged(TriggerModeChange::SelectingScale(selecting_scale))
+                        }
+                    }
                     LoopGridMessage::RateButton(button_id, pressed) => {
                         let current_index = currently_held_rates.iter().position(|v| v == &button_id);
 
@@ -811,7 +879,7 @@ impl LoopGridLaunchpad {
                         
                     },                 
                     LoopGridMessage::InitialLoop => {
-                        for id in 0..128 {
+                        for id in 0..256 {
                             let loop_collection = loop_state.get();
                             let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
                             
@@ -828,10 +896,46 @@ impl LoopGridLaunchpad {
                             }
                         }
                     },
+                    LoopGridMessage::ExternalInput(id, value) => {
+                        if selecting && value.is_on() {
+                            for i in 128..256 {
+                                selection.insert(i);
+                            }
+                        } else {
+                            input_values.insert(id, value);
+                            tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
+                        }  
+                    },
                     LoopGridMessage::TriggerChunk(map, value) => {
                         if let Some(chunk) = chunks.get_mut(map.chunk_index) {
-                            chunk.trigger(map.id, value, SystemTime::now())
+                            if chunk.shouldChokeAll() {
+                                match value {
+                                    OutputValue::Off => {},
+                                    OutputValue::On(_) => {
+                                        // queue up choke for next cycle (fake event loop)
+                                        if let Some(choke_id) = last_choke_output.get(&map.chunk_index) {
+                                            choke_queue.insert((map.chunk_index, *choke_id));
+                                        }
+
+                                        tx_feedback.send(LoopGridMessage::FlushChoke).unwrap();
+
+                                        last_choke_output.insert(map.chunk_index, map.id);
+                                        choke_queue.remove(&(map.chunk_index, map.id));
+                                        chunk.trigger(map.id, value, SystemTime::now());
+                                    }
+                                }
+                            } else {
+                                chunk.trigger(map.id, value, SystemTime::now())
+                            }
                         }
+                    },
+                    LoopGridMessage::FlushChoke => {
+                        for &(chunk_index, id) in &choke_queue {
+                            if let Some(chunk) = chunks.get_mut(chunk_index) {
+                                chunk.trigger(id, OutputValue::Off, SystemTime::now());
+                            }
+                        }
+                        choke_queue.clear();
                     },
                     LoopGridMessage::None => ()
                 }
