@@ -1,6 +1,7 @@
 #[derive(Ord, PartialOrd, Debug, Eq, PartialEq, Copy, Clone)]
 pub enum OutputValue {
-    Off, On(u8)
+    // Insert offs after ons when sorting
+    On(u8), Off
 }
 
 impl OutputValue {

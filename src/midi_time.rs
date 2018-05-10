@@ -11,6 +11,10 @@ impl MidiTime {
         MidiTime { ticks, fraction: 0 }
     }
 
+    pub fn from_frac (frac: u8) -> MidiTime {
+        MidiTime { ticks: 0, fraction: 0 }
+    }
+
     pub fn zero () -> MidiTime {
         MidiTime::from_ticks(0)
     }

@@ -80,7 +80,13 @@ impl Ord for LoopEvent {
             Ordering::Equal
         } else if value == Ordering::Equal {
             // or insert after if different (but same position)
-            self.id.cmp(&other.id)
+
+            // insert offs after ons (by defining off after on in OutputValue)
+            let cmp = self.value.cmp(&other.value);
+            match cmp {
+                Ordering::Equal => self.id.cmp(&other.id),
+                _ => cmp
+            }
         } else {
             value
         }

@@ -69,5 +69,6 @@ impl ChunkMap {
 
 pub enum TriggerModeChange {
     Selecting(bool),
-    SelectingScale(bool)
+    SelectingScale(bool),
+    Active(u32, bool)
 }
