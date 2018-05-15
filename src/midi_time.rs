@@ -11,8 +11,8 @@ impl MidiTime {
         MidiTime { ticks, fraction: 0 }
     }
 
-    pub fn from_frac (frac: u8) -> MidiTime {
-        MidiTime { ticks: 0, fraction: 0 }
+    pub fn from_frac (fraction: u8) -> MidiTime {
+        MidiTime { ticks: 0, fraction }
     }
 
     pub fn zero () -> MidiTime {
@@ -21,6 +21,10 @@ impl MidiTime {
 
     pub fn tick () -> MidiTime {
         MidiTime::from_ticks(1)
+    }
+
+    pub fn half_tick () -> MidiTime {
+        MidiTime::from_frac(127)
     }
 
     pub fn from_beats (beats: i32) -> MidiTime {

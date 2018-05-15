@@ -10,7 +10,6 @@ pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
 
 pub struct KBoard {
-    kboard_input: midi_connection::MidiInputConnection<()>,
     tx: mpsc::Sender<KBoardMessage>,
     listeners: Arc<Mutex<Vec<Box<Fn(u32, OutputValue) + Send + 'static>>>>
 }
@@ -20,26 +19,27 @@ impl KBoard {
         let (tx, rx) = mpsc::channel();
 
         let mut midi_output = midi_output;
+        let kboard_port_name = String::from(kboard_port_name);
 
         let tx_output = tx.clone();
         let listeners = Arc::new(Mutex::new(Vec::new()));
         let listeners_loop = Arc::clone(&listeners);
 
-        let kboard_input = midi_connection::get_input(kboard_port_name, move |stamp, message, _| {
-            if message[0] == 144 {
-                tx_output.send(KBoardMessage::Input(message[1] as u32, message[2])).unwrap();
-            } else if message[0] == 128 {
-                tx_output.send(KBoardMessage::Input(message[1] as u32, 0)).unwrap();
-            }
-        }, ()).unwrap();
-
-        let mut kboard_output = midi_connection::get_shared_output(kboard_port_name).unwrap();
+        let mut kboard_output = midi_connection::get_shared_output(&kboard_port_name).unwrap();
 
         let scale_poll = Arc::clone(&scale);
         let tx_poll = tx.clone();
 
         // check for changes to scale and broadcast
         thread::spawn(move || {
+            let kboard_input = midi_connection::get_input(&kboard_port_name, move |stamp, message, _| {
+                if message[0] == 144 {
+                    tx_output.send(KBoardMessage::Input(message[1] as u32, message[2])).unwrap();
+                } else if message[0] == 128 {
+                    tx_output.send(KBoardMessage::Input(message[1] as u32, 0)).unwrap();
+                }
+            }, ()).unwrap();
+
             let mut last_scale = Scale {root: 0, scale: 0, sample_group_a: 0, sample_group_b: 0};
             let mut tick = 0;
             loop {
@@ -163,7 +163,6 @@ impl KBoard {
         });
         
         KBoard {
-            kboard_input,
             listeners,
             tx
         }
