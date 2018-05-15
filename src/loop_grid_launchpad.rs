@@ -684,7 +684,6 @@ impl LoopGridLaunchpad {
                         } else {
                             if pressed {
                                 loop_from = last_pos;
-                                tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                                 launchpad_output.send(&[176, 104, Light::Green as u8]).unwrap();
                             } else {
                                 launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
@@ -715,18 +714,28 @@ impl LoopGridLaunchpad {
                                     }
                                 }
 
-                                if recording_ids.len() > 0 {
-                                    for id in recording_ids {
-                                        new_loop.transforms.insert(id, LoopTransform::Range {
-                                            pos: loop_from, 
-                                            length: loop_length
-                                        });
+                                let ids = if selection.len() > 0 {
+                                    &selection
+                                } else {
+                                    &recording_ids
+                                };
+
+                                if ids.len() > 0 {
+                                    for id in ids {
+                                        if recording_ids.contains(id) || active.contains(id) {
+                                            new_loop.transforms.insert(*id, LoopTransform::Range {
+                                                pos: loop_from, 
+                                                length: loop_length
+                                            });
+                                        }
                                     }
 
                                     new_loop.length = loop_length;
                                     loop_state.set(new_loop);
                                     tx_feedback.send(LoopGridMessage::ClearRecording).unwrap();
                                 }
+
+                                tx_feedback.send(LoopGridMessage::ClearSelection).unwrap();
                             }
                         }
                     },
