@@ -115,7 +115,7 @@ impl Light {
 }
 
 pub struct LoopGridLaunchpad {
-    _input: MidiInputConnection<()>
+    _input: midi_connection::ThreadReference
 }
 
 impl LoopGridLaunchpad {
@@ -129,9 +129,9 @@ impl LoopGridLaunchpad {
 
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
-        let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name).unwrap();
+        let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
 
-        let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message, _| {
+        let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message| {
             if message[0] == 144 || message[0] == 128 {
                 let side_button = SIDE_BUTTONS.iter().position(|&x| x == message[1]);
                 let grid_button = midi_to_id.get(&message[1]);
@@ -163,7 +163,7 @@ impl LoopGridLaunchpad {
                 };
                 tx_input.send(to_send).unwrap();
             }
-        }, ()).unwrap();
+        });
 
         let clock_sender = clock.sender.clone();
 

@@ -1,6 +1,8 @@
 #[macro_use] extern crate lazy_static;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::time::{SystemTime, Duration};
+use std::thread;
 
 mod midi_connection;
 mod loop_grid_launchpad;
@@ -49,12 +51,12 @@ fn main() {
 
     // let parva_port = midi_connection::get_shared_output("Parva").unwrap();
 
-    let main_output_port = midi_connection::get_shared_output(main_io_name).unwrap();
-    let usb_output_port = midi_connection::get_shared_output(usb_io_name).unwrap();
+    let main_output_port = midi_connection::get_shared_output(main_io_name);
+    let usb_output_port = midi_connection::get_shared_output(usb_io_name);
     let mut clock = ClockSource::new(usb_io_name, vec![
         usb_output_port.clone(), 
         main_output_port.clone(),
-        midi_connection::get_shared_output("Launchpad MK2").unwrap()
+        midi_connection::get_shared_output("Launchpad MK2")
     ]);
 
     let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix", vec![

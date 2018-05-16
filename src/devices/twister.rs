@@ -8,7 +8,7 @@ use std::thread;
 use std::collections::HashMap;
 
 pub struct Twister {
-    _midi_input: midi_connection::MidiInputConnection<()>
+    _midi_input: midi_connection::ThreadReference
 }
 
 impl Twister {
@@ -27,9 +27,9 @@ impl Twister {
             }
         });
 
-        let mut output = midi_connection::get_output(port_name).unwrap();
+        let mut output = midi_connection::get_shared_output(port_name);
 
-        let input = midi_connection::get_input(port_name, move |_stamp, message, _| {
+        let input = midi_connection::get_input(port_name, move |_stamp, message| {
             let control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
                 tx.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
@@ -40,7 +40,7 @@ impl Twister {
                     tx.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
                 }
             }
-        }, ()).unwrap();
+        });
 
         thread::spawn(move || {
             let mut recorder = LoopRecorder::new();
@@ -50,7 +50,7 @@ impl Twister {
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
             let mut aftertouch_targets = aftertouch_targets;
-            let mut kmix_output = midi_connection::get_output(&kmix_port_name);
+            let mut kmix_output = midi_connection::get_shared_output(&kmix_port_name);
 
             for received in rx {
                 match received {
@@ -148,37 +148,35 @@ impl Twister {
                     },
 
                     TwisterMessage::ParamControl(channel, control, value) => {
-                        if let &mut Ok(ref mut kmix_output) = &mut kmix_output {
-                            let value = value.value();
-                            let kmix_channel = match channel {
-                                0 => 5,
-                                1 => 2,
-                                2 => 3,
-                                _ => 1
-                            };
+                        let value = value.value();
+                        let kmix_channel = match channel {
+                            0 => 5,
+                            1 => 2,
+                            2 => 3,
+                            _ => 1
+                        };
 
-                            match control {
-                                ParamControl::Kaoss => {
-                                    let value_f = ((value as f64) - 64.0) / 64.0;
-                                    let output_values = if value_f > 0.0 {
-                                        ((100.0 - value_f * 100.0), value_f * 100.0)
-                                    } else {
-                                        ((100.0 + value_f * 100.0), 0.0)
-                                    };
-                                    
-                                    kmix_output.send(&[176 + kmix_channel - 1, 1, output_values.0 as u8]);
-                                    kmix_output.send(&[176 + kmix_channel - 1, 27, output_values.1 as u8]);
-                                },
-                                ParamControl::Reverb => {
-                                    kmix_output.send(&[176 + kmix_channel - 1, 23, value]);
-                                },
-                                ParamControl::Delay => {
-                                    kmix_output.send(&[176 + kmix_channel - 1, 25, value]);
-                                },
-                                ParamControl::Aftertouch => {
-                                    if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut((channel - 1) as usize) {
-                                        port.send(&[208 + channel - 1, value]);
-                                    }
+                        match control {
+                            ParamControl::Kaoss => {
+                                let value_f = ((value as f64) - 64.0) / 64.0;
+                                let output_values = if value_f > 0.0 {
+                                    ((100.0 - value_f * 100.0), value_f * 100.0)
+                                } else {
+                                    ((100.0 + value_f * 100.0), 0.0)
+                                };
+                                
+                                kmix_output.send(&[176 + kmix_channel - 1, 1, output_values.0 as u8]);
+                                kmix_output.send(&[176 + kmix_channel - 1, 27, output_values.1 as u8]);
+                            },
+                            ParamControl::Reverb => {
+                                kmix_output.send(&[176 + kmix_channel - 1, 23, value]);
+                            },
+                            ParamControl::Delay => {
+                                kmix_output.send(&[176 + kmix_channel - 1, 25, value]);
+                            },
+                            ParamControl::Aftertouch => {
+                                if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut((channel - 1) as usize) {
+                                    port.send(&[208 + channel - 1, value]);
                                 }
                             }
                         }

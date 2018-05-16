@@ -18,7 +18,7 @@ pub struct ClockSource {
     broadcast: mpsc::Sender<ClockMessage>,
     to_broadcast: mpsc::Receiver<ClockMessage>,
     tempo: Arc<AtomicUsize>,
-    _midi_input: midi_connection::MidiInputConnection<()>,
+    _midi_input: midi_connection::ThreadReference,
     midi_outputs: Vec<midi_connection::SharedMidiOutputConnection>,
     internal_clock_suppressed_to: SystemTime,
     tick_pos: MidiTime
@@ -37,13 +37,13 @@ impl ClockSource {
         let broadcast_rx = broadcast.clone();
         let broadcast_external = broadcast.clone();
 
-        let external_input = midi_connection::get_input(midi_port_name, move |_stamp, message, _| {
+        let external_input = midi_connection::get_input(midi_port_name, move |_stamp, message| {
             if message[0] == 248 {
                 broadcast_external.send(ClockMessage::ExternalTick).unwrap();
             } else if message[0] == 250 {
                 broadcast_external.send(ClockMessage::ExternalPlay).unwrap();
             }
-        }, ()).unwrap();
+        });
 
         thread::spawn(move || {
             let mut last_tap = SystemTime::now();

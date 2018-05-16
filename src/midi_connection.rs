@@ -5,47 +5,113 @@ use self::regex::Regex;
 pub use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError, SendError};
 use std::sync::mpsc;
 use std::thread;
+use std::collections::HashMap;
+use std::time::Duration;
+use std::sync::Arc;
 
 const APP_NAME: &str = "Loop Drop";
 
-// lazy_static! {
-//     static ref outputs: HashMap<String, mpsc::Sender<MidiMessage>> = HashMap::new();
-// }
+pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
+    let mut current_output: Option<MidiOutputConnection> = None;
 
-pub fn get_shared_output (port_name: &str) -> Result<SharedMidiOutputConnection, ConnectError<MidiOutput>> {
-    let mut output = try!(get_output(port_name));
     let (tx, rx) = mpsc::channel();
-    let pname = String::from(port_name);
+    let port_name_notify = String::from(port_name);
+    let port_name_msg = String::from(port_name);
+
+    let tx_notify = tx.clone();
     thread::spawn(move || {
-        for msg in rx {
-            (match msg {
-                MidiMessage::One(a) => output.send(&[a]),
-                MidiMessage::Two(a, b) => output.send(&[a, b]),
-                MidiMessage::Three(a, b, c) => output.send(&[a, b, c]),
-                MidiMessage::Sysex(data) => output.send(data.as_slice())
-            }).unwrap();
+        let mut last_port = None;
+        loop {
+            let output = MidiOutput::new(APP_NAME).unwrap();
+            let current_port = get_output_port_index(&output, &port_name_notify);
+            if last_port.is_some() != current_port.is_some() {
+                tx_notify.send(MidiMessage::Changed).unwrap();
+                last_port = current_port;
+            }
+            thread::sleep(Duration::from_secs(1));
         }
     });
-    Ok(SharedMidiOutputConnection { tx })
+
+    thread::spawn(move || {
+        let mut current_values: HashMap<(u8, u8), u8> = HashMap::new();
+        for msg in rx {
+            match msg {
+                MidiMessage::One(a) => send_and_save(&mut current_output, &mut current_values, &[a]),
+                MidiMessage::Two(a, b) => send_and_save(&mut current_output, &mut current_values, &[a, b]),
+                MidiMessage::Three(a, b, c) => send_and_save(&mut current_output, &mut current_values, &[a, b, c]),
+                MidiMessage::Sysex(data) => send_and_save(&mut current_output, &mut current_values, data.as_slice()),
+                MidiMessage::Changed => {
+                    if let Some(port) = current_output {
+                        port.close();
+                    }
+                    current_output = get_output(&port_name_msg);
+                    match current_output {
+                        Some(ref mut port) => {
+                            // send current values
+                            for (&(msg, id), value) in &current_values {
+                                if value > &0 {
+                                    port.send(&[msg, id, *value]);
+                                }
+                            }
+                        },
+                        None => ()
+                    }
+                }
+            };
+        }
+    });
+    SharedMidiOutputConnection { tx }
 }
 
-pub fn get_output (port_name: &str) -> Result<MidiOutputConnection, ConnectError<MidiOutput>> {
+pub fn get_input<F> (port_name: &str, callback: F) -> ThreadReference
+where F: FnMut(u64, &[u8]) + Send + 'static {
+    let mut current_output: Option<MidiOutputConnection> = None;
+    let port_name_notify = String::from(port_name);
+    let (tx, rx) = mpsc::channel::<MidiInputMessage>();
+
+    thread::spawn(move || {
+        let mut callback = callback;
+        for msg in rx {
+            callback(msg.stamp, &msg.data)
+        }
+    });
+
+    thread::spawn(move || {
+        let mut last_port = None;
+        let mut current_input: Option<MidiInputConnection<()>> = None;
+        loop {
+            let input = MidiInput::new(APP_NAME).unwrap();
+            let current_port = get_input_port_index(&input, &port_name_notify);
+            if last_port.is_some() != current_port.is_some() {
+                if let Some(current_input) = current_input {
+                    current_input.close();
+                }
+                current_input = match current_port {
+                    Some(current_port) => {
+                        let tx_input = tx.clone();
+
+                        input.connect(current_port, &port_name_notify, move |stamp, msg, _| {
+                            tx_input.send(MidiInputMessage {stamp, data: Vec::from(msg)}).unwrap();
+                        }, ()).ok()
+                    },
+                    None => None
+                };
+                last_port = current_port;
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    ThreadReference {}
+}
+
+pub fn get_output (port_name: &str) -> Option<MidiOutputConnection> {
     let output = MidiOutput::new(APP_NAME).unwrap();
     let port_number = match get_output_port_index(&output, port_name) {
-        Err(_) => return Err(ConnectError::new(ConnectErrorKind::Other("No output port with specified name"), output)),
-        Ok(value) => value
+        None => return None,
+        Some(value) => value
     };
-    output.connect(port_number, port_name)
-}
-
-pub fn get_input<F, T: Send> (port_name: &str, callback: F, data: T) -> Result<MidiInputConnection<T>, ConnectError<MidiInput>> 
-where F: FnMut(u64, &[u8], &mut T) + Send + 'static {
-    let input = MidiInput::new(APP_NAME).unwrap();
-    let port_number = match get_input_port_index(&input, port_name) {
-        Err(_) => return Err(ConnectError::new(ConnectErrorKind::Other("No input port with specified name"), input)),
-        Ok(value) => value
-    };
-    input.connect(port_number, port_name, callback, data)
+    output.connect(port_number, port_name).ok()
 }
 
 pub fn get_outputs () -> Vec<String> {
@@ -70,24 +136,28 @@ pub fn get_inputs () -> Vec<String> {
     result
 }
 
-fn get_input_port_index (input: &MidiInput, name: &str) -> Result<usize, PortInfoError> {
+fn get_input_port_index (input: &MidiInput, name: &str) -> Option<usize> {
     let normalized_name = normalize_port_name(name);
     for i in 0..input.port_count() {
-        if normalize_port_name(&input.port_name(i).unwrap()) == normalized_name {
-            return Ok(i);
+        if let &Ok(ref name) = &input.port_name(i) {
+            if normalize_port_name(&name) == normalized_name {
+                return Some(i);
+            }
         }
     }
-    return Err(PortInfoError::CannotRetrievePortName)
+    None
 }
 
-fn get_output_port_index (output: &MidiOutput, name: &str) -> Result<usize, PortInfoError> {
+fn get_output_port_index (output: &MidiOutput, name: &str) -> Option<usize> {
     let normalized_name = normalize_port_name(name);
     for i in 0..output.port_count() {
-        if normalize_port_name(&output.port_name(i).unwrap()) == normalized_name {
-            return Ok(i);
+        if let &Ok(ref name) = &output.port_name(i) {
+            if normalize_port_name(&name) == normalized_name {
+                return Some(i);
+            }
         }
     }
-    return Err(PortInfoError::CannotRetrievePortName)
+    None
 }
 
 fn normalize_port_name (name: &str) -> String {
@@ -142,5 +212,35 @@ enum MidiMessage {
     One(u8),
     Two(u8, u8),
     Three(u8, u8, u8),
-    Sysex(Vec<u8>)
+    Sysex(Vec<u8>),
+    Changed
+}
+
+#[derive(Debug, Clone)]
+struct MidiInputMessage {
+    stamp: u64,
+    data: Vec<u8>
+}
+
+pub fn send_and_save (output: &mut Option<MidiOutputConnection>, save_dest: &mut HashMap<(u8, u8), u8>, message: &[u8]) {
+    match output {
+        &mut Some(ref mut port) => {
+            port.send(message).unwrap();
+        },
+        &mut None => ()
+    }
+    if message.len() == 3 {
+        save_dest.insert((message[0], message[1]), message[2]);
+    }
+}
+
+pub struct ThreadReference {
+    //tx: mpsc::Sender<()>
+}
+
+impl Drop for ThreadReference {
+    fn drop(&mut self) {
+        println!("DROP NOT IMPLEMENTED")
+        //self.tx.send(()).unwrap();
+    }
 }

@@ -1,7 +1,8 @@
 use ::midi_connection;
 use std::time::{SystemTime, Duration};
-use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
+
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::sync::mpsc;
 use ::chunk::{Triggerable, OutputValue, TriggerModeChange};
 use std::collections::HashSet;
@@ -25,20 +26,20 @@ impl KBoard {
         let listeners = Arc::new(Mutex::new(Vec::new()));
         let listeners_loop = Arc::clone(&listeners);
 
-        let mut kboard_output = midi_connection::get_shared_output(&kboard_port_name).unwrap();
+        let mut kboard_output = midi_connection::get_shared_output(&kboard_port_name);
 
         let scale_poll = Arc::clone(&scale);
         let tx_poll = tx.clone();
 
         // check for changes to scale and broadcast
         thread::spawn(move || {
-            let kboard_input = midi_connection::get_input(&kboard_port_name, move |stamp, message, _| {
+            let kboard_input = midi_connection::get_input(&kboard_port_name, move |stamp, message| {
                 if message[0] == 144 {
                     tx_output.send(KBoardMessage::Input(message[1] as u32, message[2])).unwrap();
                 } else if message[0] == 128 {
                     tx_output.send(KBoardMessage::Input(message[1] as u32, 0)).unwrap();
                 }
-            }, ()).unwrap();
+            });
 
             let mut last_scale = Scale {root: 0, scale: 0, sample_group_a: 0, sample_group_b: 0};
             let mut tick = 0;
