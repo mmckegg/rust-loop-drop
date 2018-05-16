@@ -1,5 +1,5 @@
 #[macro_use] extern crate lazy_static;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicUsize;
 use std::time::{SystemTime, Duration};
 use std::thread;
@@ -49,6 +49,9 @@ fn main() {
     let sp404a_offset = Arc::new(AtomicUsize::new(0));
     let sp404b_offset = Arc::new(AtomicUsize::new(0));
 
+    let sp404a_velocity_map = Arc::new(Mutex::new(devices::SP404VelocityMap::new()));
+    let sp404b_velocity_map = Arc::new(Mutex::new(devices::SP404VelocityMap::new()));
+
     // let parva_port = midi_connection::get_shared_output("Parva").unwrap();
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
@@ -63,6 +66,9 @@ fn main() {
         (main_output_port.clone(), 1),
         (main_output_port.clone(), 2),
         (main_output_port.clone(), 3)
+    ], vec![
+        Arc::clone(&sp404a_velocity_map), 
+        Arc::clone(&sp404b_velocity_map)
     ], clock.add_rx());
 
     let _launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
@@ -103,13 +109,13 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404a_offset))), 
+            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404a_offset), Arc::clone(&sp404a_velocity_map))), 
             Coords::new(0, 0), 
             Shape::new(3, 4)
         ),
 
         ChunkMap::new( 
-            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404b_offset))), 
+            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404b_offset), Arc::clone(&sp404b_velocity_map))), 
             Coords::new(0, 4), 
             Shape::new(3, 4)
         ),

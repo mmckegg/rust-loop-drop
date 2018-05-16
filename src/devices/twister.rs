@@ -1,22 +1,25 @@
 use ::midi_connection;
 use std::sync::mpsc;
+use ::devices::SP404VelocityMap;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
 
 use std::thread;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub struct Twister {
     _midi_input: midi_connection::ThreadReference
 }
 
 impl Twister {
-    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, velocity_maps: Vec<Arc<Mutex<SP404VelocityMap>>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let kmix_port_name = String::from(kmix_port_name);
 
+        let tx_input = tx.clone();
         let tx_clock = tx.clone();
         let tx_feedback = tx.clone();
 
@@ -32,15 +35,24 @@ impl Twister {
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
             let control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
-                tx.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
+                tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
             } else if message[0] == 177 {
                 if let Control::Tempo = control {
-                    tx.send(TwisterMessage::TapTempo).unwrap();
+                    tx_input.send(TwisterMessage::TapTempo).unwrap();
                 } else {
-                    tx.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
+                    tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
                 }
             }
         });
+
+        for i in 0..12 {
+            tx.send(TwisterMessage::Refresh(Control::VelocityMap(0, i))).unwrap();
+        }
+
+        tx.send(TwisterMessage::Refresh(Control::VelocityMaster(0))).unwrap();
+        tx.send(TwisterMessage::Refresh(Control::VelocityMaster(1))).unwrap();
+        tx.send(TwisterMessage::Refresh(Control::DelayFeedback)).unwrap();
+        tx.send(TwisterMessage::Refresh(Control::DelayTime)).unwrap();
 
         thread::spawn(move || {
             let mut recorder = LoopRecorder::new();
@@ -50,39 +62,28 @@ impl Twister {
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
             let mut aftertouch_targets = aftertouch_targets;
+            let mut velocity_maps = velocity_maps;
             let mut kmix_output = midi_connection::get_shared_output(&kmix_port_name);
 
             for received in rx {
                 match received {
                     TwisterMessage::ControlChange(control, value) => {
-                        let id = control.id();
-                        // let ignore = match loops.entry(control) {
-                        //     Occupied(mut entry) => {
-                        //         if entry.get().to < (last_pos - MidiTime::from_ticks(8)) {
-                        //             entry.remove();
-                        //             false
-                        //         } else {
-                        //             true
-                        //         }
+                        if let Some(id) = control.id() {
+                            let allow = if loops.contains_key(&control) {
+                                let item = loops.get(&control).unwrap();
+                                (item.offset + item.length) < (last_pos - MidiTime::from_ticks(8))
+                            } else {
+                                true
+                            };
 
-                        //     },
-                        //     Vacant(_) => false
-                        // };
-
-                        let allow = if loops.contains_key(&control) {
-                            let item = loops.get(&control).unwrap();
-                            (item.offset + item.length) < (last_pos - MidiTime::from_ticks(8))
-                        } else {
-                            true
-                        };
-
-                        if allow {
-                            loops.remove(&control);
-                            tx_feedback.send(TwisterMessage::Event(LoopEvent { 
-                                id, 
-                                value,
-                                pos: last_pos
-                            })).unwrap();
+                            if allow {
+                                loops.remove(&control);
+                                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                                    id, 
+                                    value,
+                                    pos: last_pos
+                                })).unwrap();
+                            }
                         }
                     },
                     TwisterMessage::Event(event) => {
@@ -100,7 +101,27 @@ impl Twister {
                             },
                             Control::Param(channel, control) => {
                                 tx_feedback.send(TwisterMessage::ParamControl(channel, control, value)).unwrap();
-                            }
+                            },
+                            Control::VelocityMap(channel, trigger) => {
+                                if let Some(velocity_map) = velocity_maps.get(channel) {
+                                    let mut velocity_map = velocity_map.lock().unwrap();
+                                    let trigger_index = trigger % velocity_map.triggers.len();
+                                    velocity_map.triggers[trigger_index] = value.value();
+                                }
+                            },
+                            Control::VelocityMaster(channel) => {
+                                if let Some(velocity_map) = velocity_maps.get(channel) {
+                                    let mut velocity_map = velocity_map.lock().unwrap();
+                                    velocity_map.master = value.value();
+                                }
+                            },
+                            Control::DelayTime => {
+
+                            },
+                            Control::DelayFeedback => {
+
+                            },
+                            Control::None => ()
                         }
 
                         tx_feedback.send(TwisterMessage::Refresh(control)).unwrap();
@@ -134,17 +155,40 @@ impl Twister {
                         let value = match control {
                             Control::Tempo => (last_tempo - 60) as u8,
                             Control::Swing => 64,
-                            Control::Param(_channel, _index) => last_values.get(&control).unwrap_or(&OutputValue::Off).value()
+                            Control::Param(_channel, _index) => last_values.get(&control).unwrap_or(&OutputValue::Off).value(),
+                            Control::VelocityMap(channel, trigger) => {
+                                if let Some(velocity_map) = velocity_maps.get(channel) {
+                                    let velocity_map = velocity_map.lock().unwrap();
+                                    velocity_map.triggers[trigger % velocity_map.triggers.len()]
+                                } else {
+                                    0
+                                }
+                            },
+                            Control::VelocityMaster(channel) => {
+                                if let Some(velocity_map) = velocity_maps.get(channel) {
+                                    let velocity_map = velocity_map.lock().unwrap();
+                                    velocity_map.master
+                                } else {
+                                    0
+                                }                                
+                            },
+                            Control::DelayTime => 0,
+                            Control::DelayFeedback => 0,
+                            Control::None => 0
                         };
 
-                        output.send(&[176, control.id() as u8, value]).unwrap();
+                        if let Some(id) = control.id() {
+                            output.send(&[176, id as u8, value]).unwrap();
 
-                        // MFT animation for currently looping (Channel 6)
-                        if loops.contains_key(&control) {
-                            output.send(&[181, control.id() as u8, 13]).unwrap();
-                        } else {
-                            output.send(&[181, control.id() as u8, 0]).unwrap();
+                            // MFT animation for currently looping (Channel 6)
+                            if loops.contains_key(&control) {
+                                output.send(&[181, id as u8, 13]).unwrap();
+                            } else {
+                                output.send(&[181, id as u8, 0]).unwrap();
+                            }
                         }
+
+                        
                     },
 
                     TwisterMessage::ParamControl(channel, control, value) => {
@@ -189,11 +233,14 @@ impl Twister {
                                     let offset = value.offset % value.length;
                                     let playback_pos = value.offset + ((pos - offset) % value.length);
 
-                                    if let Some(range) = recorder.get_range_for(key.id(), playback_pos, playback_pos + length) {
-                                        for event in range {
-                                            tx_feedback.send(TwisterMessage::Event(event.clone())).unwrap();
+                                    if let Some(id) = key.id() {
+                                        if let Some(range) = recorder.get_range_for(id, playback_pos, playback_pos + length) {
+                                            for event in range {
+                                                tx_feedback.send(TwisterMessage::Event(event.clone())).unwrap();
+                                            }
                                         }
                                     }
+                                    
                                 }
                                 last_pos = pos;
                             },
@@ -230,8 +277,13 @@ enum TwisterMessage {
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 enum Control {
     Param(u32, ParamControl),
+    VelocityMap(usize, usize),
+    VelocityMaster(usize),
+    DelayTime,
+    DelayFeedback,
     Tempo,
-    Swing
+    Swing,
+    None
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
@@ -249,27 +301,57 @@ struct Loop {
 }
 
 impl Control {
-    fn id (&self) -> u32 {
+    fn id (&self) -> Option<u32> {
         match self {
-            &Control::Tempo => get_index(0, 3),
-            &Control::Swing => get_index(0, 3),
-            &Control::Param(channel, param) => get_index(channel, param as u32) 
+            &Control::Tempo => Some(get_index(0, 3)),
+            &Control::Swing => Some(get_index(0, 3)),
+            &Control::Param(channel, param) => Some(get_index(channel, param as u32)),
+            &Control::VelocityMap(channel, trigger) => {
+                match channel {
+                    0 => Some(get_index(4, 0) + (trigger as u32)),
+                    _ => None
+                }
+            },
+            &Control::VelocityMaster(channel) => {
+                match channel {
+                    0 => Some(get_index(7, 0)),
+                    1 => Some(get_index(7, 1)),
+                    _ => None
+                }
+            },
+            &Control::DelayTime => Some(get_index(7, 2)),
+            &Control::DelayFeedback => Some(get_index(7, 3)),
+            &Control::None => None
         }
     }
 
     fn from_id (id: u32) -> Control {
         let col = id % 4;
         let row = id / 4;
+        let knob_id = id % 16;
+        let page_id = id / 16;
 
         if col == 3 && row == 0 {
             Control::Tempo
-        } else {
+        } else if page_id == 0 {
             Control::Param(row, match col {
                 0 => ParamControl::Kaoss,
                 1 => ParamControl::Reverb,
                 2 => ParamControl::Delay,
                 _ => ParamControl::Aftertouch
             })
+        } else if page_id == 1 && knob_id < 12  {
+            Control::VelocityMap(0, knob_id as usize)
+        } else if page_id == 1 && knob_id == 12 {
+            Control::VelocityMaster(0)
+        } else if page_id == 1 && knob_id == 13 {
+            Control::VelocityMaster(1)
+        } else if page_id == 1 && knob_id == 14 {
+            Control::DelayTime
+        } else if page_id == 1 && knob_id == 15 {
+            Control::DelayFeedback
+        } else {
+            Control::None
         }
     }
 }

@@ -14,6 +14,7 @@ mod sp404_offset;
 // pub use self::k_mix::KMix;
 pub use self::mother_32::Mother32;
 pub use self::sp404::SP404;
+pub use self::sp404::SP404VelocityMap;
 pub use self::sp404_offset::SP404Offset;
 pub use self::tr08::TR08;
 pub use self::twister::Twister;
