@@ -4,6 +4,7 @@ use ::devices::SP404VelocityMap;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
+use ::loop_grid_launchpad::LoopGridParams;
 
 use std::thread;
 use std::collections::HashMap;
@@ -14,7 +15,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, velocity_maps: Vec<Arc<Mutex<SP404VelocityMap>>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, velocity_maps: Vec<Arc<Mutex<SP404VelocityMap>>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let kmix_port_name = String::from(kmix_port_name);
@@ -33,15 +34,11 @@ impl Twister {
         let mut output = midi_connection::get_shared_output(port_name);
 
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
-            let control = Control::from_id(message[1] as u32);
+            let mut control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
                 tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
             } else if message[0] == 177 {
-                if let Control::Tempo = control {
-                    tx_input.send(TwisterMessage::TapTempo).unwrap();
-                } else {
-                    tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
-                }
+                tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
             }
         });
 
@@ -49,6 +46,7 @@ impl Twister {
             tx.send(TwisterMessage::Refresh(Control::VelocityMap(0, i))).unwrap();
         }
 
+        tx.send(TwisterMessage::Refresh(Control::Swing)).unwrap();
         tx.send(TwisterMessage::Refresh(Control::VelocityMaster(0))).unwrap();
         tx.send(TwisterMessage::Refresh(Control::VelocityMaster(1))).unwrap();
         tx.send(TwisterMessage::Refresh(Control::DelayFeedback)).unwrap();
@@ -97,7 +95,9 @@ impl Twister {
                                 clock_sender.send(ToClock::SetTempo(value.value() as usize + 60)).unwrap();
                             },
                             Control::Swing => {
-
+                                let mut params = params.lock().unwrap();
+                                let val = value.value();
+                                params.swing = (val as f64 - 64.0) / 64.0;
                             },
                             Control::Param(channel, control) => {
                                 tx_feedback.send(TwisterMessage::ParamControl(channel, control, value)).unwrap();
@@ -154,7 +154,10 @@ impl Twister {
                     TwisterMessage::Refresh(control) => {
                         let value = match control {
                             Control::Tempo => (last_tempo - 60) as u8,
-                            Control::Swing => 64,
+                            Control::Swing => {
+                                let params = params.lock().unwrap();
+                                (params.swing * 64.0 + 64.0) as u8
+                            },
                             Control::Param(_channel, _index) => last_values.get(&control).unwrap_or(&OutputValue::Off).value(),
                             Control::VelocityMap(channel, trigger) => {
                                 if let Some(velocity_map) = velocity_maps.get(channel) {
@@ -303,7 +306,7 @@ struct Loop {
 impl Control {
     fn id (&self) -> Option<u32> {
         match self {
-            &Control::Tempo => Some(get_index(0, 3)),
+            &Control::Tempo => Some(get_index(8, 3)),
             &Control::Swing => Some(get_index(0, 3)),
             &Control::Param(channel, param) => Some(get_index(channel, param as u32)),
             &Control::VelocityMap(channel, trigger) => {
@@ -332,6 +335,8 @@ impl Control {
         let page_id = id / 16;
 
         if col == 3 && row == 0 {
+            Control::Swing
+        } else if col == 3 && row == 8 {
             Control::Tempo
         } else if page_id == 0 {
             Control::Param(row, match col {

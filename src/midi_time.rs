@@ -75,6 +75,17 @@ impl MidiTime {
         self.fraction
     }
 
+    pub fn as_float (&self) -> f64 {
+        (self.ticks as f64) + ((self.fraction as f64) / 256.0)
+    }
+
+    pub fn from_float (float: f64) -> MidiTime {
+        let ticks = float as i32;
+        let fraction = ((float - ticks as f64) * 256.0) as u8;
+        let result = MidiTime {ticks, fraction};
+        result
+    }
+
     pub fn round (&self) -> MidiTime {
         if self.fraction < 128 {
             MidiTime {ticks: self.ticks, fraction: 0}
@@ -83,12 +94,52 @@ impl MidiTime {
         }
     }
 
-    pub fn whole (&self) -> MidiTime {
-        if self.fraction >= 128 {
-            MidiTime::from_ticks(self.ticks + 1)
+    pub fn floor (&self) -> MidiTime {
+        MidiTime::from_ticks(self.ticks)
+    }
+
+    pub fn quantize (&self, block_align: MidiTime) -> MidiTime {
+        MidiTime::from_ticks((self.ticks() / block_align.ticks()) * block_align.ticks())
+    }
+
+    pub fn swing (&self, amount: f64) -> MidiTime {
+        let sixteenth = MidiTime::from_ticks(6);
+        let root = MidiTime::from_ticks((self.ticks() / 12) * 12);
+        let offset = *self - root;
+        let sixteenth_offset = offset % sixteenth;
+
+        let (up, down) = swing_multipliers(amount);
+
+        if offset < sixteenth {
+            root + MidiTime::from_float(sixteenth_offset.as_float() * up)
         } else {
-            MidiTime::from_ticks(self.ticks)
+            let peak = sixteenth.as_float() * up;
+            root + MidiTime::from_float(peak + sixteenth_offset.as_float() * down)
         }
+    }
+
+    pub fn unswing (&self, amount: f64) -> MidiTime {
+        let sixteenth = MidiTime::from_ticks(6);
+
+        let root = MidiTime::from_ticks((self.ticks() / 12) * 12);
+        let offset = (*self - root).as_float();
+
+        let (up, down) = swing_multipliers(amount);
+        let peak = sixteenth.as_float() * up;
+
+        if offset < peak {
+            root + MidiTime::from_float(offset * down)
+        } else {
+            root + sixteenth + MidiTime::from_float((offset - peak) * up)
+        }
+    }
+}
+
+fn swing_multipliers (amount: f64) -> (f64, f64) {
+    if amount > 0.0 {
+        (1.0 - amount, 1.0 + amount)
+    } else {
+        (1.0 + (amount * -1.0), 1.0 - (amount * -1.0))
     }
 }
 
@@ -185,5 +236,27 @@ mod tests {
         // TODO: test fractions, etc
         let a = MidiTime::from_beats(4);
         assert_eq!(a.half(), MidiTime { ticks: 4 * 24 / 2, fraction: 0 });
+    }
+
+    #[test]
+    fn swing () {
+        assert_eq!(MidiTime::from_ticks(24).swing(0.5), MidiTime::from_ticks(24));
+        assert_eq!(MidiTime::from_ticks(24 * 2).swing(0.5), MidiTime::from_ticks(24 * 2));
+        assert_eq!(MidiTime::from_ticks(24 * 3).swing(0.5), MidiTime::from_ticks(24 * 3));
+        assert_eq!(MidiTime::from_ticks(24 + 6).swing(0.5), MidiTime::from_ticks(24 + 6));
+        assert_eq!(MidiTime::from_ticks(24 * 2 + 6).swing(0.5), MidiTime::from_ticks(24 * 2 + 6));
+        assert_eq!(MidiTime::from_ticks(24 * 3 + 6).swing(0.5), MidiTime::from_ticks(24 * 3 + 6));
+    }
+
+    #[test]
+    fn float_conversion () {
+        assert_eq!(MidiTime::new(0, 0).as_float(), 0.0);
+        assert_eq!(MidiTime::new(0, 128).as_float(), 0.5);
+        assert_eq!(MidiTime::new(1, 128).as_float(), 1.5);
+        assert_eq!(MidiTime::new(2, 0).as_float(), 2.0);
+        assert_eq!(MidiTime::from_float(0.0), MidiTime::new(0, 0));
+        assert_eq!(MidiTime::from_float(0.5), MidiTime::new(0, 128));
+        assert_eq!(MidiTime::from_float(1.5), MidiTime::new(1, 128));
+        assert_eq!(MidiTime::from_float(2.0), MidiTime::new(2, 0));
     }
 }

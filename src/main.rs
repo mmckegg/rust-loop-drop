@@ -20,7 +20,7 @@ mod scale;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
-use loop_grid_launchpad::LoopGridLaunchpad;
+use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
 use chunk::{Shape, Coords, ChunkMap};
 
 fn main() {
@@ -43,6 +43,9 @@ fn main() {
     // };
 
     let scale = Scale::new(69, 0);
+    let params = Arc::new(Mutex::new(LoopGridParams { 
+        swing: 0.0 
+    }));
     let bass_offset = Offset::new(-2, -4);
     let keys_offset = Offset::new(-1, -4);
 
@@ -69,7 +72,7 @@ fn main() {
     ], vec![
         Arc::clone(&sp404a_velocity_map), 
         Arc::clone(&sp404b_velocity_map)
-    ], clock.add_rx());
+    ], Arc::clone(&params), clock.add_rx());
 
     let _launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
         // ChunkMap::new( 
@@ -137,7 +140,7 @@ fn main() {
             Coords::new(16, 0),
             Shape::new(16, 8)
         )
-    ], Arc::clone(&scale), clock.add_rx());
+    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
 
     clock.start();
 }
