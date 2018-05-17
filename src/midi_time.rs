@@ -7,6 +7,9 @@ pub struct MidiTime {
 }
 
 impl MidiTime {
+    pub fn new (ticks: i32, fraction: u8) -> MidiTime {
+        MidiTime { ticks, fraction }
+    }
     pub fn from_ticks (ticks: i32) -> MidiTime {
         MidiTime { ticks, fraction: 0 }
     }
@@ -66,6 +69,18 @@ impl MidiTime {
 
     pub fn ticks (&self) -> i32 {
         self.ticks
+    }
+
+    pub fn frac (&self) -> u8 {
+        self.fraction
+    }
+
+    pub fn round (&self) -> MidiTime {
+        if self.fraction < 128 {
+            MidiTime {ticks: self.ticks, fraction: 0}
+        } else {
+            MidiTime {ticks: self.ticks + 1, fraction: 0}
+        }
     }
 
     pub fn whole (&self) -> MidiTime {

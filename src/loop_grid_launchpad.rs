@@ -1,6 +1,5 @@
 extern crate circular_queue;
 extern crate midir;
-use self::midir::{MidiInputConnection};
 use self::circular_queue::CircularQueue;
 use std::time::{SystemTime, Duration};
 use std::sync::mpsc;
@@ -66,7 +65,7 @@ pub enum LoopGridMessage {
     RefreshUndoRedoLights,
     SetRate(MidiTime),
     RateButton(usize, bool),
-    TriggerChunk(MidiMap, OutputValue),
+    TriggerChunk(MidiMap, OutputValue, SystemTime),
     ExternalInput(u32, OutputValue),
     TempoChanged(usize),
     RefreshSelectingScale,
@@ -243,7 +242,7 @@ impl LoopGridLaunchpad {
             let mut recorder = LoopRecorder::new();
     
             let mut last_tick_at = SystemTime::now();
-            let mut last_tick_durations: CircularQueue<Duration> = CircularQueue::with_capacity(3);
+            let mut last_tick_durations: CircularQueue<Duration> = CircularQueue::with_capacity(12);
             let mut tick_duration = Duration::from_millis(60 / 120 / 24 * 1000);
 
             let mut last_pos = MidiTime::from_ticks(0);
@@ -285,7 +284,7 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
-                        let mut events = get_events(position - MidiTime::half_tick(), length, &recorder, &out_transforms);
+                        let mut events = get_events(position, length, &recorder, &out_transforms);
                         
                         let mut ranked = HashMap::new();
                         for (key, value) in &last_triggered {
@@ -673,11 +672,15 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::Event(event) => {
                         let new_value = event.value.clone();
+                        let offset = event.pos - last_pos;
+                        let fraction = (offset.frac() as f64) / 256.0;
+                        let tick_nano = (tick_duration.subsec_nanos() as f64 * fraction) as u32;
+                        let time = last_tick_at + Duration::new(0, tick_nano);
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
                                     tx_feedback.send(LoopGridMessage::RefreshGridButton(event.id)).unwrap();
-                                    tx_feedback.send(LoopGridMessage::TriggerChunk(*mapped, new_value)).unwrap();
+                                    tx_feedback.send(LoopGridMessage::TriggerChunk(*mapped, new_value, time)).unwrap();
                                 },
                                 None => ()
                             };
@@ -950,7 +953,7 @@ impl LoopGridLaunchpad {
                             tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
                         }  
                     },
-                    LoopGridMessage::TriggerChunk(map, value) => {
+                    LoopGridMessage::TriggerChunk(map, value, time) => {
                         if let Some(chunk) = chunks.get_mut(map.chunk_index) {
                             if chunk.shouldChokeAll() {
                                 match value {
@@ -965,11 +968,11 @@ impl LoopGridLaunchpad {
 
                                         last_choke_output.insert(map.chunk_index, map.id);
                                         choke_queue.remove(&(map.chunk_index, map.id));
-                                        chunk.trigger(map.id, value, SystemTime::now());
+                                        chunk.trigger(map.id, value, time);
                                     }
                                 }
                             } else {
-                                chunk.trigger(map.id, value, SystemTime::now())
+                                chunk.trigger(map.id, value, time);
                             }
                         }
                     },
@@ -1119,18 +1122,18 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
                     }
                 },
                 &LoopTransform::Repeat {rate: repeat_rate, offset: repeat_offset, value} => {
-                    let repeat_position = (position + repeat_offset) % repeat_rate;
+                    let repeat_position = (position.round() + repeat_offset) % repeat_rate;
                     let half = repeat_rate.half().whole();
                     if repeat_position.is_zero() {
                         LoopEvent {
                             value,
-                            pos: position,
+                            pos: position.round(),
                             id: id.clone()
                         }.insert_into(&mut result);
                     } else if repeat_position == half {
                         LoopEvent {
                             value: OutputValue::Off,
-                            pos: position,
+                            pos: position.round(),
                             id: id.clone()
                         }.insert_into(&mut result);
                     }
@@ -1160,6 +1163,10 @@ fn launchpad_text (text: &str) -> Vec<u8> {
 }
 
 fn current_pos (last_pos: MidiTime, last_tick: SystemTime, tick_duration: Duration) -> MidiTime {
-    let dec = tick_duration.subsec_nanos() as f64 / SystemTime::now().duration_since(last_tick).unwrap().subsec_nanos() as f64;
-    last_pos + MidiTime::from_frac((dec * 256.0) as u8)
+    let now = SystemTime::now();
+    let since = now.duration_since(last_tick).unwrap();
+    let offset_amount = (since.subsec_nanos() as f64) / (tick_duration.subsec_nanos() as f64);
+    let ticks = offset_amount as i32;
+    let fraction = ((offset_amount % 1.0) * 256.0) as u8;
+    MidiTime::new(ticks + last_pos.ticks(), fraction)
 }

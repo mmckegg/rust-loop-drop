@@ -26,12 +26,12 @@ impl MidiKeys {
         }
     }
 
-    pub fn note (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    pub fn note (&mut self, id: u32, value: OutputValue, time: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let note_id = *self.output_values.get(&id).unwrap();
-                    self.midi_output.send(&[144 + self.midi_channel - 1, note_id, 0]).unwrap();
+                    self.midi_output.send_at(&[144 + self.midi_channel - 1, note_id, 0], time).unwrap();
                     self.output_values.remove(&id);
                 }
             },
@@ -40,7 +40,7 @@ impl MidiKeys {
                 let offset = self.offset.lock().unwrap();
                 let scale_offset = offset.base + offset.offset;
                 let note_id = (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8;
-                self.midi_output.send(&[144 + self.midi_channel - 1, note_id, velocity]).unwrap();
+                self.midi_output.send_at(&[144 + self.midi_channel - 1, note_id, velocity], time).unwrap();
                 self.output_values.insert(id, note_id);
             }
         }

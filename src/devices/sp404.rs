@@ -28,12 +28,12 @@ impl SP404 {
 }
 
 impl Triggerable for SP404 {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
-                    self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                    self.midi_port.send_at(&[128 - 1 + channel, note_id, 0], time).unwrap();
                     self.output_values.remove(&id);
                 }
             },
@@ -53,12 +53,12 @@ impl Triggerable for SP404 {
 
                 if let Some(&(previous_channel, previous_note, _)) = self.output_values.get(&id) {
                     if previous_channel != channel || previous_note != note_id {
-                        self.midi_port.send(&[128 - 1 + previous_channel, previous_note, 0]).unwrap();
+                        self.midi_port.send_at(&[128 - 1 + previous_channel, previous_note, 0], time).unwrap();
                     }
                 }
 
                 self.output_values.insert(id, (channel, note_id, velocity));
-                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
+                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], time).unwrap();
             }
         }
     }
