@@ -508,7 +508,7 @@ impl LoopGridLaunchpad {
                             out_transforms.insert(id, transform);
                             last_changed_triggers.insert(id, last_pos);
 
-                            let pos = current_pos(last_pos, last_tick_at, tick_duration).swing(current_swing);
+                            let pos = current_pos(last_pos, last_tick_at, tick_duration);
  
                             // send new value
                             if let Some(value) = get_value(id, pos, &recorder, &out_transforms) {
@@ -688,6 +688,7 @@ impl LoopGridLaunchpad {
                         let fraction = (offset.frac() as f64) / 256.0;
                         let tick_nano = (tick_duration.subsec_nanos() as f64 * fraction) as u32;
                         let time = last_tick_at + Duration::new(0, tick_nano);
+                        // println!(">> {:?}", last_pos.ticks() - event.pos.ticks());
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
@@ -698,8 +699,8 @@ impl LoopGridLaunchpad {
                             };
                         }
 
-                        let unswung_position = event.pos.unswing(current_swing);
-                        recorder.add(event.with_pos(unswung_position));
+                        let unswug_position = event.pos.swing(current_swing);
+                        recorder.add(event.with_pos(unswug_position));
                     },
                     LoopGridMessage::ClearRecording => {
                         last_changed_triggers.clear();
@@ -742,22 +743,18 @@ impl LoopGridLaunchpad {
                                     }
                                 }
 
-                                let ids = if selection.len() > 0 {
-                                    &selection
-                                } else {
-                                    &recording_ids
-                                };
-
-                                if ids.len() > 0 {
-                                    for id in ids {
-                                        if recording_ids.contains(id) || active.contains(id) {
-                                            new_loop.transforms.insert(*id, LoopTransform::Range {
-                                                pos: loop_from, 
-                                                length: loop_length
-                                            });
-                                        }
+                                for id in 0..256 {
+                                    // include ids that are recording, or if selecting, all active IDs!
+                                    let selected = selecting || selection.contains(&id);
+                                    if recording_ids.contains(&id) || (selected && active.contains(&id)) {
+                                        new_loop.transforms.insert(id, LoopTransform::Range {
+                                            pos: loop_from, 
+                                            length: loop_length
+                                        });
                                     }
+                                }
 
+                                if new_loop.transforms.len() > 0 {
                                     new_loop.length = loop_length;
                                     loop_state.set(new_loop);
                                     tx_feedback.send(LoopGridMessage::ClearRecording).unwrap();
@@ -1113,8 +1110,13 @@ fn get_events_with_swing (position: MidiTime, length: MidiTime, recorder: &LoopR
     if swing > 0.0 || swing < 0.0 {
         let swung_position = position.swing(swing);
         let swung_length = (position + length).swing(swing) - swung_position;
+
         get_events(swung_position, swung_length, recorder, transforms).iter().map(|event| {
-            let new_pos = event.pos.swing(swing);
+            let offset = (event.pos - swung_position).as_float() / swung_length.as_float();
+            let new_pos = MidiTime::from_float(offset * length.as_float()) + position;
+            if new_pos.ticks() != position.ticks() {
+                println!("=={:?}:{:?}== {:?}:{:?} | {:?}:{:?}", length.as_float(), swung_length.as_float(), position.as_float(), swung_position.as_float(), event.pos.as_float(), new_pos.as_float());
+            }
             event.with_pos(new_pos)
         }).collect()
     } else {
@@ -1152,7 +1154,9 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
                     let next_off = next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half());
                     let to = position + length;
 
+
                     if next_on >= position && next_on < to {
+                        println!("{:?}-{:?} {:?}", position.as_float(), to.as_float(), next_on.as_float());
                         LoopEvent {
                             value,
                             pos: next_on,
