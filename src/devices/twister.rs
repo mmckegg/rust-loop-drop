@@ -97,7 +97,15 @@ impl Twister {
                             Control::Swing => {
                                 let mut params = params.lock().unwrap();
                                 let val = value.value();
-                                params.swing = (val as f64 - 64.0) / 64.0;
+                                let linear_swing = (val as f64 - 64.0) / 64.0;
+                                params.swing = if val == 63 || val == 64 {
+                                    0.0
+                                } else if linear_swing < 0.0 {
+                                    -linear_swing.abs().powf(2.0)
+                                } else {
+                                    linear_swing.powf(2.0)
+                                };
+                                println!("swing {:?}", params.swing);
                             },
                             Control::Param(channel, control) => {
                                 tx_feedback.send(TwisterMessage::ParamControl(channel, control, value)).unwrap();
@@ -156,7 +164,12 @@ impl Twister {
                             Control::Tempo => (last_tempo - 60) as u8,
                             Control::Swing => {
                                 let params = params.lock().unwrap();
-                                (params.swing * 64.0 + 64.0) as u8
+                                let exp_swing = if params.swing < 0.0 {
+                                    -params.swing.abs().powf(1.0 / 2.0)
+                                } else {
+                                    params.swing.powf(1.0 / 2.0)
+                                };
+                                (exp_swing * 64.0 + 64.0) as u8
                             },
                             Control::Param(_channel, _index) => last_values.get(&control).unwrap_or(&OutputValue::Off).value(),
                             Control::VelocityMap(channel, trigger) => {
