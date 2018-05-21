@@ -105,7 +105,6 @@ impl Twister {
                                 } else {
                                     linear_swing.powf(2.0)
                                 };
-                                println!("swing {:?}", params.swing);
                             },
                             Control::Param(channel, control) => {
                                 tx_feedback.send(TwisterMessage::ParamControl(channel, control, value)).unwrap();
