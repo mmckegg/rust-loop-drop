@@ -112,13 +112,13 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404a_offset), Arc::clone(&sp404a_velocity_map))), 
+            Box::new(devices::SP404::new(usb_output_port.clone(), 1, Arc::clone(&sp404a_offset), Arc::clone(&sp404a_velocity_map))), 
             Coords::new(0, 0), 
             Shape::new(3, 4)
         ),
 
         ChunkMap::new( 
-            Box::new(devices::SP404::new(usb_output_port.clone(), 12, Arc::clone(&sp404b_offset), Arc::clone(&sp404b_velocity_map))), 
+            Box::new(devices::SP404::new(usb_output_port.clone(), 1, Arc::clone(&sp404b_offset), Arc::clone(&sp404b_velocity_map))), 
             Coords::new(0, 4), 
             Shape::new(3, 4)
         ),
