@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::{Arc, Mutex};
+use std::cmp::Ordering;
 
 use ::midi_connection;
 use ::midi_time::MidiTime;
@@ -311,8 +312,12 @@ impl LoopGridLaunchpad {
                             let b_mapping = mapping.get(&Coords::from(b.id));
                             if let Some(a_mapping) = a_mapping {
                                 if let Some(b_mapping) = b_mapping {
-                                    // most frequently triggered first (last n)
-                                    return ranked.get(&(b_mapping.chunk_index, b_mapping.id)).unwrap_or(&0).cmp(ranked.get(&(b_mapping.chunk_index, a_mapping.id)).unwrap_or(&0));
+                                    let chunk_cmp = a_mapping.chunk_index.cmp(&b_mapping.chunk_index);
+                                    return if chunk_cmp == Ordering::Equal {
+                                        ranked.get(&(b_mapping.chunk_index, b_mapping.id)).unwrap_or(&0).cmp(ranked.get(&(a_mapping.chunk_index, a_mapping.id)).unwrap_or(&0))
+                                    } else {
+                                        chunk_cmp
+                                    }
                                 }
                             }
                             a.id.cmp(&b.id)
@@ -688,7 +693,6 @@ impl LoopGridLaunchpad {
                         let fraction = (offset.frac() as f64) / 256.0;
                         let tick_nano = (tick_duration.subsec_nanos() as f64 * fraction) as u32;
                         let time = last_tick_at + Duration::new(0, tick_nano);
-                        // println!(">> {:?}", last_pos.ticks() - event.pos.ticks());
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
@@ -1114,9 +1118,6 @@ fn get_events_with_swing (position: MidiTime, length: MidiTime, recorder: &LoopR
         get_events(swung_position, swung_length, recorder, transforms).iter().map(|event| {
             let offset = (event.pos - swung_position).as_float() / swung_length.as_float();
             let new_pos = MidiTime::from_float(offset * length.as_float()) + position;
-            if new_pos.ticks() != position.ticks() {
-                println!("=={:?}:{:?}== {:?}:{:?} | {:?}:{:?}", length.as_float(), swung_length.as_float(), position.as_float(), swung_position.as_float(), event.pos.as_float(), new_pos.as_float());
-            }
             event.with_pos(new_pos)
         }).collect()
     } else {
@@ -1156,7 +1157,6 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
 
 
                     if next_on >= position && next_on < to {
-                        println!("{:?}-{:?} {:?}", position.as_float(), to.as_float(), next_on.as_float());
                         LoopEvent {
                             value,
                             pos: next_on,
