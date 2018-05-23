@@ -11,16 +11,18 @@ pub struct SP404 {
     output_values: HashMap<u32, (u8, u8, u8)>,
     offset: Arc<AtomicUsize>,
     velocity_map: Arc<Mutex<SP404VelocityMap>>,
+    chokes: Arc<Mutex<SP404Choke>>,
     midi_channel: u8,
     midi_port: midi_connection::SharedMidiOutputConnection
 }
 
 impl SP404 {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, offset: Arc<AtomicUsize>, velocity_map: Arc<Mutex<SP404VelocityMap>>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, offset: Arc<AtomicUsize>, velocity_map: Arc<Mutex<SP404VelocityMap>>, chokes: Arc<Mutex<SP404Choke>>) -> Self {
         SP404 {
             output_values: HashMap::new(),
             velocity_map,
             offset,
+            chokes,
             midi_channel,
             midi_port
         }
@@ -62,7 +64,46 @@ impl Triggerable for SP404 {
             }
         }
     }
-    fn shouldChokeAll (&self) -> bool { true }
+    fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { 
+        let chokes = self.chokes.lock().unwrap();
+
+        let mut from = 0;
+        let mut to = 12;
+
+        // WETTEST WORST LOGIC EVER! ICANTEVENBRIAN
+        if chokes.a && chokes.b {
+            if id >= 8 && id < 10 {
+                from = 8;
+                to = 10
+            } else if id >= 10 {
+                from = 10
+            } else {
+                to = 8
+            }
+        } else if chokes.a && !chokes.b {
+            if id >= 8 {
+                from = 8;
+            } else {
+                to = 8
+            }
+        } else if !chokes.a && chokes.b {
+            if id >= 10 {
+                from = 10
+            } else {
+                to = 10
+            }
+        }
+
+        let mut result = Vec::new();
+
+        for i in from..to {
+            if self.output_values.contains_key(&i) {
+                result.push(i);
+            }
+        }
+
+        Some(result)
+    }
 }
 
 enum SP404Message {
@@ -70,16 +111,31 @@ enum SP404Message {
     Trigger(u32, u8)
 }
 
-pub struct SP404VelocityMap {
-    pub master: u8,
-    pub triggers: [u8; 12]
-}
-
 impl SP404VelocityMap {
     pub fn new () -> Self {
         SP404VelocityMap {
             master: 127,
             triggers: [ 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100 ]
+        }
+    }
+}
+
+pub struct SP404VelocityMap {
+    pub master: u8,
+    pub triggers: [u8; 12]
+}
+
+
+pub struct SP404Choke {
+    pub a: bool,
+    pub b: bool
+}
+
+impl SP404Choke {
+    pub fn new () -> Self {
+        SP404Choke {
+            a: false,
+            b: false
         }
     }
 }

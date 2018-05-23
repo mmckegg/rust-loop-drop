@@ -50,7 +50,10 @@ fn main() {
     let keys_offset = Offset::new(-1, -4);
 
     let sp404a_offset = Arc::new(AtomicUsize::new(0));
-    let sp404b_offset = Arc::new(AtomicUsize::new(0));
+    let sp404b_offset = Arc::new(AtomicUsize::new(5));
+
+    let sp404a_choke = Arc::new(Mutex::new(devices::SP404Choke::new()));
+    let sp404b_choke = Arc::new(Mutex::new(devices::SP404Choke::new()));
 
     let sp404a_velocity_map = Arc::new(Mutex::new(devices::SP404VelocityMap::new()));
     let sp404b_velocity_map = Arc::new(Mutex::new(devices::SP404VelocityMap::new()));
@@ -99,26 +102,60 @@ fn main() {
             Shape::new(3, 4)
         ),
 
+        ChunkMap::new(
+            Box::new(devices::ChokeSwitch::new(Arc::clone(&sp404a_choke))), 
+            Coords::new(2 + 8, 2), 
+            Shape::new(1, 2)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::ChokeSwitch::new(Arc::clone(&sp404b_choke))), 
+            Coords::new(2 + 8, 6), 
+            Shape::new(1, 2)
+        ),
+
         ChunkMap::new( 
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))), 
-            Coords::new(4 + 8, 0), 
+            Coords::new(3 + 8, 0), 
             Shape::new(1, 8)
         ),
 
         ChunkMap::new( 
             Box::new(devices::OffsetChunk::new(Arc::clone(&keys_offset))), 
-            Coords::new(7 + 8, 0), 
+            Coords::new(4 + 8, 0), 
             Shape::new(1, 8)
         ),
 
+        ChunkMap::new( 
+            Box::new(devices::ScaleSelect::new(Arc::clone(&scale))), 
+            Coords::new(5 + 8, 0), 
+            Shape::new(1, 8)
+        ),
+
+        ChunkMap::new( 
+            Box::new(devices::RootSelect::new(Arc::clone(&scale))), 
+            Coords::new(6 + 8, 0), 
+            Shape::new(2, 8)
+        ),
+
         ChunkMap::new(
-            Box::new(devices::SP404::new(usb_output_port.clone(), 1, Arc::clone(&sp404a_offset), Arc::clone(&sp404a_velocity_map))), 
+            Box::new(devices::SP404::new(
+                usb_output_port.clone(), 1, 
+                Arc::clone(&sp404a_offset), 
+                Arc::clone(&sp404a_velocity_map),
+                Arc::clone(&sp404a_choke),
+            )), 
             Coords::new(0, 0), 
             Shape::new(3, 4)
         ),
 
         ChunkMap::new( 
-            Box::new(devices::SP404::new(usb_output_port.clone(), 1, Arc::clone(&sp404b_offset), Arc::clone(&sp404b_velocity_map))), 
+            Box::new(devices::SP404::new(
+                usb_output_port.clone(), 1, 
+                Arc::clone(&sp404b_offset), 
+                Arc::clone(&sp404b_velocity_map),
+                Arc::clone(&sp404b_choke)
+            )), 
             Coords::new(0, 4), 
             Shape::new(3, 4)
         ),

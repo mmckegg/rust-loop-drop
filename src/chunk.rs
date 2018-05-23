@@ -5,7 +5,8 @@ pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime);
     fn listen (&mut self, listener: Box<Fn(u32, OutputValue) + 'static + Send>) {}
-    fn shouldChokeAll (&self) -> bool { false }
+    fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { None }
+    fn latch_mode (&self) -> LatchMode { LatchMode::None }
     fn onTriggerModeChanged (&self, mode_change: TriggerModeChange) { }
 }
 
@@ -71,4 +72,11 @@ pub enum TriggerModeChange {
     Selecting(bool),
     SelectingScale(bool),
     Active(u32, bool)
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+pub enum LatchMode {
+    None,
+    LatchSingle,
+    LatchAny
 }

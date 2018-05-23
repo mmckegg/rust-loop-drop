@@ -1,4 +1,5 @@
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use std::time::{SystemTime, Duration};
+use ::chunk::{Triggerable, OutputValue, LatchMode};
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,7 +9,7 @@ pub struct SP404Offset {
     offset: Arc<AtomicUsize>
 }
 
-const OFFSETS: [usize; 10] = [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
+const OFFSETS: [usize; 10] = [ 0, 1, 2, 3, 5, 6, 7, 8, 4, 9 ];
 
 impl SP404Offset {
     pub fn new (offset: Arc<AtomicUsize>) -> Self {
@@ -27,6 +28,7 @@ impl Triggerable for SP404Offset {
                 self.offset.store(offset, Ordering::Relaxed)
             }
         }
-
     }
+
+    fn latch_mode (&self) -> LatchMode { LatchMode::LatchSingle }
 }
