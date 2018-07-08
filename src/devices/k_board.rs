@@ -101,6 +101,10 @@ impl KBoard {
                         }
                     },
                     KBoardMessage::Trigger(id, velocity) => {
+                        if triggering.len() == 0 {
+                            midi_output.send(&[176 + channel - 1, 17, 127]);
+                            thread::sleep(Duration::from_millis(1));
+                        }
                         if velocity > 0 {
                             midi_output.send(&[144 + channel - 1, id as u8, velocity]);
                             triggering.insert(id);
@@ -109,6 +113,9 @@ impl KBoard {
                             triggering.remove(&id);
                             tx_feedback.send(KBoardMessage::RefreshScale);
                         };
+                        if triggering.len() == 0 {
+                            midi_output.send(&[176 + channel - 1, 17, 0]);
+                        }
                         tx_feedback.send(KBoardMessage::RefreshNote(id));
                     },
                     KBoardMessage::Input(id, velocity) => {

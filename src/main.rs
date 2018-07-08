@@ -62,9 +62,12 @@ fn main() {
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
     let usb_output_port = midi_connection::get_shared_output(usb_io_name);
+    let vt3_output_port = midi_connection::get_shared_output("VT-3");
+
     let mut clock = ClockSource::new(usb_io_name, vec![
         usb_output_port.clone(), 
         main_output_port.clone(),
+        vt3_output_port.clone(),
         midi_connection::get_shared_output("Launchpad MK2")
     ]);
 
@@ -173,7 +176,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::KBoard::new("K-Board", main_output_port.clone(), 3, Arc::clone(&scale))),
+            Box::new(devices::KBoard::new("K-Board", vt3_output_port.clone(), 1, Arc::clone(&scale))),
             Coords::new(16, 0),
             Shape::new(16, 8)
         )
