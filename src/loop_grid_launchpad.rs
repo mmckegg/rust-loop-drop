@@ -989,6 +989,7 @@ impl LoopGridLaunchpad {
                         } else {
                             input_values.insert(id, value);
                             tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
+                            tx_feedback.send(LoopGridMessage::RefreshShouldFlatten).unwrap();
                         }  
                     },
                     LoopGridMessage::TriggerChunk(map, value, time) => {
