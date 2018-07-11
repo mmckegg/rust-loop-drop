@@ -1,4 +1,5 @@
 #[macro_use] extern crate lazy_static;
+
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicUsize;
 use std::time::{SystemTime, Duration};
@@ -17,6 +18,7 @@ mod output_value;
 mod chunk;
 mod devices;
 mod scale;
+mod audio_recorder;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
@@ -71,16 +73,7 @@ fn main() {
         midi_connection::get_shared_output("Launchpad MK2")
     ]);
 
-    let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix", vec![
-        (main_output_port.clone(), 1),
-        (main_output_port.clone(), 2),
-        (main_output_port.clone(), 3)
-    ], vec![
-        Arc::clone(&sp404a_velocity_map), 
-        Arc::clone(&sp404b_velocity_map)
-    ], Arc::clone(&params), clock.add_rx());
-
-    let _launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
+    let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
         // ChunkMap::new( 
         //     Box::new(devices::TR08::new(main_output_port.clone(), 11)), 
         //     Coords::new(0, 0), 
@@ -181,6 +174,15 @@ fn main() {
             Shape::new(16, 8)
         )
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
+
+    let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix", vec![
+        (main_output_port.clone(), 1),
+        (main_output_port.clone(), 2),
+        (main_output_port.clone(), 3)
+    ], vec![
+        Arc::clone(&sp404a_velocity_map), 
+        Arc::clone(&sp404b_velocity_map)
+    ], Arc::clone(&params), clock.add_rx(), launchpad.meta_tx.clone());
 
     clock.start();
 }

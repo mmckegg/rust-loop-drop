@@ -5,6 +5,7 @@ use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
 use ::loop_grid_launchpad::LoopGridParams;
+use ::audio_recorder::AudioRecorderEvent;
 
 use std::thread;
 use std::collections::HashMap;
@@ -15,7 +16,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, velocity_maps: Vec<Arc<Mutex<SP404VelocityMap>>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, kmix_port_name: &str, aftertouch_targets: Vec<(midi_connection::SharedMidiOutputConnection, u8)>, velocity_maps: Vec<Arc<Mutex<SP404VelocityMap>>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock, meta_tx: mpsc::Sender<AudioRecorderEvent>) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let kmix_port_name = String::from(kmix_port_name);
@@ -223,6 +224,8 @@ impl Twister {
                                 } else {
                                     ((100.0 + value_f * 100.0), 0.0)
                                 };
+
+                                meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, output_values.0 as u8)).unwrap();
                                 
                                 kmix_output.send(&[176 + kmix_channel - 1, 1, output_values.0 as u8]);
                                 kmix_output.send(&[176 + kmix_channel - 1, 27, output_values.1 as u8]);

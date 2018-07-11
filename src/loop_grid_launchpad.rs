@@ -10,6 +10,7 @@ use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::{Arc, Mutex};
 use std::cmp::Ordering;
+use ::audio_recorder::{AudioRecorder, AudioRecorderEvent};
 
 use ::midi_connection;
 use ::midi_time::MidiTime;
@@ -121,17 +122,21 @@ impl Light {
 }
 
 pub struct LoopGridLaunchpad {
-    _input: midi_connection::ThreadReference
+    _input: midi_connection::ThreadReference,
+    pub meta_tx: mpsc::Sender<AudioRecorderEvent>
 }
 
 impl LoopGridLaunchpad {
     pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         
+        let mut audio_recorder = AudioRecorder::new();
+
         let tx_input =  mpsc::Sender::clone(&tx);
         let tx_clock =  mpsc::Sender::clone(&tx);
         let tx_feedback =  mpsc::Sender::clone(&tx);
         let tx_loop_state =  mpsc::Sender::clone(&tx);
+        let meta_tx = audio_recorder.tx.clone();
 
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
@@ -301,7 +306,7 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
-
+                        audio_recorder.tx.send(AudioRecorderEvent::Tick).unwrap();
                         // only read swing on 8th notes to prevent back scheduling
                         if position % MidiTime::from_ticks(12) == MidiTime::zero() {
                             let params = params.lock().unwrap();
@@ -523,6 +528,7 @@ impl LoopGridLaunchpad {
                         }
                     },  
                     LoopGridMessage::TempoChanged(value) => {
+                        audio_recorder.tx.send(AudioRecorderEvent::Tempo(value)).unwrap();
                         launchpad_output.send(&launchpad_text(&value.to_string())).unwrap();
                     },
                     LoopGridMessage::RefreshGridButton(id) => {
@@ -734,6 +740,7 @@ impl LoopGridLaunchpad {
 
                         let unswug_position = event.pos.swing(current_swing);
                         recorder.add(event.with_pos(unswug_position));
+                        audio_recorder.trigger();
                     },
                     LoopGridMessage::ClearRecording => {
                         last_changed_triggers.clear();
@@ -1029,7 +1036,8 @@ impl LoopGridLaunchpad {
         });
 
         LoopGridLaunchpad {
-            _input: input
+            _input: input,
+            meta_tx
         }
     }
 }
