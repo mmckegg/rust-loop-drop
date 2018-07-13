@@ -22,7 +22,7 @@ mod audio_recorder;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
-use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
+use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams, ExternalLoopMode};
 use chunk::{Shape, Coords, ChunkMap};
 
 fn main() {
@@ -46,7 +46,8 @@ fn main() {
 
     let scale = Scale::new(69, 0);
     let params = Arc::new(Mutex::new(LoopGridParams { 
-        swing: 0.0 
+        swing: 0.0,
+        external_loop_mode: ExternalLoopMode::Loop
     }));
     let bass_offset = Offset::new(-2, -4);
     let keys_offset = Offset::new(-1, -4);

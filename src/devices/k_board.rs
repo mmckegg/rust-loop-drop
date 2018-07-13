@@ -61,8 +61,9 @@ impl KBoard {
         thread::spawn(move || {
             let mut notes = scale_loop.lock().unwrap().get_notes();
             let mut triggering = HashSet::new();
+            let mut trigger_stack: Vec<(u32, u8)> = Vec::new();
             let mut active = HashSet::new();
-            let mut selecting_scale = false;
+            let selecting_scale = true; // hardcoded on for vt-3
             let mut last_refresh_scale = SystemTime::now();
             for msg in rx {
                 match msg {
@@ -97,26 +98,45 @@ impl KBoard {
                             } else {
                                 0
                             };
-                            kboard_output.send(&[144, id as u8, value]);
+                            kboard_output.send(&[144, id as u8, value]).unwrap();
                         }
                     },
                     KBoardMessage::Trigger(id, velocity) => {
                         if triggering.len() == 0 {
-                            midi_output.send(&[176 + channel - 1, 17, 127]);
+                            midi_output.send(&[176 + channel - 1, 17, 127]).unwrap();
                             thread::sleep(Duration::from_millis(1));
                         }
+                        // monophonic midi output using trigger stack!
                         if velocity > 0 {
-                            midi_output.send(&[144 + channel - 1, id as u8, velocity]);
+                            if let Some((last_id, last_velocity)) = trigger_stack.last() {
+                                midi_output.send(&[128 + channel - 1, *last_id as u8, *last_velocity]).unwrap();
+                            }
+                            trigger_stack.push((id, velocity));
+                            midi_output.send(&[144 + channel - 1, id as u8, velocity]).unwrap();
                             triggering.insert(id);
                         } else {
-                            midi_output.send(&[128 + channel - 1, id as u8, 0]);
+                            let mut should_update = false;
+                            if let Some((last_id, _)) = trigger_stack.last() {
+                                if *last_id == id {
+                                    midi_output.send(&[128 + channel - 1, id as u8, 0]).unwrap();
+                                    should_update = true;
+                                }
+                            }
+                            trigger_stack.retain(|(item_id, _)| *item_id != id);
                             triggering.remove(&id);
-                            tx_feedback.send(KBoardMessage::RefreshScale);
+
+                            if should_update {
+                                if let Some((last_id, last_vel)) = trigger_stack.last() {
+                                    midi_output.send(&[144 + channel - 1, *last_id as u8, *last_vel]).unwrap();
+                                }
+                            }
+
+                            tx_feedback.send(KBoardMessage::RefreshScale).unwrap();
                         };
                         if triggering.len() == 0 {
-                            midi_output.send(&[176 + channel - 1, 17, 0]);
+                            midi_output.send(&[176 + channel - 1, 17, 0]).unwrap();
                         }
-                        tx_feedback.send(KBoardMessage::RefreshNote(id));
+                        tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
                     },
                     KBoardMessage::Input(id, velocity) => {
                         let output_value = if velocity > 0 {
@@ -132,12 +152,12 @@ impl KBoard {
                     KBoardMessage::TriggerMode(state) => {
                         match state {
                             TriggerModeChange::SelectingScale(value) => {
-                                selecting_scale = value;
-                                tx_feedback.send(KBoardMessage::RefreshScale);
+                                // selecting_scale = value;
+                                // tx_feedback.send(KBoardMessage::RefreshScale);
 
-                                if !selecting_scale {
-                                    tx_feedback.send(KBoardMessage::RefreshActive);
-                                }
+                                // if !selecting_scale {
+                                //     tx_feedback.send(KBoardMessage::RefreshActive);
+                                // }
                             },
                             TriggerModeChange::Active(id, value) => {
 

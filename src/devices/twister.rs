@@ -4,7 +4,7 @@ use ::devices::SP404VelocityMap;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
-use ::loop_grid_launchpad::LoopGridParams;
+use ::loop_grid_launchpad::{LoopGridParams, ExternalLoopMode};
 use ::audio_recorder::AudioRecorderEvent;
 
 use std::thread;
@@ -123,6 +123,17 @@ impl Twister {
                                     velocity_map.master = value.value();
                                 }
                             },
+                            Control::ExternalLoopMode => {
+                                let mut params = params.lock().unwrap();
+                                let v = value.value();
+                                params.external_loop_mode = if v < 32 {
+                                     ExternalLoopMode::None
+                                } else if v > 96 {
+                                    ExternalLoopMode::LoopRepeat
+                                } else {
+                                    ExternalLoopMode::Loop
+                                }
+                            },
                             Control::DelayTime => {
 
                             },
@@ -187,6 +198,14 @@ impl Twister {
                                 } else {
                                     0
                                 }                                
+                            },
+                            Control::ExternalLoopMode => {
+                                let params = params.lock().unwrap();
+                                match params.external_loop_mode {
+                                    ExternalLoopMode::None => 0,
+                                    ExternalLoopMode::Loop => 64,
+                                    ExternalLoopMode::LoopRepeat => 127
+                                }
                             },
                             Control::DelayTime => 0,
                             Control::DelayFeedback => 0,
@@ -297,6 +316,7 @@ enum Control {
     Param(u32, ParamControl),
     VelocityMap(usize, usize),
     VelocityMaster(usize),
+    ExternalLoopMode,
     DelayTime,
     DelayFeedback,
     Tempo,
@@ -322,6 +342,7 @@ impl Control {
     fn id (&self) -> Option<u32> {
         match self {
             &Control::Tempo => Some(get_index(8, 3)),
+            &Control::ExternalLoopMode => Some(get_index(11, 0)),
             &Control::Swing => Some(get_index(0, 3)),
             &Control::Param(channel, param) => Some(get_index(channel, param as u32)),
             &Control::VelocityMap(channel, trigger) => {
@@ -353,6 +374,8 @@ impl Control {
             Control::Swing
         } else if col == 3 && row == 8 {
             Control::Tempo
+        } else if col == 0 && row == 11 {
+            Control::ExternalLoopMode
         } else if page_id == 0 {
             Control::Param(row, match col {
                 0 => ParamControl::Kaoss,

@@ -90,17 +90,29 @@ impl ClockSource {
         let broadcast_clock = self.broadcast.clone();
 
         thread::spawn(move || {
-            let mut last_time = SystemTime::now();
+            let mut last_changed_at = SystemTime::now();
+            let mut ticks_at_last_changed = 0;
+            let mut last_tempo = 120;
+            let mut ticks = 0;
             loop {
                 let tempo = tempo_ref.load(Ordering::Relaxed);
-                let tick_time = last_time + duration_from_float(1000.0 / (tempo as f64 / 60.0) / 24.0);
+
+                if tempo != last_tempo {
+                    last_changed_at = SystemTime::now();
+                    ticks_at_last_changed = ticks;
+                    last_tempo = tempo;
+                    println!("tempo changed {}", tempo);
+                }
 
                 broadcast_clock.send(ClockMessage::InternalTick).unwrap();
+                ticks += 1;
 
-                if let Ok(duration) = tick_time.duration_since(last_time) {
-                    thread::sleep(duration);
+                let ticks_since_last_change = ticks - ticks_at_last_changed;
+                let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 / (24.0 / (60.0 / last_tempo as f64)));
+                let since_last_change = last_changed_at.elapsed().unwrap();
+                if from_last_change_until_next_tick > since_last_change {
+                    thread::sleep(from_last_change_until_next_tick - since_last_change);
                 }
-                last_time = tick_time;
             }
         });
 
@@ -165,7 +177,7 @@ fn duration_as_ms (duration: Duration) -> u32 {
 }
 
 fn duration_from_float (float: f64) -> Duration {
-    Duration::new(0, (float * 1_000_000.0) as u32) 
+    Duration::new(float as u64, ((float % 1.0) * 1_000_000_000.0) as u32) 
 }
 
 #[derive(Clone, Debug)]
