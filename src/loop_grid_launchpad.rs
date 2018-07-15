@@ -253,6 +253,8 @@ impl LoopGridLaunchpad {
             let mut holding = false;
             let mut holding_at = MidiTime::zero();
             let mut selecting = false;
+
+            let mut loop_held = false;
             let mut loop_from = MidiTime::from_ticks(0);
             let mut should_flatten = false;
 
@@ -287,8 +289,8 @@ impl LoopGridLaunchpad {
             // hack for setting default states on latches
             trigger_latch_for.insert(0, 0 + 64);
             trigger_latch_for.insert(1, 12 + 64);
-            trigger_latch_for.insert(4, 40 + 64);
-            trigger_latch_for.insert(5, 52 + 64);
+            trigger_latch_for.insert(6, 40 + 64);
+            trigger_latch_for.insert(7, 52 + 64);
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
@@ -434,8 +436,9 @@ impl LoopGridLaunchpad {
                             currently_held_inputs.remove(index);
                         }
 
+                        let changing_drum_patch = id < 24 && selecting && selecting_scale_held;
 
-                        if selecting && value.is_on() {
+                        if selecting && value.is_on() && !changing_drum_patch {
                             if selection.contains(&id) {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
@@ -450,7 +453,7 @@ impl LoopGridLaunchpad {
                             // range selection
                             if currently_held_inputs.len() == 2 {
 
-                                let row_offset = if selecting_scale { 8 } else { 0 };
+                                let row_offset = if selecting_scale && !changing_drum_patch { 8 } else { 0 };
                                 let from = Coords::from(currently_held_inputs[0]);
                                 let to = Coords::from(currently_held_inputs[1]);
 
@@ -470,14 +473,30 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            // switch to +64 if no selection or inside selection 
-                            if (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) {
+                            let in_scale_view = (id >= 24 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
+                                changing_drum_patch || 
+                                selection.contains(&scale_id);
+
+                            // toggles for choke modes
+                            // at this point yeah, who really cares. This project is hacks all the way down
+                            if changing_drum_patch && (id == 18 || id == 19 || id == 22 || id == 23) {
+                                if value.is_on() {
+                                    input_values.entry(scale_id).and_modify(|v| { 
+                                        *v = if v.is_on() {
+                                            OutputValue::Off
+                                        } else {
+                                            value
+                                        }
+                                    }).or_insert(value);
+                                }
+                            } else if in_scale_view  {
                                 input_values.insert(scale_id, value);
                                 input_values.remove(&id);
                             } else {
                                 input_values.insert(id, value);
                                 input_values.remove(&(scale_id));
                             }
+
                             tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
                             tx_feedback.send(LoopGridMessage::RefreshInput(scale_id)).unwrap();
                         }
@@ -521,7 +540,10 @@ impl LoopGridLaunchpad {
                         
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
                             out_transforms.insert(id, transform);
-                            last_changed_triggers.insert(id, last_pos);
+
+                            if id < 64 || id >= 88 {
+                                last_changed_triggers.insert(id, last_pos);
+                            }
 
                             let pos = current_pos(last_pos, last_tick_at, tick_duration);
  
@@ -539,97 +561,73 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshGridButton(id) => {
                         if id < 128 {
-                            let is_scale = id >= 64;
-                            let id = id % 64;
-                            let scale_id = id + 64;
+                            let base_id = id % 64;
+
+                            let in_scale_view = (base_id >= 24 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
+                                (base_id < 24 && selecting && selecting_scale_held) || 
+                                selection.contains(&(base_id + 64));
+
+                            let (id, background_id) = if in_scale_view {
+                                (base_id + 64, base_id)
+                            } else {
+                                (base_id, base_id + 64)
+                            };
 
                             let mapped = mapping.get(&Coords::from(id));
-                            let scale_mapped = mapping.get(&Coords::from(scale_id));
-                            
-                            // NASTY NASTY HACKS!!!
-                            let out_value_scale = if scale_mapped.is_some() && trigger_latch_for.contains_key(&scale_mapped.unwrap().chunk_index) {
-                                if trigger_latch_for.get(&scale_mapped.unwrap().chunk_index).unwrap() == &scale_id {
-                                    &OutputValue::On(127)
-                                } else {
-                                    &OutputValue::Off
-                                }
+                            let background_mapped = mapping.get(&Coords::from(background_id));
+
+                            let triggering = if out_values.get(&id).unwrap_or(&OutputValue::Off).is_on() {
+                                true
+                            } else if mapped.is_some() && trigger_latch_for.contains_key(&mapped.unwrap().chunk_index) {
+                                trigger_latch_for.get(&mapped.unwrap().chunk_index).unwrap() == &id
                             } else {
-                                out_values.get(&scale_id).unwrap_or(&OutputValue::Off)
+                                false
                             };
 
-                            let out_value = if mapped.is_some() && trigger_latch_for.contains_key(&mapped.unwrap().chunk_index) {
-                                if trigger_latch_for.get(&mapped.unwrap().chunk_index).unwrap() == &id {
-                                    &OutputValue::On(127)
-                                } else {
-                                    &OutputValue::Off
-                                }
+                            let background_triggering = if out_values.get(&background_id).unwrap_or(&OutputValue::Off).is_on() {
+                                true
+                            } else if background_mapped.is_some() && trigger_latch_for.contains_key(&background_mapped.unwrap().chunk_index) {
+                                trigger_latch_for.get(&background_mapped.unwrap().chunk_index).unwrap() == &background_id
                             } else {
-                                out_values.get(&id).unwrap_or(&OutputValue::Off)
+                                false
                             };
 
-                            let old_value = grid_out.remove(&id).unwrap_or(LaunchpadLight::Constant(Light::Off));
-                            let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id);
+                            let old_value = grid_out.remove(&base_id).unwrap_or(LaunchpadLight::Constant(Light::Off));
 
-                            let base_color = if in_scale_view {
-                                if let Some(scale_mapped) = scale_mapped {
-                                    if active.contains(&id) {
-                                        Light::Chunk8
-                                    } else {
-                                        CHUNK_COLORS[scale_mapped.chunk_index]
-                                    }
-                                } else {
-                                    Light::Off
-                                }
-                            } else {
-                                if let Some(mapped) = mapped {
-                                    if active.contains(&scale_id) {
-                                        Light::Chunk8
-                                    } else {
-                                        CHUNK_COLORS[mapped.chunk_index]
-                                    }
-                                } else {
-                                    Light::Off
-                                }
-                            };
-
-                            let triggering_scale_color = if let Some(scale_mapped) = scale_mapped {
-                                if in_scale_view {
-                                    Light::White
-                                } else {
-                                    CHUNK_COLORS[scale_mapped.chunk_index]
-                                }
+                            let color = if let Some(mapped) = mapped {
+                                CHUNK_COLORS[mapped.chunk_index]
                             } else {
                                 Light::Off
                             };
 
-                            let triggering_color = if let Some(mapped) = mapped {
-                                if in_scale_view {
-                                    CHUNK_COLORS[mapped.chunk_index]
-                                } else {
-                                    Light::White
-                                }
+                            let selection_color = if in_scale_view {
+                                Light::Purple
+                            } else {
+                                Light::Green
+                            };
+
+                            let background_color = if let Some(background_mapped) = background_mapped {
+                                CHUNK_COLORS[background_mapped.chunk_index]
                             } else {
                                 Light::Off
                             };
 
-                            let new_value = if out_value != &OutputValue::Off {
-                                LaunchpadLight::Constant(triggering_color)
-                            } else if out_value_scale != &OutputValue::Off {
-                                LaunchpadLight::Constant(triggering_scale_color)
+                            let new_value = if triggering {
+                                LaunchpadLight::Constant(Light::White)
                             } else if selection.contains(&id) {
-                                LaunchpadLight::Constant(Light::Green)
-                            } else if selection.contains(&scale_id) {
-                            LaunchpadLight::Constant(Light::Purple)
-                            } else if recording.contains(&id) || recording.contains(&scale_id) {
+                                LaunchpadLight::Pulsing(selection_color)
+                            } else if recording.contains(&id) {
                                 LaunchpadLight::Pulsing(Light::RedLow)
+                            } else if background_triggering {
+                                LaunchpadLight::Constant(background_color)
                             } else if active.contains(&id) {
-                                LaunchpadLight::Pulsing(base_color)
+                                LaunchpadLight::Pulsing(color)
                             } else {
-                                LaunchpadLight::Constant(base_color)
+                                LaunchpadLight::Constant(color)
                             };
 
                             if new_value != old_value {
-                                let midi_id = id_to_midi.get(&id);
+                                let midi_id = id_to_midi.get(&base_id);
                                 let message = match new_value {
                                     LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value as u8],
                                     LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value as u8]
@@ -637,7 +635,7 @@ impl LoopGridLaunchpad {
                                 launchpad_output.send(&message).unwrap()
                             }
 
-                            grid_out.insert(id, new_value);
+                            grid_out.insert(base_id, new_value);
                         } else {
                             if let Some(mapped) = mapping.get(&Coords::from(id)) {
                                 let value = active.contains(&id);
@@ -681,8 +679,14 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RefreshRecording => {
                         let mut ids = HashSet::new();
 
+                        let from = if loop_held {
+                            loop_from
+                        } else {
+                            last_pos - loop_length
+                        }; 
+
                         for (id, last_changed) in &last_changed_triggers {
-                            if last_changed >= &(last_pos - loop_length) {
+                            if last_changed >= &from {
                                 ids.insert(*id);
                             }
                         }
@@ -727,12 +731,14 @@ impl LoopGridLaunchpad {
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
                                     if let Some(chunk) = chunks.get(mapped.chunk_index) {
-                                        if chunk.latch_mode() == LatchMode::LatchSingle {
+                                        if chunk.latch_mode() == LatchMode::LatchSingle && new_value.is_on() {
                                             // track last triggered
                                             if let Some(id) = trigger_latch_for.get(&mapped.chunk_index) {
                                                 // queue refresh of previous trigger latch
                                                 tx_feedback.send(LoopGridMessage::RefreshGridButton(id.clone())).unwrap();
                                             }
+
+                                            println!("insert latch {} {}", mapped.chunk_index, event.id);
                                             trigger_latch_for.insert(mapped.chunk_index, event.id);
                                         }
                                     }
@@ -744,8 +750,12 @@ impl LoopGridLaunchpad {
                             };
                         }
 
-                        let unswug_position = event.pos.swing(current_swing);
-                        recorder.add(event.with_pos(unswug_position));
+                        // exclude sampler patch selection from loop
+                        if event.id < 64 || event.id >= 88 {
+                            let unswug_position = event.pos.swing(current_swing);
+                            recorder.add(event.with_pos(unswug_position));
+                        }
+                        
                         audio_recorder.trigger();
                     },
                     LoopGridMessage::ClearRecording => {
@@ -758,9 +768,11 @@ impl LoopGridLaunchpad {
                             }
                         } else {
                             if pressed {
+                                loop_held = true;
                                 loop_from = last_pos;
                                 launchpad_output.send(&[176, 104, Light::Green as u8]).unwrap();
                             } else {
+                                loop_held = false;
                                 launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
                                 let since_press = last_pos - loop_from;
                                 let threshold = MidiTime::from_ticks(20);
@@ -918,6 +930,8 @@ impl LoopGridLaunchpad {
                         if pressed {
                             tx_feedback.send(LoopGridMessage::ClearSelection).unwrap()
                         }
+
+                        tx_feedback.send(LoopGridMessage::RefreshSelectingScale).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
@@ -935,9 +949,8 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
                     LoopGridMessage::RefreshSelectingScale => {
-                        let new_state = if selecting_scale {
-                            launchpad_output.send(&[178, 110, Light::Yellow as u8]).unwrap();
-                            
+                        if selecting_scale {
+                            launchpad_output.send(&[178, 110, Light::Yellow as u8]).unwrap();    
                         } else {
                             launchpad_output.send(&[176, 110, Light::Chunk8 as u8]).unwrap();
                         };
