@@ -805,10 +805,16 @@ impl LoopGridLaunchpad {
                                     // include ids that are recording, or if selecting, all active IDs!
                                     let selected = selecting || selection.contains(&id);
                                     if recording_ids.contains(&id) || (selected && active.contains(&id)) {
-                                        new_loop.transforms.insert(id, LoopTransform::Range {
-                                            pos: loop_from, 
-                                            length: loop_length
-                                        });
+
+                                        // only include in loop if there are items in the range
+                                        if recorder.has_events(id, loop_from, loop_from + loop_length) {
+                                            new_loop.transforms.insert(id, LoopTransform::Range {
+                                                pos: loop_from, 
+                                                length: loop_length
+                                            });
+                                        } else {
+                                            new_loop.transforms.insert(id, LoopTransform::None);
+                                        }
                                     }
                                 }
 
@@ -853,7 +859,20 @@ impl LoopGridLaunchpad {
                                 let mut new_loop = loop_state.get().clone();
 
                                 for id in 0..256 {
-                                    new_loop.transforms.insert(id.clone(), out_transforms.get(&id).unwrap_or(&LoopTransform::None).clone());
+                                    let mut transform = out_transforms.get(&id).unwrap_or(&LoopTransform::None).clone();
+                                   
+                                    // check if there are actually events available for this range
+                                    let is_empty = if let LoopTransform::Range {pos, length} = transform {
+                                        !recorder.has_events(id, pos, pos + length)
+                                    } else {
+                                        false
+                                    };
+
+                                    if is_empty {
+                                        new_loop.transforms.insert(id.clone(), LoopTransform::None);
+                                    } else {
+                                        new_loop.transforms.insert(id.clone(), transform);
+                                    }
                                 }
 
                                 loop_state.set(new_loop);

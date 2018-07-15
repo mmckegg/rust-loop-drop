@@ -19,6 +19,14 @@ impl LoopRecorder {
         event.insert_into(collection);
     }
 
+    pub fn has_events (&self, id: u32, start_pos: MidiTime, end_pos: MidiTime) -> bool {
+        if let Some(events) = self.get_range_for(id, start_pos, end_pos) {
+            events.iter().any(|item| item.is_on())
+        } else {
+            false
+        }
+    }
+
     pub fn get_range_for (&self, id: u32, start_pos: MidiTime, end_pos: MidiTime) -> Option<&[LoopEvent]> {
         if let Some(collection) = self.per_id.get(&id) {
             Some(LoopEvent::range(collection, start_pos, end_pos))
