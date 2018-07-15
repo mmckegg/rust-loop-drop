@@ -885,7 +885,7 @@ impl LoopGridLaunchpad {
                             if selecting && selecting_scale_held {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
                             } else if selecting {
-                                loop_length = (loop_length / 2).max(MidiTime::from_measure(1, 4));
+                                loop_length = get_half_loop_length(loop_length).max(MidiTime::from_measure(1, 4));
                             } else {
                                 loop_state.undo();
                             }
@@ -896,7 +896,7 @@ impl LoopGridLaunchpad {
                             if selecting && selecting_scale {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting {
-                                loop_length = (loop_length * 2).min(MidiTime::from_beats(32));
+                                loop_length = get_double_loop_length(loop_length).min(MidiTime::from_beats(32));
                             } else {
                                 loop_state.redo();
                             }
@@ -1289,4 +1289,31 @@ fn next_repeat (pos: MidiTime, rate: MidiTime, offset: MidiTime) -> MidiTime {
     } else {
         root
     }
+}
+
+fn get_half_loop_length (time: MidiTime) -> MidiTime {
+    let beats = time.as_float() / 24.0;
+    let prev = prev_power_of_two((beats * 4.0) as u32) as f64 / 4.0;
+    MidiTime::from_float(prev * 24.0)
+}
+
+fn get_double_loop_length (time: MidiTime) -> MidiTime {
+    let beats = time.as_float() / 24.0;
+    let next = next_power_of_two((beats * 4.0) as u32) as f64 / 4.0;
+    MidiTime::from_float(next * 24.0)}
+
+fn next_power_of_two(a: u32) -> u32 {
+    let mut b = 1;
+    while b <= a {
+        b = b << 1;
+    }
+    return b;
+}
+
+fn prev_power_of_two(a: u32) -> u32 {
+    let mut b = 1;
+    while b < a {
+        b = b << 1;
+    }
+    return b / 2;
 }
