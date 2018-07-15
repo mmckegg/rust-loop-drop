@@ -639,8 +639,10 @@ impl LoopGridLaunchpad {
                         } else {
                             if let Some(mapped) = mapping.get(&Coords::from(id)) {
                                 let value = active.contains(&id);
+                                let selected = selection.contains(&id);
                                 if let Some(chunk) = chunks.get(mapped.chunk_index) {
                                     chunk.onTriggerModeChanged(TriggerModeChange::Active(mapped.id, value));
+                                    chunk.onTriggerModeChanged(TriggerModeChange::Selected(mapped.id, selected))
                                 }
                             }
                         }
@@ -1031,6 +1033,7 @@ impl LoopGridLaunchpad {
                             if selecting && value.is_on() && id >= 128 {
                                 for i in 128..256 {
                                     selection.insert(i);
+                                    tx_feedback.send(LoopGridMessage::RefreshGridButton(i)).unwrap();
                                 }
                             } else {
                                 input_values.insert(id, value);

@@ -44,7 +44,7 @@ impl KBoard {
             let mut last_scale = Scale {root: 0, scale: 0, sample_group_a: 0, sample_group_b: 0};
             let mut tick = 0;
             loop {
-                thread::sleep(Duration::from_millis(16));
+                thread::sleep(Duration::from_millis(50));
                 let current_scale = scale_poll.lock().unwrap();
                 if last_scale != *current_scale {
                     last_scale = current_scale.clone();
@@ -63,6 +63,8 @@ impl KBoard {
             let mut triggering = HashSet::new();
             let mut trigger_stack: Vec<(u32, u8)> = Vec::new();
             let mut active = HashSet::new();
+            let mut selected = HashSet::new();
+
             let selecting_scale = true; // hardcoded on for vt-3
             let mut last_refresh_scale = SystemTime::now();
             for msg in rx {
@@ -168,22 +170,39 @@ impl KBoard {
                                 };
 
                                 if updated {
-                                    tx_feedback.send(KBoardMessage::RefreshNote(id));
+                                    tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
                                 }
                             },
-                            _ => ()
+                            TriggerModeChange::Selected(id, value) => {
+                                let updated = if value {
+                                    selected.insert(id)
+                                } else {
+                                    selected.remove(&id)
+                                };
+
+                                if updated {
+                                    tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
+                                    tx_feedback.send(KBoardMessage::RefreshScale).unwrap();
+                                }
+                            }
                         }
                     },
                     KBoardMessage::Tick(value) => {
                         let output_value = if value % 2 == 0 { 127 } else { 0 };
+                        let output_value_selected = if value % 8 < 7 { 127 } else { 0 };
 
                         if selecting_scale {
-                            let output_value_root = if value % 16 < 8 { 127 } else { 0 };
+                            let output_value_root = if value % 8 < 4 { 127 } else { 0 };
                             let scale = scale_loop.lock().unwrap();
-                            kboard_output.send(&[144, scale.root as u8, output_value_root]);
+                            kboard_output.send(&[144, scale.root as u8, output_value_root]).unwrap();
                         }
+
                         for id in &triggering {
-                            kboard_output.send(&[144, *id as u8, output_value]);
+                            kboard_output.send(&[144, *id as u8, output_value]).unwrap();
+                        }
+
+                        for id in &selected {
+                            kboard_output.send(&[144, *id as u8, output_value_selected]).unwrap();
                         }
                     }
                 }
