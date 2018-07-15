@@ -737,8 +737,6 @@ impl LoopGridLaunchpad {
                                                 // queue refresh of previous trigger latch
                                                 tx_feedback.send(LoopGridMessage::RefreshGridButton(id.clone())).unwrap();
                                             }
-
-                                            println!("insert latch {} {}", mapped.chunk_index, event.id);
                                             trigger_latch_for.insert(mapped.chunk_index, event.id);
                                         }
                                     }
