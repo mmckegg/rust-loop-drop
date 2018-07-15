@@ -237,8 +237,6 @@ impl Drop for ChildGuard {
 
 pub fn log_to_file (file: &mut File, started_at: &SystemTime, event: &AudioRecorderEvent) -> bool {
     let stamp = started_at.elapsed().unwrap();
-    println!("writing {:?}", event);
-
     match event {
         &AudioRecorderEvent::Tick => {
             write!(file, "[{}.{:06}, \"tick\"]\n", stamp.as_secs(), stamp.subsec_micros())

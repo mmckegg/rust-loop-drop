@@ -526,7 +526,7 @@ impl LoopGridLaunchpad {
                             let pos = current_pos(last_pos, last_tick_at, tick_duration);
  
                             // send new value
-                            if let Some(value) = get_value(id, pos, &recorder, &out_transforms) {
+                            if let Some(value) = get_value(id, pos, &recorder, &out_transforms, true) {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                     id, value, pos
                                 })).unwrap();
@@ -995,7 +995,7 @@ impl LoopGridLaunchpad {
                                 last_changed_triggers.insert(id, last_pos);
 
                                 // send new value
-                                if let Some(value) = get_value(id, last_pos, &recorder, &out_transforms) {
+                                if let Some(value) = get_value(id, last_pos, &recorder, &out_transforms, false) {
                                     tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                         id: id, value, pos: last_pos
                                     })).unwrap();
@@ -1153,7 +1153,7 @@ fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, 
     (added, removed)
 }
 
-fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>) -> Option<OutputValue> {
+fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>, late_trigger: bool) -> Option<OutputValue> {
     match transforms.get(&id).unwrap_or(&LoopTransform::None) {
         &LoopTransform::Value(value) => Some(value),
         &LoopTransform::Range {pos: range_pos, length: range_length} => {
@@ -1169,6 +1169,19 @@ fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: 
                 },
                 _ => Some(OutputValue::Off)
             }
+        },
+        &LoopTransform::Repeat { rate, offset, value } => {
+            if late_trigger {
+                let mut current_on = position.quantize(rate) + (offset % rate);
+                if current_on > position {
+                    current_on = current_on - rate
+                }
+                if position - current_on <= MidiTime::from_ticks(1) {
+                    return Some(value);
+                }
+            }
+            
+            Some(OutputValue::Off)
         },
         _ => Some(OutputValue::Off)
     }
@@ -1201,7 +1214,7 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
 
                     if range_pos >= playback_pos && range_pos < (playback_pos + length) {
                         // insert start value
-                        if let Some(value) = get_value(*id, range_pos, recorder, transforms) {
+                        if let Some(value) = get_value(*id, range_pos, recorder, transforms, false) {
                             LoopEvent {
                                 id: *id, pos: position, value
                             }.insert_into(&mut result);
