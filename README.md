@@ -1,6 +1,10 @@
 # rust-loop-drop
 [WIP] Midi-only version of Loop Drop for running on low power machines like Raspberry Pi and Beaglebone
 
+> :warning: **This codebase is not currently intended for use outside of my [music setup](https://www.youtube.com/watch?v=TPSqQRR517o)**
+>
+> It follows 0-refactor _just make music_ development style, so... eh. But here's the code in all it's gory glory, because open source is best source!
+
 ## DESTROY WITH SCIENCE - Digital Devices 🎶
 
 This repo contains all of the code used to make the album! The head was [1323ff9](https://github.com/mmckegg/rust-loop-drop/commit/1323ff968e169f276c185834e2d93e147c3aebc0) at the time. 
