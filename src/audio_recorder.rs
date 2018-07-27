@@ -190,7 +190,7 @@ impl AudioRecorder {
                 "--channels", "8",
                 "--device", "plughw:CARD=KMix,DEV=0",
                 "--format", "S16_LE",
-                "--rate", "48000",
+                "--rate", "44100",
                 &output_path
             ]).spawn().unwrap();
 
