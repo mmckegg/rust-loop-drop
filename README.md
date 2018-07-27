@@ -1,9 +1,11 @@
 # rust-loop-drop
 [WIP] Midi-only version of Loop Drop for running on low power machines like Raspberry Pi and Beaglebone
 
-> :warning: **This codebase is not currently intended for use outside of my [music setup](https://www.youtube.com/watch?v=TPSqQRR517o)**
+> :warning: **This codebase is not currently intended for use outside of my [music setup][2]**
 >
 > It follows 0-refactor _just make music_ development style, so... eh. But here's the code in all it's gory glory, because open source is best source!
+
+[![The rig in action, May 2018](assets/the-rig-in-action-may-2018.jpg)][2]
 
 ## DESTROY WITH SCIENCE - Digital Devices 🎶
 
@@ -26,3 +28,4 @@ dat://filez.destroywithscience.com/
 GNU Affero General Public License v3.0
 
 [1]: https://destroywithscience.bandcamp.com/album/digital-devices
+[2]: https://www.youtube.com/watch?v=TPSqQRR517o
