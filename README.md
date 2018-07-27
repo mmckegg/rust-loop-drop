@@ -3,7 +3,7 @@
 
 > :warning: **This codebase is not currently intended for use outside of my [music setup][2]**
 >
-> It follows 0-refactor _just make music_ development style, so... eh. But here's the code in all it's gory glory, because open source is best source!
+> It follows 0-refactor _just make music_ development style, so... eh. But here's the code in all its gory glory, because open source is best source!
 
 [![The rig in action, May 2018](assets/the-rig-in-action-may-2018.jpg)][2]
 
