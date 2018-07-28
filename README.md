@@ -1,5 +1,5 @@
 # rust-loop-drop
-[WIP] Midi-only version of Loop Drop for running on low power machines like Raspberry Pi and Beaglebone
+[WIP] Midi-only version of [Loop Drop](https://github.com/mmckegg/loop-drop-app) for running on low power machines like Raspberry Pi and Beaglebone
 
 > :warning: **This codebase is not currently intended for use outside of my [music setup][2]**
 >
