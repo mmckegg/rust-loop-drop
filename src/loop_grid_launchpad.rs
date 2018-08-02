@@ -270,6 +270,9 @@ impl LoopGridLaunchpad {
             let mut tick_duration = Duration::from_millis(60 / 120 / 24 * 1000);
 
             let mut last_pos = MidiTime::from_ticks(0);
+            let mut last_length = MidiTime::from_ticks(0);
+            let mut length_multiplier = 0.0;
+
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut currently_held_inputs: Vec<u32> = Vec::new();
@@ -316,14 +319,28 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
+
+                        // calculate bpm (unknown if syncing to external clock)
+                        let current_time = SystemTime::now();
+                        last_tick_durations.push(current_time.duration_since(last_tick_at).unwrap());
+                        tick_duration = last_tick_durations.iter().sum::<Duration>() / (last_tick_durations.len() as u32);
+                        last_tick_at = current_time;
+
+                        // record ticks in output file
                         audio_recorder.tx.send(AudioRecorderEvent::Tick).unwrap();
+
                         // only read swing on 8th notes to prevent back scheduling
                         if position % MidiTime::from_ticks(12) == MidiTime::zero() {
                             let params = params.lock().unwrap();
                             current_swing = params.swing
                         }
 
-                        let mut events = get_events_with_swing(position, length, &recorder, &out_transforms, current_swing);
+                        // get the swung position
+                        last_pos = position.swing(current_swing);
+                        last_length = (position + length).swing(current_swing) - last_pos;
+                        length_multiplier = last_length.as_float() / length.as_float();
+
+                        let mut events = get_events(last_pos, last_length, &recorder, &out_transforms);
 
                         let mut ranked = HashMap::new();
                         for (key, value) in &last_triggered {
@@ -357,12 +374,6 @@ impl LoopGridLaunchpad {
                             }
                             tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                         }
-
-                        last_pos = position;
-                        let current_time = SystemTime::now();
-                        last_tick_durations.push(current_time.duration_since(last_tick_at).unwrap());
-                        tick_duration = last_tick_durations.iter().sum::<Duration>() / (last_tick_durations.len() as u32);
-                        last_tick_at = current_time;
 
                         tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
@@ -545,7 +556,7 @@ impl LoopGridLaunchpad {
                                 last_changed_triggers.insert(id, last_pos);
                             }
 
-                            let pos = current_pos(last_pos, last_tick_at, tick_duration);
+                            let pos = current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
  
                             // send new value
                             if let Some(value) = get_value(id, pos, &recorder, &out_transforms, true) {
@@ -727,7 +738,7 @@ impl LoopGridLaunchpad {
                         let new_value = event.value.clone();
                         let offset = event.pos - last_pos;
                         let fraction = (offset.frac() as f64) / 256.0;
-                        let tick_nano = (tick_duration.subsec_nanos() as f64 * fraction) as u32;
+                        let tick_nano = ((tick_duration.subsec_nanos() as f64 * fraction) * length_multiplier) as u32;
                         let time = last_tick_at + Duration::new(0, tick_nano);
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             match maybe_update(&mut out_values, event.id, new_value) {
@@ -752,8 +763,8 @@ impl LoopGridLaunchpad {
 
                         // exclude sampler patch selection from loop
                         if event.id < 64 || event.id >= 88 {
-                            let unswug_position = event.pos.swing(current_swing);
-                            recorder.add(event.with_pos(unswug_position));
+                            current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
+                            recorder.add(event);
                         }
                         
                         audio_recorder.trigger();
@@ -1306,13 +1317,14 @@ fn launchpad_text (text: &str) -> Vec<u8> {
     result
 }
 
-fn current_pos (last_pos: MidiTime, last_tick: SystemTime, tick_duration: Duration) -> MidiTime {
+fn current_pos (last_pos: MidiTime, last_tick: SystemTime, tick_duration: Duration, length_multiplier: f64) -> MidiTime {
     let now = SystemTime::now();
     let since = now.duration_since(last_tick).unwrap();
     let offset_amount = (since.subsec_nanos() as f64) / (tick_duration.subsec_nanos() as f64);
     let ticks = offset_amount as i32;
     let fraction = ((offset_amount % 1.0) * 256.0) as u8;
-    MidiTime::new(ticks + last_pos.ticks(), fraction)
+    let offset_pos = MidiTime::new(ticks, fraction);
+    last_pos + offset_pos
 }
 
 fn next_repeat (pos: MidiTime, rate: MidiTime, offset: MidiTime) -> MidiTime {
