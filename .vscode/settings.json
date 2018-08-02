@@ -12,6 +12,7 @@
         "port",
         "remoteable",
         "triggerable",
+        "unswing",
         "unswug"
     ]
 }
