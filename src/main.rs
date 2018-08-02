@@ -170,7 +170,12 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::KBoard::new("K-Board", vt3_output_port.clone(), 1, Arc::clone(&scale))),
+            Box::new(devices::KBoard::new(
+                "K-Board", 
+                vt3_output_port.clone(), 1,
+                main_output_port.clone(), 3,
+                Arc::clone(&scale)
+            )),
             Coords::new(16, 0),
             Shape::new(16, 8)
         )

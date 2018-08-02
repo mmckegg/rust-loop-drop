@@ -16,10 +16,12 @@ pub struct KBoard {
 }
 
 impl KBoard {
-    pub fn new (kboard_port_name: &str, midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>) -> Self {
+    pub fn new (kboard_port_name: &str, midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, midi_output2: midi_connection::SharedMidiOutputConnection, channel2: u8, scale: Arc<Mutex<Scale>>) -> Self {
         let (tx, rx) = mpsc::channel();
 
         let mut midi_output = midi_output;
+        let mut midi_output2 = midi_output2;
+        
         let kboard_port_name = String::from(kboard_port_name);
 
         let tx_output = tx.clone();
@@ -104,6 +106,12 @@ impl KBoard {
                         }
                     },
                     KBoardMessage::Trigger(id, velocity) => {
+                        if velocity > 0 {
+                            midi_output2.send(&[144 + channel2 - 1, id as u8, velocity]).unwrap();
+                        } else {
+                            midi_output2.send(&[128 + channel2 - 1, id as u8, 0]).unwrap();
+                        }
+
                         if triggering.len() == 0 {
                             midi_output.send(&[176 + channel - 1, 17, 127]).unwrap();
                             thread::sleep(Duration::from_millis(1));
@@ -195,6 +203,7 @@ impl KBoard {
                             let output_value_root = if value % 8 < 4 { 127 } else { 0 };
                             let scale = scale_loop.lock().unwrap();
                             kboard_output.send(&[144, scale.root as u8, output_value_root]).unwrap();
+                            kboard_output.send(&[144, (scale.root + 12) as u8, output_value_root]).unwrap();
                         }
 
                         for id in &triggering {
