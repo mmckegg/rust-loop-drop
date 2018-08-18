@@ -63,6 +63,8 @@ impl Twister {
             let mut aftertouch_targets = aftertouch_targets;
             let mut velocity_maps = velocity_maps;
             let mut kmix_output = midi_connection::get_shared_output(&kmix_port_name);
+            let mut delay_time = 0;
+            let mut feedback_time = 0;
 
             for received in rx {
                 match received {
@@ -135,10 +137,16 @@ impl Twister {
                                 }
                             },
                             Control::DelayTime => {
-
+                                if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut(3) {
+                                    port.send(&[176 + channel - 1, 2, value.value()]).unwrap();
+                                    delay_time = value.value();
+                                }
                             },
                             Control::DelayFeedback => {
-
+                                if let Some(&mut (ref mut port, channel)) = aftertouch_targets.get_mut(3) {
+                                    port.send(&[176 + channel - 1, 5, value.value()]).unwrap();
+                                    feedback_time = value.value();
+                                }
                             },
                             Control::None => ()
                         }
@@ -207,8 +215,8 @@ impl Twister {
                                     ExternalLoopMode::LoopRepeat => 127
                                 }
                             },
-                            Control::DelayTime => 0,
-                            Control::DelayFeedback => 0,
+                            Control::DelayTime => delay_time,
+                            Control::DelayFeedback => feedback_time,
                             Control::None => 0
                         };
 

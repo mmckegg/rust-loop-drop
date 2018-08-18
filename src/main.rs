@@ -184,7 +184,8 @@ fn main() {
     let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix", vec![
         (main_output_port.clone(), 1),
         (main_output_port.clone(), 2),
-        (main_output_port.clone(), 3)
+        (main_output_port.clone(), 3),
+        (main_output_port.clone(), 15)
     ], vec![
         Arc::clone(&sp404a_velocity_map), 
         Arc::clone(&sp404b_velocity_map)
