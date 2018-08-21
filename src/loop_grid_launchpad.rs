@@ -550,6 +550,15 @@ impl LoopGridLaunchpad {
                         let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
                         
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
+                            // if let Some(mapped) = mapping.get(&Coords::from(id)) {
+                            //     let chunk = &chunks[mapped.chunk_index];
+                            //     if chunk.schedule_mode() == ScheduleMode::Monophonic {
+                            //         for i in &chunk_trigger_ids[mapped.chunk_index] {
+                            //             out_transforms.insert(*i, LoopTransform::None);
+                            //         }
+                            //     }
+                            // }
+
                             out_transforms.insert(id, transform);
 
                             if id < 64 || id >= 88 {
@@ -1228,21 +1237,6 @@ fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: 
             Some(OutputValue::Off)
         },
         _ => Some(OutputValue::Off)
-    }
-}
-
-fn get_events_with_swing (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>, swing: f64) -> Vec<LoopEvent> {
-    if swing > 0.0 || swing < 0.0 {
-        let swung_position = position.swing(swing);
-        let swung_length = (position + length).swing(swing) - swung_position;
-
-        get_events(swung_position, swung_length, recorder, transforms).iter().map(|event| {
-            let offset = (event.pos - swung_position).as_float() / swung_length.as_float();
-            let new_pos = MidiTime::from_float(offset * length.as_float()) + position;
-            event.with_pos(new_pos)
-        }).collect()
-    } else {
-        get_events(position, length, recorder, transforms)
     }
 }
 
