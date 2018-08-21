@@ -4,6 +4,7 @@ pub use ::output_value::OutputValue;
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime);
+    fn on_tick (&mut self) {}
     fn listen (&mut self, listener: Box<Fn(u32, OutputValue) + 'static + Send>) {}
     fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { None }
     fn latch_mode (&self) -> LatchMode { LatchMode::None }

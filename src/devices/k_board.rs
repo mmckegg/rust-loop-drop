@@ -116,6 +116,7 @@ impl KBoard {
                             midi_output.send(&[176 + channel - 1, 17, 127]).unwrap();
                             thread::sleep(Duration::from_millis(1));
                         }
+
                         // monophonic midi output using trigger stack!
                         if velocity > 0 {
                             if let Some((last_id, last_velocity)) = trigger_stack.last() {

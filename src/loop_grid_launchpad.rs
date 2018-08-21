@@ -84,6 +84,7 @@ pub enum LoopGridMessage {
     TempoChanged(usize),
     RefreshSelectingScale,
     FlushChoke,
+    ChunkTick,
     None
 }
 
@@ -206,28 +207,32 @@ impl LoopGridLaunchpad {
         thread::spawn(move || {
             let mut mapping: HashMap<Coords, MidiMap> = HashMap::new();
             let mut chunks: Vec<Box<Triggerable>> = Vec::new();
+            let mut chunk_trigger_ids: Vec<Vec<u32>> = Vec::new();
+
             let scale = scale;
 
             for mut item in chunk_map {
-                let mut id = 0;
+                let mut count = 0;
                 let chunk_index = chunks.len();
                 let mut trigger_ids = Vec::new();
                 for row in (item.coords.row)..(item.coords.row + item.shape.rows) {
                     for col in (item.coords.col)..(item.coords.col + item.shape.cols) {
-                        mapping.insert(Coords::new(row, col), MidiMap {chunk_index, id});   
+                        mapping.insert(Coords::new(row, col), MidiMap {chunk_index, id: count});   
                         trigger_ids.push(Coords::id_from(row, col));                
-                        id += 1;
+                        count += 1;
                     }
                 }
 
                 let tx_chunk_listener =  mpsc::Sender::clone(&tx_loop_state);
+                let trigger_ids_listener = trigger_ids.clone();
 
                 item.chunk.listen(Box::new(move |index, value| {
-                    if let Some(id) = trigger_ids.get(index as usize) {
+                    if let Some(id) = trigger_ids_listener.get(index as usize) {
                         tx_chunk_listener.send(LoopGridMessage::ExternalInput(*id, value)).unwrap();
                     }
                 }));
 
+                chunk_trigger_ids.push(trigger_ids);
                 chunks.push(item.chunk);
             }
 
@@ -376,6 +381,7 @@ impl LoopGridLaunchpad {
                             tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                         }
 
+                        tx_feedback.send(LoopGridMessage::ChunkTick).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
                     },
@@ -1105,6 +1111,11 @@ impl LoopGridLaunchpad {
                             } else {
                                 chunk.trigger(map.id, value, time);
                             }
+                        }
+                    },
+                    LoopGridMessage::ChunkTick => {
+                        for chunk in &mut chunks {
+                            chunk.on_tick();
                         }
                     },
                     LoopGridMessage::FlushChoke => {
