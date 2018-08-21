@@ -557,15 +557,6 @@ impl LoopGridLaunchpad {
                         let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
                         
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
-                            // if let Some(mapped) = mapping.get(&Coords::from(id)) {
-                            //     let chunk = &chunks[mapped.chunk_index];
-                            //     if chunk.schedule_mode() == ScheduleMode::Monophonic {
-                            //         for i in &chunk_trigger_ids[mapped.chunk_index] {
-                            //             out_transforms.insert(*i, LoopTransform::None);
-                            //         }
-                            //     }
-                            // }
-
                             out_transforms.insert(id, transform);
 
                             if id < 64 || id >= 88 {
