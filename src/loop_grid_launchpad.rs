@@ -935,7 +935,7 @@ impl LoopGridLaunchpad {
                     },   
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
-                            if selecting && selecting_scale {
+                            if selecting && selecting_scale_held {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting {
                                 loop_length = get_double_loop_length(loop_length).min(MidiTime::from_beats(32));
