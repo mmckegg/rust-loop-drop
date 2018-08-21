@@ -164,7 +164,7 @@ fn main() {
         ),
 
         ChunkMap::new( 
-            Box::new(devices::VolcaBass::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::VolcaKeys::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8)
         ),

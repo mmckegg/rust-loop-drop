@@ -7,6 +7,7 @@ pub trait Triggerable {
     fn listen (&mut self, listener: Box<Fn(u32, OutputValue) + 'static + Send>) {}
     fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { None }
     fn latch_mode (&self) -> LatchMode { LatchMode::None }
+    fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
     fn onTriggerModeChanged (&self, mode_change: TriggerModeChange) { }
 }
 
@@ -79,4 +80,10 @@ pub enum LatchMode {
     None,
     LatchSingle,
     LatchAny
+}
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+pub enum ScheduleMode {
+    MostRecent,
+    Percussion
 }

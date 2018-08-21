@@ -19,7 +19,7 @@ use ::output_value::OutputValue;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::loop_state::{LoopCollection, LoopState, LoopTransform, LoopStateChange};
 use ::clock_source::{RemoteClock, ToClock, FromClock};
-use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, TriggerModeChange, LatchMode};
+use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, TriggerModeChange, LatchMode, ScheduleMode};
 use ::scale::Scale;
 
 const CHUNK_COLORS: [Light; 12] = [Light::Chunk1, Light::Chunk2, Light::Chunk10, Light::Chunk10, Light::Chunk3, Light::Chunk4, Light::Chunk5, Light::Chunk6, Light::Chunk7, Light::Chunk8, Light::Chunk9, Light::Chunk10];
@@ -356,7 +356,8 @@ impl LoopGridLaunchpad {
                             if let Some(a_mapping) = a_mapping {
                                 if let Some(b_mapping) = b_mapping {
                                     let chunk_cmp = a_mapping.chunk_index.cmp(&b_mapping.chunk_index);
-                                    return if chunk_cmp == Ordering::Equal {
+                                    let schedule_mode = chunks.get(a_mapping.chunk_index).unwrap().schedule_mode();
+                                    return if chunk_cmp == Ordering::Equal && schedule_mode == ScheduleMode::Percussion {
                                         ranked.get(&(b_mapping.chunk_index, b_mapping.id)).unwrap_or(&0).cmp(ranked.get(&(a_mapping.chunk_index, a_mapping.id)).unwrap_or(&0))
                                     } else {
                                         chunk_cmp

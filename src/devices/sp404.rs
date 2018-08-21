@@ -1,4 +1,4 @@
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode};
 use ::midi_connection;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -103,6 +103,10 @@ impl Triggerable for SP404 {
         }
 
         Some(result)
+    }
+
+    fn schedule_mode (&self) -> ScheduleMode {
+        ScheduleMode::Percussion
     }
 }
 
