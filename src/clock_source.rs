@@ -108,7 +108,9 @@ impl ClockSource {
                 ticks += 1;
 
                 let ticks_since_last_change = ticks - ticks_at_last_changed;
-                let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 / (24.0 / (60.0 / last_tempo as f64)));
+                let beat_duration = 60.0 / last_tempo as f64;
+                let tick_duration = beat_duration / 24.0;
+                let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 * tick_duration);
                 let since_last_change = last_changed_at.elapsed().unwrap();
                 if from_last_change_until_next_tick > since_last_change {
                     thread::sleep(from_last_change_until_next_tick - since_last_change);
