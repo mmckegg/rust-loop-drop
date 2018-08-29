@@ -470,8 +470,6 @@ impl LoopGridLaunchpad {
 
                             // range selection
                             if currently_held_inputs.len() == 2 {
-
-                                let row_offset = if selecting_scale && !changing_drum_patch { 8 } else { 0 };
                                 let from = Coords::from(currently_held_inputs[0]);
                                 let to = Coords::from(currently_held_inputs[1]);
 
@@ -482,6 +480,7 @@ impl LoopGridLaunchpad {
 
                                 for row in from_row..to_row {
                                     for col in from_col..to_col {
+                                        let row_offset = if selecting_scale && row >= 3 { 8 } else { 0 };
                                         let id = Coords::id_from(row + row_offset, col);
                                         selection.insert(id);
                                         tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
