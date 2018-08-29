@@ -3,7 +3,7 @@ extern crate bus;
 pub use self::bus::{Bus, BusReader};
 pub use ::midi_time::MidiTime;
 
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 use std::thread;
 use std::sync::mpsc;
 use std::sync::{Arc};
@@ -20,7 +20,7 @@ pub struct ClockSource {
     tempo: Arc<AtomicUsize>,
     _midi_input: midi_connection::ThreadReference,
     midi_outputs: Vec<midi_connection::SharedMidiOutputConnection>,
-    internal_clock_suppressed_to: SystemTime,
+    internal_clock_suppressed_to: Instant,
     tick_pos: MidiTime
 }
 
@@ -46,7 +46,7 @@ impl ClockSource {
         });
 
         thread::spawn(move || {
-            let mut last_tap = SystemTime::now();
+            let mut last_tap = Instant::now();
             for msg in rx {
                 match msg {
                     ToClock::SetTempo(value) => {
@@ -54,8 +54,8 @@ impl ClockSource {
                         broadcast_rx.send(ClockMessage::Tempo(value)).unwrap();
                     },
                     ToClock::TapTempo => {
-                        let tap_time = SystemTime::now();
-                        let duration = tap_time.duration_since(last_tap).unwrap_or(Duration::from_secs(0));
+                        let tap_time = Instant::now();
+                        let duration = tap_time.duration_since(last_tap);
 
                         if duration < Duration::from_millis(1500) {
                             let ms = duration_as_ms(duration);
@@ -74,7 +74,7 @@ impl ClockSource {
 
         ClockSource {
             bus: Bus::new(10),
-            internal_clock_suppressed_to: SystemTime::now(),
+            internal_clock_suppressed_to: Instant::now(),
             _midi_input: external_input,
             midi_outputs: output_ports,
             tick_pos: MidiTime::zero(),
@@ -90,7 +90,7 @@ impl ClockSource {
         let broadcast_clock = self.broadcast.clone();
 
         thread::spawn(move || {
-            let mut last_changed_at = SystemTime::now();
+            let mut last_changed_at = Instant::now();
             let mut ticks_at_last_changed = 0;
             let mut last_tempo = 120;
             let mut ticks = 0;
@@ -98,7 +98,7 @@ impl ClockSource {
                 let tempo = tempo_ref.load(Ordering::Relaxed);
 
                 if tempo != last_tempo {
-                    last_changed_at = SystemTime::now();
+                    last_changed_at = Instant::now();
                     ticks_at_last_changed = ticks;
                     last_tempo = tempo;
                     println!("tempo changed {}", tempo);
@@ -111,7 +111,7 @@ impl ClockSource {
                 let beat_duration = 60.0 / last_tempo as f64;
                 let tick_duration = beat_duration / 24.0;
                 let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 * tick_duration);
-                let since_last_change = last_changed_at.elapsed().unwrap();
+                let since_last_change = last_changed_at.elapsed();
                 if from_last_change_until_next_tick > since_last_change {
                     thread::sleep(from_last_change_until_next_tick - since_last_change);
                 }
@@ -123,7 +123,7 @@ impl ClockSource {
         for msg in &self.to_broadcast {
             match msg {
                 ClockMessage::InternalTick => {
-                    if self.internal_clock_suppressed_to < SystemTime::now() {
+                    if self.internal_clock_suppressed_to < Instant::now() {
                         self.bus.broadcast(FromClock::Schedule {
                             pos: self.tick_pos, 
                             length: MidiTime::tick()
@@ -135,7 +135,7 @@ impl ClockSource {
                     }
                 },
                 ClockMessage::ExternalTick => {
-                    self.internal_clock_suppressed_to = SystemTime::now() + Duration::new(0, 500 * 1_000_000);
+                    self.internal_clock_suppressed_to = Instant::now() + Duration::new(0, 500 * 1_000_000);
                     self.bus.broadcast(FromClock::Schedule {
                         pos: self.tick_pos, 
                         length: MidiTime::tick()
