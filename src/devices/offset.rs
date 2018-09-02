@@ -1,4 +1,4 @@
-use ::midi_keys::Offset;
+use devices::midi_keys::Offset;
 use ::chunk::{Triggerable, OutputValue, SystemTime};
 use std::sync::{Arc, Mutex};
 

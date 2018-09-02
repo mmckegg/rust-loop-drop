@@ -1,8 +1,7 @@
 use ::midi_connection;
 use std::collections::HashMap;
-use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
-use ::output_value::OutputValue;
+use ::chunk::{Triggerable, OutputValue, SystemTime};
 
 pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
@@ -25,24 +24,17 @@ impl MidiKeys {
             scale
         }
     }
+}
 
-    pub fn on_tick (&mut self) {
-        let mut to_update = HashMap::new();
-        for (id, (note_id, velocity)) in &self.output_values {
-            let new_note_id = get_note_id(*id, &self.scale, &self.offset);
-            if note_id != &new_note_id {
-                self.midi_output.send(&[144 + self.midi_channel - 1, new_note_id, *velocity]).unwrap();
-                self.midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
-                to_update.insert(id.clone(), (new_note_id, velocity.clone()));
-            }
-        }
+fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>) -> u8 {
+    let scale = scale.lock().unwrap();
+    let offset = offset.lock().unwrap();
+    let scale_offset = offset.base + offset.offset;
+    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8
+}
 
-        for (id, item) in to_update {
-            self.output_values.insert(id, item);
-        }
-    }
-
-    pub fn note (&mut self, id: u32, value: OutputValue, time: SystemTime) {
+impl Triggerable for MidiKeys {
+    fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
@@ -59,14 +51,19 @@ impl MidiKeys {
         }
     }
 
-    // pub fn midi_output (&self) -> &midi_connection::SharedMidiOutputConnection {
-    //     &self.midi_output
-    // }
-}
+    fn on_tick (&mut self) {
+        let mut to_update = HashMap::new();
+        for (id, (note_id, velocity)) in &self.output_values {
+            let new_note_id = get_note_id(*id, &self.scale, &self.offset);
+            if note_id != &new_note_id {
+                self.midi_output.send(&[144 + self.midi_channel - 1, new_note_id, *velocity]).unwrap();
+                self.midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
+                to_update.insert(id.clone(), (new_note_id, velocity.clone()));
+            }
+        }
 
-fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>) -> u8 {
-    let scale = scale.lock().unwrap();
-    let offset = offset.lock().unwrap();
-    let scale_offset = offset.base + offset.offset;
-    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8
+        for (id, item) in to_update {
+            self.output_values.insert(id, item);
+        }
+    }
 }

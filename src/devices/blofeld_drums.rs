@@ -1,0 +1,61 @@
+use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::midi_connection;
+use std::sync::{Arc, Mutex};
+
+use std::collections::HashMap;
+
+pub struct BlofeldDrums {
+    midi_port: midi_connection::SharedMidiOutputConnection,
+    midi_channel: u8,
+    params: Arc<Mutex<BlofeldDrumParams>>,
+    output_values: HashMap<u32, (u8, u8, u8)>
+}
+
+impl BlofeldDrums {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, params: Arc<Mutex<BlofeldDrumParams>>) -> Self {
+        BlofeldDrums {
+            midi_port,
+            params,
+            midi_channel: channel,
+            output_values: HashMap::new()
+        }
+    }
+}
+
+impl Triggerable for BlofeldDrums {
+    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+        match value {
+            OutputValue::Off => {
+                if self.output_values.contains_key(&id) {
+                    let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
+                    self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                    self.output_values.remove(&id);
+                }
+            },
+            OutputValue::On(_) => {
+                let params = self.params.lock().unwrap();
+                let velocity_index = id as usize % params.velocities.len();
+                let velocity = params.velocities[velocity_index];
+                let mod_value = params.mods[velocity_index];
+
+                let channel = self.midi_channel + id as u8;
+                let note_id = 36;
+
+                // ensure velocity enabled
+                self.midi_port.send(&[176 - 1 + channel, 91, 127]).unwrap();
+
+                // set mod
+                self.midi_port.send(&[176 - 1 + channel, 1, mod_value]).unwrap();
+                
+                // send note
+                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
+                self.output_values.insert(id, (channel, note_id, velocity));
+            }
+        }
+    }
+}
+
+pub struct BlofeldDrumParams {
+    pub velocities: [u8; 8],
+    pub mods: [u8; 8]
+}

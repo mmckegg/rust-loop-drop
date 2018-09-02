@@ -1,31 +1,17 @@
 // mod k_mix;
-mod mother_32;
-mod sp404;
-mod tr08;
+mod blofeld_drums;
 mod twister;
-mod volca_bass;
-mod volca_keys;
-mod k_board;
+mod midi_keys;
 mod offset;
-mod sp404_offset;
 mod root_select;
 mod scale_select;
-mod choke_switch;
+mod vt3;
 
-// mod volca_sample;
-
-// pub use self::k_mix::KMix;
-pub use self::mother_32::Mother32;
-pub use self::sp404::SP404;
-pub use self::sp404::SP404Choke;
-pub use self::sp404::SP404VelocityMap;
-pub use self::sp404_offset::SP404Offset;
-pub use self::choke_switch::ChokeSwitch;
-pub use self::tr08::TR08;
+pub use self::blofeld_drums::BlofeldDrums;
+pub use self::blofeld_drums::BlofeldDrumParams;
 pub use self::twister::Twister;
-pub use self::volca_bass::VolcaBass;
-pub use self::volca_keys::VolcaKeys;
-pub use self::k_board::KBoard;
+pub use self::midi_keys::MidiKeys;
+pub use self::vt3::VT3;
 pub use self::offset::OffsetChunk;
 pub use self::root_select::RootSelect;
 pub use self::scale_select::ScaleSelect;

@@ -19,10 +19,9 @@ use ::output_value::OutputValue;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
 use ::loop_state::{LoopCollection, LoopState, LoopTransform, LoopStateChange};
 use ::clock_source::{RemoteClock, ToClock, FromClock};
-use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, TriggerModeChange, LatchMode, ScheduleMode};
+use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, LatchMode, ScheduleMode};
 use ::scale::Scale;
 
-const CHUNK_COLORS: [Light; 12] = [Light::Chunk1, Light::Chunk2, Light::Chunk10, Light::Chunk10, Light::Chunk3, Light::Chunk4, Light::Chunk5, Light::Chunk6, Light::Chunk7, Light::Chunk8, Light::Chunk9, Light::Chunk10];
 const SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
 const DEFAULT_VELOCITY: u8 = 100;
 
@@ -41,14 +40,41 @@ lazy_static! {
 
 pub struct LoopGridParams {
     pub swing: f64,
-    pub external_loop_mode: ExternalLoopMode
+    pub channel_repeat: HashMap<u32, ChannelRepeat>
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
-pub enum ExternalLoopMode {
-    Loop,
-    LoopRepeat,
-    None
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum ChannelRepeat {
+    None,
+    Rate(MidiTime),
+    Global
+}
+
+impl ChannelRepeat {
+    pub fn from_midi (value: u8) -> ChannelRepeat {
+        let pos = value / (127 / 9);
+        if pos == 0 {
+            ChannelRepeat::None
+        } else if pos == 9 {
+            ChannelRepeat::Global
+        } else {
+            ChannelRepeat::Rate(REPEAT_RATES[pos as usize - 1])
+        }
+    }
+
+    pub fn to_midi (&self) -> u8 {
+        match self {
+            ChannelRepeat::None => 0,
+            ChannelRepeat::Global => 127,
+            ChannelRepeat::Rate(rate) => {
+                if let Some(index) = REPEAT_RATES.iter().position(|x| x == rate) {
+                    ((127 / 10) * (index + 1)) as u8
+                } else {
+                    0
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -80,7 +106,6 @@ pub enum LoopGridMessage {
     SetRate(MidiTime),
     RateButton(usize, bool),
     TriggerChunk(MidiMap, OutputValue, SystemTime),
-    ExternalInput(u32, OutputValue),
     TempoChanged(usize),
     RefreshSelectingScale,
     FlushChoke,
@@ -92,33 +117,26 @@ pub enum LoopGridMessage {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Light {
     // http://launchpaddr.com/mk2palette/
-    Yellow = 13,
-    YellowMed = 97,
-    Lime = 73,
-    LimeLow = 63,
-    Purple = 94,
-    Green = 17,
-    GreenMed = 76,
-    GreenLow = 18,
-    Orange = 96,
-    OrangeMed = 126,
-    OrangeLow = 105,
-    Red = 72,
-    RedMed = 120,
-    RedLow = 6,
-    White = 3,
-    Off = 0,
-    Chunk1 = 23, 
-    Chunk2 = 55, 
-    Chunk3 = 44, 
-    Chunk4 = 60, 
-    Chunk5 = 39, 
-    Chunk6 = 35, 
-    Chunk7 = 15, 
-    Chunk8 = 43, 
-    Chunk9 = 59,
-    Chunk10 = 71, 
-    None = -1
+    Value(u8),
+    Yellow,
+    YellowMed,
+    Lime,
+    LimeLow,
+    Purple,
+    Green,
+    GreenMed,
+    GreenLow,
+    GreenDark,
+    Orange,
+    OrangeMed,
+    OrangeLow,
+    Red,
+    RedMed,
+    RedLow,
+    BlueDark,
+    White,
+    Off,
+    None
 }
 
 impl Light {
@@ -126,6 +144,30 @@ impl Light {
         match self {
             Light::None => value,
             _ => self
+        }
+    }
+
+    pub fn value (&self) -> u8 {
+        match self {
+            Light::Yellow => 13,
+            Light::YellowMed => 97,
+            Light::Lime => 73,
+            Light::LimeLow => 63,
+            Light::Purple => 94,
+            Light::Green => 17,
+            Light::GreenMed => 76,
+            Light::GreenLow => 18,
+            Light::GreenDark => 35,
+            Light::Orange => 96,
+            Light::OrangeMed => 126,
+            Light::OrangeLow => 105,
+            Light::Red => 72,
+            Light::RedMed => 120,
+            Light::RedLow => 6,
+            Light::BlueDark => 43,
+            Light::White => 3,
+            Light::Value(value) => *value,
+            _ => 0
         }
     }
 }
@@ -195,7 +237,7 @@ impl LoopGridLaunchpad {
                         tx_clock.send(LoopGridMessage::Schedule(pos, length)).unwrap();
                     },
                     FromClock::Tempo(value) => {
-                        tx_clock.send(LoopGridMessage::TempoChanged(value));
+                        tx_clock.send(LoopGridMessage::TempoChanged(value)).unwrap();
                     },
                     FromClock::Jump => {
                         tx_clock.send(LoopGridMessage::InitialLoop).unwrap();
@@ -207,6 +249,8 @@ impl LoopGridLaunchpad {
         thread::spawn(move || {
             let mut mapping: HashMap<Coords, MidiMap> = HashMap::new();
             let mut chunks: Vec<Box<Triggerable>> = Vec::new();
+            let mut chunk_colors: Vec<Light> = Vec::new();
+            let mut chunk_channels: HashMap<usize, u32> = HashMap::new();
             let mut chunk_trigger_ids: Vec<Vec<u32>> = Vec::new();
 
             let scale = scale;
@@ -223,16 +267,13 @@ impl LoopGridLaunchpad {
                     }
                 }
 
-                let tx_chunk_listener =  mpsc::Sender::clone(&tx_loop_state);
-                let trigger_ids_listener = trigger_ids.clone();
-
-                item.chunk.listen(Box::new(move |index, value| {
-                    if let Some(id) = trigger_ids_listener.get(index as usize) {
-                        tx_chunk_listener.send(LoopGridMessage::ExternalInput(*id, value)).unwrap();
-                    }
-                }));
-
                 chunk_trigger_ids.push(trigger_ids);
+                chunk_colors.push(Light::Value(item.color));
+
+                if let Some(channel) = item.channel {
+                    chunk_channels.insert(chunk_index, channel);
+                }
+
                 chunks.push(item.chunk);
             }
 
@@ -295,10 +336,8 @@ impl LoopGridLaunchpad {
             let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
 
             // hack for setting default states on latches
-            trigger_latch_for.insert(0, 0 + 64);
-            trigger_latch_for.insert(1, 12 + 64);
-            trigger_latch_for.insert(6, 40 + 64);
-            trigger_latch_for.insert(7, 52 + 64);
+            trigger_latch_for.insert(2, Coords::id_from(3 + 8, 0));
+            trigger_latch_for.insert(3, Coords::id_from(5 + 8, 4));
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
@@ -309,12 +348,11 @@ impl LoopGridLaunchpad {
 
             let mut last_beat_light = SIDE_BUTTONS[7];
             let mut last_repeat_light = SIDE_BUTTONS[7];
-            let mut last_scale_light = SIDE_BUTTONS[7];
 
             // default button lights
-            launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
-            launchpad_output.send(&[176, 109, Light::RedLow as u8]).unwrap();
-            launchpad_output.send(&[176, 110, Light::Chunk8 as u8]).unwrap();
+            launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
+            launchpad_output.send(&[176, 109, Light::RedLow.value()]).unwrap();
+            launchpad_output.send(&[176, 110, Light::BlueDark.value()]).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
 
             for id in 0..128 {
@@ -393,11 +431,11 @@ impl LoopGridLaunchpad {
                         let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
 
                         let rate_color = if repeat_off_beat { Light::RedMed } else { Light::YellowMed };
-                        let scale_color = Light::Chunk6;
+                        let scale_color = Light::GreenDark;
 
                         if current_repeat_light != last_repeat_light || last_repeat_light_out != rate_color {
                             launchpad_output.send(&[144, last_repeat_light, 0]).unwrap();
-                            launchpad_output.send(&[144, current_repeat_light, rate_color as u8]).unwrap();
+                            launchpad_output.send(&[144, current_repeat_light, rate_color.value()]).unwrap();
                         }
 
                         let beat_start = last_pos.is_whole_beat();
@@ -415,16 +453,16 @@ impl LoopGridLaunchpad {
                         };
  
                         if current_beat_light != last_beat_light {
-                            launchpad_output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off) as u8]).unwrap();
+                            launchpad_output.send(&[144, last_beat_light, base_last_beat_light.unwrap_or(Light::Off).value()]).unwrap();
                             if !beat_start {
-                                launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                                launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow).value()]).unwrap();
                             }
                         }
 
                         if beat_start {
-                            launchpad_output.send(&[144, current_beat_light, Light::White as u8]).unwrap();
+                            launchpad_output.send(&[144, current_beat_light, Light::White.value()]).unwrap();
                         } else if last_pos.beat_tick() == 3 {
-                            launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow) as u8]).unwrap();
+                            launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow).value()]).unwrap();
                         }
 
                         last_beat_light = current_beat_light;
@@ -441,8 +479,8 @@ impl LoopGridLaunchpad {
                             Light::RedLow
                         };
 
-                        launchpad_output.send(&[176, 106, color as u8]).unwrap();
-                        launchpad_output.send(&[176, 107, color as u8]).unwrap();
+                        launchpad_output.send(&[176, 106, color.value()]).unwrap();
+                        launchpad_output.send(&[176, 107, color.value()]).unwrap();
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         let current_index = currently_held_inputs.iter().position(|v| v == &id);
@@ -454,9 +492,7 @@ impl LoopGridLaunchpad {
                             currently_held_inputs.remove(index);
                         }
 
-                        let changing_drum_patch = id < 24 && selecting && selecting_scale_held;
-
-                        if selecting && value.is_on() && !changing_drum_patch {
+                        if selecting && value.is_on() {
                             if selection.contains(&id) {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
@@ -480,7 +516,7 @@ impl LoopGridLaunchpad {
 
                                 for row in from_row..to_row {
                                     for col in from_col..to_col {
-                                        let row_offset = if selecting_scale && row >= 3 { 8 } else { 0 };
+                                        let row_offset = if selecting_scale && row >= 1 && row <= 5 { 8 } else { 0 };
                                         let id = Coords::id_from(row + row_offset, col);
                                         selection.insert(id);
                                         tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
@@ -490,23 +526,9 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            let in_scale_view = (id >= 24 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
-                                changing_drum_patch || 
-                                selection.contains(&scale_id);
+                            let in_scale_view = (id >= 8 && id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id);
 
-                            // toggles for choke modes
-                            // at this point yeah, who really cares. This project is hacks all the way down
-                            if changing_drum_patch && (id == 18 || id == 19 || id == 22 || id == 23) {
-                                if value.is_on() {
-                                    input_values.entry(scale_id).and_modify(|v| { 
-                                        *v = if v.is_on() {
-                                            OutputValue::Off
-                                        } else {
-                                            value
-                                        }
-                                    }).or_insert(value);
-                                }
-                            } else if in_scale_view  {
+                            if in_scale_view  {
                                 input_values.insert(scale_id, value);
                                 input_values.remove(&id);
                             } else {
@@ -523,12 +545,21 @@ impl LoopGridLaunchpad {
                         let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
                         let transform = match value {
                             &OutputValue::On(velocity) => {
-                                let params = params.lock().unwrap();
-                                if repeating && (id < 64 || (id >= 128 && params.external_loop_mode == ExternalLoopMode::LoopRepeat)) {
-                                    let offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
-                                    LoopTransform::Repeat {rate, offset, value: OutputValue::On(velocity)}
+                                if let Some(mapped) = mapping.get(&Coords::from(id)) {
+                                    match get_repeat_for(mapped.chunk_index, &chunk_channels, &params) {
+                                        ChannelRepeat::None => LoopTransform::Value(OutputValue::On(velocity)),
+                                        ChannelRepeat::Rate(rate) => LoopTransform::Repeat {rate, offset: MidiTime::zero(), value: OutputValue::On(velocity)},
+                                        ChannelRepeat::Global => {
+                                            if repeating {
+                                                let offset = if repeat_off_beat { rate / 2 } else { MidiTime::zero() };
+                                                LoopTransform::Repeat {rate, offset, value: OutputValue::On(velocity)}
+                                            } else {
+                                                LoopTransform::Value(OutputValue::On(velocity))
+                                            }
+                                        }
+                                    }
                                 } else {
-                                    LoopTransform::Value(OutputValue::On(velocity))
+                                    LoopTransform::None
                                 }
                             },
                             &OutputValue::Off => LoopTransform::None
@@ -577,92 +608,81 @@ impl LoopGridLaunchpad {
                         launchpad_output.send(&launchpad_text(&value.to_string())).unwrap();
                     },
                     LoopGridMessage::RefreshGridButton(id) => {
-                        if id < 128 {
-                            let base_id = id % 64;
+                        let base_id = id % 64;
 
-                            let in_scale_view = (base_id >= 24 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
-                                (base_id < 24 && selecting && selecting_scale_held) || 
-                                selection.contains(&(base_id + 64));
+                        let in_scale_view = (base_id >= 8 && base_id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
+                            ((base_id < 8 || base_id >= 48) && selecting && selecting_scale_held) || 
+                            selection.contains(&(base_id + 64));
 
-                            let (id, background_id) = if in_scale_view {
-                                (base_id + 64, base_id)
-                            } else {
-                                (base_id, base_id + 64)
-                            };
-
-                            let mapped = mapping.get(&Coords::from(id));
-                            let background_mapped = mapping.get(&Coords::from(background_id));
-
-                            let triggering = if out_values.get(&id).unwrap_or(&OutputValue::Off).is_on() {
-                                true
-                            } else if mapped.is_some() && trigger_latch_for.contains_key(&mapped.unwrap().chunk_index) {
-                                trigger_latch_for.get(&mapped.unwrap().chunk_index).unwrap() == &id
-                            } else {
-                                false
-                            };
-
-                            let background_triggering = if out_values.get(&background_id).unwrap_or(&OutputValue::Off).is_on() {
-                                true
-                            } else if background_mapped.is_some() && trigger_latch_for.contains_key(&background_mapped.unwrap().chunk_index) {
-                                trigger_latch_for.get(&background_mapped.unwrap().chunk_index).unwrap() == &background_id
-                            } else {
-                                false
-                            };
-
-                            let old_value = grid_out.remove(&base_id).unwrap_or(LaunchpadLight::Constant(Light::Off));
-
-                            let color = if let Some(mapped) = mapped {
-                                CHUNK_COLORS[mapped.chunk_index]
-                            } else {
-                                Light::Off
-                            };
-
-                            let selection_color = if in_scale_view {
-                                Light::Purple
-                            } else {
-                                Light::Green
-                            };
-
-                            let background_color = if let Some(background_mapped) = background_mapped {
-                                CHUNK_COLORS[background_mapped.chunk_index]
-                            } else {
-                                Light::Off
-                            };
-
-                            let new_value = if triggering {
-                                LaunchpadLight::Constant(Light::White)
-                            } else if selection.contains(&id) {
-                                LaunchpadLight::Pulsing(selection_color)
-                            } else if recording.contains(&id) {
-                                LaunchpadLight::Pulsing(Light::RedLow)
-                            } else if background_triggering {
-                                LaunchpadLight::Constant(background_color)
-                            } else if active.contains(&id) {
-                                LaunchpadLight::Pulsing(color)
-                            } else {
-                                LaunchpadLight::Constant(color)
-                            };
-
-                            if new_value != old_value {
-                                let midi_id = id_to_midi.get(&base_id);
-                                let message = match new_value {
-                                    LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value as u8],
-                                    LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value as u8]
-                                };
-                                launchpad_output.send(&message).unwrap()
-                            }
-
-                            grid_out.insert(base_id, new_value);
+                        let (id, background_id) = if in_scale_view {
+                            (base_id + 64, base_id)
                         } else {
-                            if let Some(mapped) = mapping.get(&Coords::from(id)) {
-                                let value = active.contains(&id);
-                                let selected = selection.contains(&id);
-                                if let Some(chunk) = chunks.get(mapped.chunk_index) {
-                                    chunk.onTriggerModeChanged(TriggerModeChange::Active(mapped.id, value));
-                                    chunk.onTriggerModeChanged(TriggerModeChange::Selected(mapped.id, selected))
-                                }
-                            }
+                            (base_id, base_id + 64)
+                        };
+
+                        let mapped = mapping.get(&Coords::from(id));
+                        let background_mapped = mapping.get(&Coords::from(background_id));
+
+                        let triggering = if out_values.get(&id).unwrap_or(&OutputValue::Off).is_on() {
+                            true
+                        } else if mapped.is_some() && trigger_latch_for.contains_key(&mapped.unwrap().chunk_index) {
+                            trigger_latch_for.get(&mapped.unwrap().chunk_index).unwrap() == &id
+                        } else {
+                            false
+                        };
+
+                        let background_triggering = if out_values.get(&background_id).unwrap_or(&OutputValue::Off).is_on() {
+                            true
+                        } else if background_mapped.is_some() && trigger_latch_for.contains_key(&background_mapped.unwrap().chunk_index) {
+                            trigger_latch_for.get(&background_mapped.unwrap().chunk_index).unwrap() == &background_id
+                        } else {
+                            false
+                        };
+
+                        let old_value = grid_out.remove(&base_id).unwrap_or(LaunchpadLight::Constant(Light::Off));
+
+                        let color = if let Some(mapped) = mapped {
+                            chunk_colors[mapped.chunk_index]
+                        } else {
+                            Light::Off
+                        };
+
+                        let selection_color = if in_scale_view {
+                            Light::Purple
+                        } else {
+                            Light::Green
+                        };
+
+                        let background_color = if let Some(background_mapped) = background_mapped {
+                            chunk_colors[background_mapped.chunk_index]
+                        } else {
+                            Light::Off
+                        };
+
+                        let new_value = if triggering {
+                            LaunchpadLight::Constant(Light::White)
+                        } else if selection.contains(&id) {
+                            LaunchpadLight::Pulsing(selection_color)
+                        } else if recording.contains(&id) {
+                            LaunchpadLight::Pulsing(Light::RedLow)
+                        } else if background_triggering {
+                            LaunchpadLight::Constant(background_color)
+                        } else if active.contains(&id) {
+                            LaunchpadLight::Pulsing(color)
+                        } else {
+                            LaunchpadLight::Constant(color)
+                        };
+
+                        if new_value != old_value {
+                            let midi_id = id_to_midi.get(&base_id);
+                            let message = match new_value {
+                                LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
+                                LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value.value()]
+                            };
+                            launchpad_output.send(&message).unwrap()
                         }
+
+                        grid_out.insert(base_id, new_value);
                     },
                     LoopGridMessage::RefreshSelectionOverride => {
                         selection_override = if suppressing {
@@ -673,7 +693,7 @@ impl LoopGridLaunchpad {
                             LoopTransform::None
                         };
 
-                        for id in 0..256 {
+                        for id in 0..128 {
                             tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
                         }
                     },
@@ -736,7 +756,7 @@ impl LoopGridLaunchpad {
                         };
 
                         if select_out != new_state {
-                            launchpad_output.send(&[178, 111, new_state as u8]).unwrap();
+                            launchpad_output.send(&[178, 111, new_state.value()]).unwrap();
                             select_out = new_state;
                         }
                     },
@@ -787,10 +807,10 @@ impl LoopGridLaunchpad {
                             if pressed {
                                 loop_held = true;
                                 loop_from = last_pos;
-                                launchpad_output.send(&[176, 104, Light::Green as u8]).unwrap();
+                                launchpad_output.send(&[176, 104, Light::Green.value()]).unwrap();
                             } else {
                                 loop_held = false;
-                                launchpad_output.send(&[176, 104, Light::YellowMed as u8]).unwrap();
+                                launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
                                 let since_press = last_pos - loop_from;
                                 let threshold = MidiTime::from_ticks(20);
                                 let mut new_loop = loop_state.get().clone();
@@ -818,7 +838,7 @@ impl LoopGridLaunchpad {
                                     }
                                 }
 
-                                for id in 0..256 {
+                                for id in 0..128 {
                                     // include ids that are recording, or if selecting, all active IDs!
                                     let selected = selecting || selection.contains(&id);
                                     if recording_ids.contains(&id) || (selected && active.contains(&id)) {
@@ -867,7 +887,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 Light::Off
                             };
-                            launchpad_output.send(&[176, 105, color as u8]).unwrap();
+                            launchpad_output.send(&[176, 105, color.value()]).unwrap();
                         }
                     },
                     LoopGridMessage::FlattenButton(pressed) => {
@@ -875,7 +895,7 @@ impl LoopGridLaunchpad {
                             if should_flatten {
                                 let mut new_loop = loop_state.get().clone();
 
-                                for id in 0..256 {
+                                for id in 0..128 {
                                     let mut transform = out_transforms.get(&id).unwrap_or(&LoopTransform::None).clone();
                                    
                                     // check if there are actually events available for this range
@@ -905,7 +925,7 @@ impl LoopGridLaunchpad {
                                 let mut new_loop = loop_state.get().clone();
 
                                 if selecting {
-                                    for id in 0..256 {
+                                    for id in 0..128 {
                                         new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
                                     }
                                 } else {
@@ -986,18 +1006,14 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshSelectingScale => {
                         if selecting_scale {
-                            launchpad_output.send(&[178, 110, Light::Yellow as u8]).unwrap();    
+                            launchpad_output.send(&[178, 110, Light::Yellow.value()]).unwrap();    
                         } else {
-                            launchpad_output.send(&[176, 110, Light::Chunk8 as u8]).unwrap();
+                            launchpad_output.send(&[176, 110, Light::BlueDark.value()]).unwrap();
                         };
 
 
                         for id in 0..64 {
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
-                        }
-
-                        for chunk in &chunks {
-                            chunk.onTriggerModeChanged(TriggerModeChange::SelectingScale(selecting_scale))
                         }
                     }
                     LoopGridMessage::RateButton(button_id, pressed) => {
@@ -1024,8 +1040,12 @@ impl LoopGridLaunchpad {
 
                         let mut to_update = HashMap::new();
                         for (id, value) in &override_values {
-                            if let &LoopTransform::Repeat {rate: _, offset, value} = value {
-                                to_update.insert(*id, LoopTransform::Repeat {rate, offset, value});
+                            if let Some(mapped) = mapping.get(&Coords::from(*id)) {
+                                if get_repeat_for(mapped.chunk_index, &chunk_channels, &params) == ChannelRepeat::Global {
+                                    if let &LoopTransform::Repeat {rate: _, offset, value} = value {
+                                        to_update.insert(*id, LoopTransform::Repeat {rate, offset, value});
+                                    }
+                                }
                             }
                         }
                         for (id, value) in to_update {
@@ -1035,7 +1055,7 @@ impl LoopGridLaunchpad {
                         
                     },                 
                     LoopGridMessage::InitialLoop => {
-                        for id in 0..256 {
+                        for id in 0..128 {
                             let loop_collection = loop_state.get();
                             let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
                             
@@ -1051,34 +1071,6 @@ impl LoopGridLaunchpad {
                                 }
                             }
                         }
-                    },
-                    LoopGridMessage::ExternalInput(id, value) => {
-                        let params = params.lock().unwrap();
-
-                        if params.external_loop_mode == ExternalLoopMode::None {
-                            // bypass loop_grid when external loop mode is none
-                            if let Some(mapped) = mapping.get(&Coords::from(id)) {
-                                match maybe_update(&mut out_values, id, value) {
-                                    Some(_) => {
-                                        tx_feedback.send(LoopGridMessage::TriggerChunk(*mapped, value, SystemTime::now())).unwrap();
-                                    },
-                                    None => ()
-                                };
-                            }
-                        } else {
-                            if selecting && value.is_on() && id >= 128 {
-                                for i in 128..256 {
-                                    selection.insert(i);
-                                    tx_feedback.send(LoopGridMessage::RefreshGridButton(i)).unwrap();
-                                }
-                            } else {
-                                input_values.insert(id, value);
-                                tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
-                                tx_feedback.send(LoopGridMessage::RefreshShouldFlatten).unwrap();
-                            }  
-                        }
-
-                        
                     },
                     LoopGridMessage::TriggerChunk(map, value, time) => {
                         if let Some(chunk) = chunks.get_mut(map.chunk_index) {
@@ -1357,4 +1349,13 @@ fn prev_power_of_two(a: u32) -> u32 {
         b = b << 1;
     }
     return b / 2;
+}
+
+fn get_repeat_for (chunk_id: usize, chunk_channels: &HashMap<usize, u32>, params: &Arc<Mutex<LoopGridParams>>) -> ChannelRepeat {
+    let params = params.lock().unwrap();
+    if let Some(channel) = chunk_channels.get(&chunk_id) {
+        *params.channel_repeat.get(&channel).unwrap_or(&ChannelRepeat::None)
+    } else {
+        ChannelRepeat::None
+    }
 }

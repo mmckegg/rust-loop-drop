@@ -5,11 +5,9 @@ pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime);
     fn on_tick (&mut self) {}
-    fn listen (&mut self, listener: Box<Fn(u32, OutputValue) + 'static + Send>) {}
     fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { None }
     fn latch_mode (&self) -> LatchMode { LatchMode::None }
     fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
-    fn onTriggerModeChanged (&self, mode_change: TriggerModeChange) { }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
@@ -59,13 +57,15 @@ pub struct MidiMap {
 pub struct ChunkMap {
     pub coords: Coords,
     pub shape: Shape,
-    pub chunk: Box<Triggerable + Send>
+    pub chunk: Box<Triggerable + Send>,
+    pub channel: Option<u32>,
+    pub color: u8
 }
 
 impl ChunkMap {
-    pub fn new (chunk: Box<Triggerable + Send>, coords: Coords, shape: Shape) -> Box<Self> {
+    pub fn new (chunk: Box<Triggerable + Send>, coords: Coords, shape: Shape, color: u8, channel: Option<u32>) -> Box<Self> {
         Box::new(ChunkMap {
-            chunk, coords, shape
+            chunk, coords, shape, color, channel
         })
     }
 }
