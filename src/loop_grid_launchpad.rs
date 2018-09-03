@@ -337,7 +337,7 @@ impl LoopGridLaunchpad {
 
             // hack for setting default states on latches
             trigger_latch_for.insert(2, Coords::id_from(3 + 8, 0));
-            trigger_latch_for.insert(3, Coords::id_from(5 + 8, 4));
+            trigger_latch_for.insert(3, Coords::id_from(4 + 8, 5));
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
