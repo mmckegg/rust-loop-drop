@@ -23,12 +23,13 @@ impl BlofeldDrums {
 }
 
 impl Triggerable for BlofeldDrums {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
-                    self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                    // HACK: disable off notes because this is doing weird things to blofeld for drum envelopes
+                    // self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
                     self.output_values.remove(&id);
                 }
             },
@@ -42,13 +43,13 @@ impl Triggerable for BlofeldDrums {
                 let note_id = 36;
 
                 // ensure velocity enabled
-                self.midi_port.send(&[176 - 1 + channel, 91, 127]).unwrap();
+                self.midi_port.send_at(&[176 - 1 + channel, 91, 127], at).unwrap();
 
                 // set mod
-                self.midi_port.send(&[176 - 1 + channel, 1, mod_value]).unwrap();
+                self.midi_port.send_at(&[176 - 1 + channel, 1, mod_value], at).unwrap();
                 
                 // send note
-                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
+                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();
                 self.output_values.insert(id, (channel, note_id, velocity));
             }
         }

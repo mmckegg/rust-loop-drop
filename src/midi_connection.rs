@@ -201,8 +201,8 @@ impl SharedMidiOutputConnection {
     pub fn send_at(&mut self, message: &[u8], time: SystemTime) -> Result<(), SendError> {
         let now = SystemTime::now();
 
-        // send straight away if time is in the past or no more than 2ms in future
-        if time.duration_since(now).unwrap_or(Duration::from_millis(0)) < Duration::from_millis(2) {
+        // send straight away if time is in the past or no more than 0.9ms in future
+        if time.duration_since(now).unwrap_or(Duration::from_millis(0)) < Duration::from_micros(900) {
             self.send(message)
         } else {
             let msg = try!(format_midi_message(message));
