@@ -148,7 +148,7 @@ impl ClockSource {
                 ClockMessage::ExternalPlay => {
                     let offset = self.tick_pos % MidiTime::from_beats(1);
                     if offset >= MidiTime::from_ticks(12) {
-                        self.tick_pos = self.tick_pos + (MidiTime::from_beats(1) - self.tick_pos);
+                        self.tick_pos = self.tick_pos + (MidiTime::from_beats(1) - offset);
                     } else {
                         self.tick_pos = self.tick_pos - offset;
                     }
