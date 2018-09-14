@@ -29,8 +29,8 @@ var tracks = [
   {
     id: 8,
     isTempoMaster: true,
-    name: 'sampler',
-    channels: [5, 6],
+    name: 'drums',
+    channels: [4],
     fileName: `${baseName}-sampler.wav`,
     volumeEvents: []
   }, {
@@ -42,7 +42,7 @@ var tracks = [
   }, {
     id: 10,
     name: 'synth',
-    channels: [3, 4],
+    channels: [3],
     fileName: `${baseName}-synth.wav`,
     volumeEvents: []
   }, {
@@ -53,6 +53,12 @@ var tracks = [
     volumeEvents: []
   }, {
     id: 12,
+    name: 'looper',
+    channels: [5, 6],
+    fileName: `${baseName}-vox.wav`,
+    volumeEvents: []
+  }, {
+    id: 13,
     name: 'fx',
     channels: [7, 8],
     fileName: `${baseName}-fx.wav`,
