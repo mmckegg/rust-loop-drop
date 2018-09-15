@@ -16,6 +16,7 @@ mod chunk;
 mod devices;
 mod scale;
 mod audio_recorder;
+mod lfo;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
