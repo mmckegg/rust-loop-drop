@@ -6,10 +6,13 @@ mod offset;
 mod root_select;
 mod scale_select;
 mod vt3;
+mod umi3;
 
 pub use self::blofeld_drums::BlofeldDrums;
 pub use self::blofeld_drums::BlofeldDrumParams;
 pub use self::twister::Twister;
+pub use self::umi3::Umi3;
+
 pub use self::midi_keys::MidiKeys;
 pub use self::vt3::VT3;
 pub use self::offset::OffsetChunk;

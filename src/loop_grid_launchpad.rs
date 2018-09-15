@@ -78,6 +78,13 @@ impl ChannelRepeat {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub enum LoopGridRemoteEvent {
+    DoubleButton(bool),
+    LoopButton(bool),
+    SustainButton(bool)
+}
+
+#[derive(Debug, Copy, Clone)]
 pub enum LoopGridMessage {
     Schedule(MidiTime, MidiTime),
     GridInput(u64, u32, OutputValue),
@@ -89,6 +96,8 @@ pub enum LoopGridMessage {
     SelectButton(bool),
     HoldButton(bool),
     ScaleButton(bool),
+    DoubleLoopLength,
+    SustainButton(bool),
     Event(LoopEvent),
     InitialLoop,
     ClearRecording,
@@ -174,15 +183,18 @@ impl Light {
 
 pub struct LoopGridLaunchpad {
     _input: midi_connection::ThreadReference,
-    pub meta_tx: mpsc::Sender<AudioRecorderEvent>
+    pub meta_tx: mpsc::Sender<AudioRecorderEvent>,
+    pub remote_tx: mpsc::Sender<LoopGridRemoteEvent>
 }
 
 impl LoopGridLaunchpad {
     pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
-        
+        let (remote_tx, remote_rx) = mpsc::channel();
+
         let mut audio_recorder = AudioRecorder::new();
 
+        let tx_remote =  mpsc::Sender::clone(&tx);
         let tx_input =  mpsc::Sender::clone(&tx);
         let tx_clock =  mpsc::Sender::clone(&tx);
         let tx_feedback =  mpsc::Sender::clone(&tx);
@@ -241,6 +253,25 @@ impl LoopGridLaunchpad {
                     },
                     FromClock::Jump => {
                         tx_clock.send(LoopGridMessage::InitialLoop).unwrap();
+                    }
+                }
+            }
+        });
+
+        // receive messages from foot pedal
+        thread::spawn(move || {
+            for msg in remote_rx {
+                match msg {
+                    LoopGridRemoteEvent::LoopButton(pressed) => {
+                        tx_remote.send(LoopGridMessage::LoopButton(pressed)).unwrap();
+                    },
+                    LoopGridRemoteEvent::DoubleButton(pressed) => {
+                        if pressed {
+                            tx_remote.send(LoopGridMessage::DoubleLoopLength).unwrap();
+                        }
+                    },
+                    LoopGridRemoteEvent::SustainButton(pressed) => {
+                        tx_remote.send(LoopGridMessage::SustainButton(pressed)).unwrap();
                     }
                 }
             }
@@ -319,6 +350,7 @@ impl LoopGridLaunchpad {
             let mut last_length = MidiTime::from_ticks(0);
             let mut length_multiplier = 0.0;
 
+            let mut sustained_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut currently_held_inputs: Vec<u32> = Vec::new();
@@ -497,7 +529,7 @@ impl LoopGridLaunchpad {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
                             } else {
-                                if selecting_scale {
+                                if selecting_scale && id >= 8 && id < 48 { // hack to avoid including drums/vox
                                     selection.insert(scale_id);
                                 } else {
                                     selection.insert(id);
@@ -584,7 +616,7 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshOverride(id) => {
                         let loop_collection = loop_state.get();
-                        let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
+                        let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
                         
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
                             out_transforms.insert(id, transform);
@@ -879,7 +911,7 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
                     },
                     LoopGridMessage::RefreshShouldFlatten => {
-                        let new_value = &selection_override != &LoopTransform::None || override_values.values().any(|value| value != &LoopTransform::None);
+                        let new_value = &selection_override != &LoopTransform::None || override_values.values().any(|value| value != &LoopTransform::None) || sustained_values.len() > 0;
                         if new_value != should_flatten {
                             should_flatten = new_value;
                             let color = if should_flatten {
@@ -958,13 +990,16 @@ impl LoopGridLaunchpad {
                                 loop_state.undo();
                             }
                         }
-                    },   
+                    },
+                    LoopGridMessage::DoubleLoopLength => {
+                        loop_length = get_double_loop_length(loop_length).min(MidiTime::from_beats(32));
+                    },
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale_held {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting {
-                                loop_length = get_double_loop_length(loop_length).min(MidiTime::from_beats(32));
+                                tx_feedback.send(LoopGridMessage::DoubleLoopLength).unwrap();
                             } else {
                                 loop_state.redo();
                             }
@@ -1003,6 +1038,24 @@ impl LoopGridLaunchpad {
 
                         tx_feedback.send(LoopGridMessage::RefreshSelectingScale).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
+                    },
+                    LoopGridMessage::SustainButton(pressed) => {
+                        if pressed {
+                            for (id, value) in &override_values {
+                                if value != &LoopTransform::None {
+                                    sustained_values.insert(*id, value.clone());
+                                }
+                            }
+                            println!("SUSTAINED {:?}", sustained_values);
+                        } else {
+                            sustained_values.clear();
+                        }
+
+                        for id in 0..128 {
+                            tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
+                        }
+
+                        tx_feedback.send(LoopGridMessage::RefreshShouldFlatten).unwrap();
                     },
                     LoopGridMessage::RefreshSelectingScale => {
                         if selecting_scale {
@@ -1057,7 +1110,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::InitialLoop => {
                         for id in 0..128 {
                             let loop_collection = loop_state.get();
-                            let transform = get_transform(id, &override_values, &selection, &selection_override, &loop_collection);
+                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
                             
                             if out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
                                 out_transforms.insert(id, transform);
@@ -1115,7 +1168,8 @@ impl LoopGridLaunchpad {
 
         LoopGridLaunchpad {
             _input: input,
-            meta_tx
+            meta_tx,
+            remote_tx
         }
     }
 }
@@ -1155,7 +1209,7 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform (id: u32, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection) -> LoopTransform {
+fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection) -> LoopTransform {
     let mut result = LoopTransform::None;
 
     if let Some(ref transform) = loop_collection.transforms.get(&id) {
@@ -1166,8 +1220,18 @@ fn get_transform (id: u32, override_values: &HashMap<u32, LoopTransform>, select
         result = selection_override.apply(&result);
     }
 
+    let sustained_value = sustained_values.get(&id);
+
+    // use the sustained value if override value is none
+    // what a mess!
     if let Some(value) = override_values.get(&id) {
-        result = value.apply(&result);  
+        result = if value == &LoopTransform::None {
+            sustained_value.unwrap_or(&LoopTransform::None).apply(&result)
+        } else {
+            value.apply(&result)
+        }
+    } else if let Some(sustained_value) = sustained_value {
+        result = sustained_value.apply(&result);
     }
 
     result

@@ -137,5 +137,7 @@ fn main() {
         launchpad.meta_tx.clone()
     );
 
+    let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
+
     clock.start();
 }
