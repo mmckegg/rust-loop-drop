@@ -819,12 +819,7 @@ impl LoopGridLaunchpad {
                             };
                         }
 
-                        // exclude sampler patch selection from loop
-                        if event.id < 64 || event.id >= 88 {
-                            current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
-                            recorder.add(event);
-                        }
-                        
+                        recorder.add(event);
                         audio_recorder.trigger();
                     },
                     LoopGridMessage::ClearRecording => {
