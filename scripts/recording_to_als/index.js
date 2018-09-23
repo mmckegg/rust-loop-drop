@@ -55,7 +55,7 @@ var tracks = [
     id: 12,
     name: 'looper',
     channels: [5, 6],
-    fileName: `${baseName}-vox.wav`,
+    fileName: `${baseName}-looper.wav`,
     volumeEvents: []
   }, {
     id: 13,
