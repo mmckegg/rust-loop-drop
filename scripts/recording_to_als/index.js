@@ -127,6 +127,20 @@ tracks.forEach(track => {
     inPath, outPath, 'remix'
   ].concat(track.channels))
   track.duration = length
+
+  // if this track has a lot of volume events, apply them directly
+  // to the file instead of including in als
+  if (track.volumeEvents.length > 500) {
+    var ext = Path.extname(track.fileName)
+    var leveledName = Path.basename(track.fileName, ext) + '-with-levels' + ext
+    var leveledPath = Path.join(projectPath, leveledName)
+    fs.writeFileSync(outPath + '.levels', JSON.stringify(track.volumeEvents))
+    execFileSync('node', [
+      Path.join(__dirname, './apply-audio-levels'), outPath, leveledPath
+    ])
+    track.fileName = leveledName
+    track.volumeEvents = []
+  }
 })
 
 addProjectInfo(projectPath)
