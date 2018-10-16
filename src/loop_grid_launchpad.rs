@@ -621,9 +621,7 @@ impl LoopGridLaunchpad {
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
                             out_transforms.insert(id, transform);
 
-                            if id < 64 || id >= 88 {
-                                last_changed_triggers.insert(id, last_pos);
-                            }
+                            last_changed_triggers.insert(id, last_pos);
 
                             let pos = current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
  
