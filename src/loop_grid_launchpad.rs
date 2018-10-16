@@ -869,7 +869,9 @@ impl LoopGridLaunchpad {
                                     if recording_ids.contains(&id) || (selected && active.contains(&id)) {
 
                                         // only include in loop if there are items in the range
-                                        if recorder.has_events(id, loop_from, loop_from + loop_length) {
+                                        let current_event = recorder.get_event_at(id, loop_from);
+                                        let has_events = recorder.has_events(id, loop_from, loop_from + loop_length);
+                                        if has_events || current_event.is_some() {
                                             new_loop.transforms.insert(id, LoopTransform::Range {
                                                 pos: loop_from, 
                                                 length: loop_length
