@@ -2,7 +2,7 @@ use ::midi_connection;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode};
 use std::time::Duration;
 
 pub use ::scale::{Scale, Offset};
@@ -97,5 +97,9 @@ impl Triggerable for VT3 {
                 }
             }
         }
+    }
+
+    fn schedule_mode (&self) -> ScheduleMode {
+        ScheduleMode::Monophonic
     }
 }

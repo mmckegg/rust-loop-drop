@@ -86,5 +86,6 @@ pub enum LatchMode {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 pub enum ScheduleMode {
     MostRecent,
+    Monophonic,
     Percussion
 }

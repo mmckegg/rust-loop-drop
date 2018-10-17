@@ -611,13 +611,33 @@ impl LoopGridLaunchpad {
                         };
 
                         if changed {
-                            tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
+                            if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic {
+                                // refresh all in this chunk if monophonic
+                                for id in get_all_ids_in_this_chunk(id, &chunks, &mapping, &chunk_trigger_ids) {
+                                    tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
+                                }
+                            } else {
+                                tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
+                            }
                         }
                     },
                     LoopGridMessage::RefreshOverride(id) => {
                         let loop_collection = loop_state.get();
-                        let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
-                        
+                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
+
+                        // suppress if there are inputs held and monophonic scheduling
+                        if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic && transform.is_active() {
+                            if !override_values.get(&id).unwrap_or(&LoopTransform::None).is_active() {
+                                // now check to see if any other triggers in the chunk have overrides
+                                let ids = get_all_ids_in_this_chunk(id, &chunks, &mapping, &chunk_trigger_ids);
+                                let chunk_has_override = ids.iter().any(|id| override_values.get(id).unwrap_or(&LoopTransform::None).is_active());
+                                if chunk_has_override {
+                                    // suppress this override
+                                    transform = LoopTransform::Value(OutputValue::Off);
+                                }
+                            }
+                        } 
+
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
                             out_transforms.insert(id, transform);
 
@@ -1416,5 +1436,21 @@ fn get_repeat_for (chunk_id: usize, chunk_channels: &HashMap<usize, u32>, params
         *params.channel_repeat.get(&channel).unwrap_or(&ChannelRepeat::None)
     } else {
         ChannelRepeat::None
+    }
+}
+
+fn get_schedule_mode (id: u32, chunks: &Vec<Box<Triggerable>>, mapping: &HashMap<Coords, MidiMap>) -> ScheduleMode {
+    if let Some(mapping) = mapping.get(&Coords::from(id)) {
+        chunks.get(mapping.chunk_index).unwrap().schedule_mode()
+    } else {
+        ScheduleMode::MostRecent
+    }
+}
+
+fn get_all_ids_in_this_chunk <'a> (id: u32, chunks: &Vec<Box<Triggerable>>, mapping: &HashMap<Coords, MidiMap>, chunk_trigger_ids: &'a Vec<Vec<u32>>) -> Vec<u32> {
+    if let Some(mapping) = mapping.get(&Coords::from(id)) {
+        chunk_trigger_ids.get(mapping.chunk_index).unwrap().clone()
+    } else {
+        Vec::new()
     }
 }
