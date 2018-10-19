@@ -40,7 +40,8 @@ lazy_static! {
 
 pub struct LoopGridParams {
     pub swing: f64,
-    pub channel_repeat: HashMap<u32, ChannelRepeat>
+    pub channel_repeat: HashMap<u32, ChannelRepeat>,
+    pub align_offset: MidiTime
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -368,8 +369,8 @@ impl LoopGridLaunchpad {
             let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
 
             // hack for setting default states on latches
-            trigger_latch_for.insert(2, Coords::id_from(3 + 8, 0));
-            trigger_latch_for.insert(3, Coords::id_from(4 + 8, 5));
+            trigger_latch_for.insert(4, Coords::id_from(3 + 8, 0));
+            trigger_latch_for.insert(5, Coords::id_from(4 + 8, 5));
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
@@ -394,6 +395,8 @@ impl LoopGridLaunchpad {
             for received in rx {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
+                        let params = params.lock().unwrap();
+                        let align_offset = params.align_offset;
 
                         // calculate bpm (unknown if syncing to external clock)
                         let current_time = SystemTime::now();
@@ -405,17 +408,16 @@ impl LoopGridLaunchpad {
                         audio_recorder.tx.send(AudioRecorderEvent::Tick).unwrap();
 
                         // only read swing on 8th notes to prevent back scheduling
-                        if position % MidiTime::from_ticks(12) == MidiTime::zero() {
-                            let params = params.lock().unwrap();
+                        if (position - align_offset) % MidiTime::from_ticks(12) == MidiTime::zero() {
                             current_swing = params.swing
                         }
 
                         // get the swung position
-                        last_pos = position.swing(current_swing);
-                        last_length = (position + length).swing(current_swing) - last_pos;
+                        last_pos = (position - align_offset).swing(current_swing) + align_offset;
+                        last_length = (position - align_offset + length).swing(current_swing) + align_offset - last_pos;
                         length_multiplier = last_length.as_float() / length.as_float();
 
-                        let mut events = get_events(last_pos, last_length, &recorder, &out_transforms);
+                        let mut events = get_events(last_pos, last_length, align_offset, &recorder, &out_transforms);
 
                         let mut ranked = HashMap::new();
                         for (key, value) in &last_triggered {
@@ -456,8 +458,11 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
                     },
                     LoopGridMessage::RefreshSideButtons => {
+                        let params = params.lock().unwrap();
+                        let pos = last_pos - params.align_offset;
+
                         let beat_display_multiplier = (24.0 * 8.0) / loop_length.ticks() as f64;
-                        let shifted_beat_position = (last_pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
+                        let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
 
                         let current_beat_light = SIDE_BUTTONS[shifted_beat_position % 8];
                         let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
@@ -470,7 +475,7 @@ impl LoopGridLaunchpad {
                             launchpad_output.send(&[144, current_repeat_light, rate_color.value()]).unwrap();
                         }
 
-                        let beat_start = last_pos.is_whole_beat();
+                        let beat_start = pos.is_whole_beat();
 
                         let base_last_beat_light = if current_repeat_light == last_beat_light {
                             rate_color
@@ -524,7 +529,9 @@ impl LoopGridLaunchpad {
                             currently_held_inputs.remove(index);
                         }
 
-                        if selecting && value.is_on() {
+                        let changing_drum_patch = id < 8 && selecting && selecting_scale_held;
+
+                        if selecting && value.is_on() && !changing_drum_patch {
                             if selection.contains(&id) {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
@@ -558,7 +565,7 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            let in_scale_view = (id >= 8 && id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id);
+                            let in_scale_view = (id >= 8 && id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) || changing_drum_patch;
 
                             if in_scale_view  {
                                 input_values.insert(scale_id, value);
@@ -643,10 +650,11 @@ impl LoopGridLaunchpad {
 
                             last_changed_triggers.insert(id, last_pos);
 
+                            let params = params.lock().unwrap();
                             let pos = current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
  
                             // send new value
-                            if let Some(value) = get_value(id, pos, &recorder, &out_transforms, true) {
+                            if let Some(value) = get_value(id, pos, params.align_offset, &recorder, &out_transforms, true) {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                     id, value, pos
                                 })).unwrap();
@@ -1123,6 +1131,8 @@ impl LoopGridLaunchpad {
                         
                     },                 
                     LoopGridMessage::InitialLoop => {
+                        let params = params.lock().unwrap();
+
                         for id in 0..128 {
                             let loop_collection = loop_state.get();
                             let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
@@ -1132,7 +1142,7 @@ impl LoopGridLaunchpad {
                                 last_changed_triggers.insert(id, last_pos);
 
                                 // send new value
-                                if let Some(value) = get_value(id, last_pos, &recorder, &out_transforms, false) {
+                                if let Some(value) = get_value(id, last_pos, params.align_offset, &recorder, &out_transforms, false) {
                                     tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                         id: id, value, pos: last_pos
                                     })).unwrap();
@@ -1279,7 +1289,7 @@ fn update_ids <'a> (a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, 
     (added, removed)
 }
 
-fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>, late_trigger: bool) -> Option<OutputValue> {
+fn get_value (id: u32, position: MidiTime, align_offset: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>, late_trigger: bool) -> Option<OutputValue> {
     match transforms.get(&id).unwrap_or(&LoopTransform::None) {
         &LoopTransform::Value(value) => Some(value),
         &LoopTransform::Range {pos: range_pos, length: range_length} => {
@@ -1297,12 +1307,13 @@ fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: 
             }
         },
         &LoopTransform::Repeat { rate, offset, value } => {
+            let pos = position - align_offset;
             if late_trigger {
-                let mut current_on = position.quantize(rate) + (offset % rate);
-                if current_on > position {
+                let mut current_on = pos.quantize(rate) + (offset % rate);
+                if current_on > pos {
                     current_on = current_on - rate
                 }
-                if position - current_on <= MidiTime::from_ticks(1) {
+                if pos - current_on <= MidiTime::from_ticks(1) {
                     return Some(value);
                 }
             }
@@ -1313,7 +1324,7 @@ fn get_value (id: u32, position: MidiTime, recorder: &LoopRecorder, transforms: 
     }
 }
 
-fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>) -> Vec<LoopEvent> {
+fn get_events (position: MidiTime, length: MidiTime, align_offset: MidiTime, recorder: &LoopRecorder, transforms: &HashMap<u32, LoopTransform>) -> Vec<LoopEvent> {
     let mut result = Vec::new();
 
     if length > MidiTime::zero() {        
@@ -1325,7 +1336,7 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
 
                     if range_pos >= playback_pos && range_pos < (playback_pos + length) {
                         // insert start value
-                        if let Some(value) = get_value(*id, range_pos, recorder, transforms, false) {
+                        if let Some(value) = get_value(*id, range_pos, align_offset, recorder, transforms, false) {
                             LoopEvent {
                                 id: *id, pos: position, value
                             }.insert_into(&mut result);
@@ -1339,8 +1350,8 @@ fn get_events (position: MidiTime, length: MidiTime, recorder: &LoopRecorder, tr
                     }
                 },
                 &LoopTransform::Repeat {rate: repeat_rate, offset: repeat_offset, value} => {
-                    let next_on = next_repeat(position, repeat_rate, repeat_offset);
-                    let next_off = next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half());
+                    let next_on = next_repeat(position - align_offset, repeat_rate, repeat_offset) + align_offset;
+                    let next_off = next_repeat(position - align_offset, repeat_rate, repeat_offset + repeat_rate.half()) + align_offset;
                     let to = position + length;
 
 

@@ -7,11 +7,15 @@ mod root_select;
 mod scale_select;
 mod vt3;
 mod umi3;
+mod sp404;
+mod sp404_offset;
 
 pub use self::blofeld_drums::BlofeldDrums;
 pub use self::blofeld_drums::BlofeldDrumParams;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
+pub use self::sp404::SP404;
+pub use self::sp404_offset::SP404Offset;
 
 pub use self::midi_keys::MidiKeys;
 pub use self::vt3::VT3;

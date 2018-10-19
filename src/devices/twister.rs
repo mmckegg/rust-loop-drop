@@ -6,6 +6,7 @@ use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
 use ::loop_grid_launchpad::{LoopGridParams, ChannelRepeat};
 use ::audio_recorder::AudioRecorderEvent;
+use std::time::{Duration, Instant};
 use ::lfo::Lfo;
 
 use std::thread;
@@ -23,8 +24,8 @@ impl Twister {
         let kmix_port_name = String::from(kmix_port_name);
         let control_ids = get_control_ids();
 
-        let kmix_channel_map: [u8; 4] = [ 4, 2, 3, 1 ];
-        let looper_return_channel = 5; // stereo pair
+        let ext_channel = 5; // stereo pair
+        let kmix_channel_map: [u8; 5] = [ 4, 2, 3, 1, ext_channel ];
         let fx_return_channel = 7; // stereo pair
 
         let mut main_mix_kmix_channels = kmix_channel_map.to_vec();
@@ -35,6 +36,7 @@ impl Twister {
         let tx_input = tx.clone();
         let tx_clock = tx.clone();
         let tx_feedback = tx.clone();
+        let mut align_button_pressed_at = Instant::now();
 
         // pipe clock in
         thread::spawn(move || {
@@ -50,7 +52,11 @@ impl Twister {
             if message[0] == 176 {
                 tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
             } else if message[0] == 177 {
-                tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
+                if control == Control::Tempo {
+                    tx_input.send(TwisterMessage::AlignButton(message[2] > 0)).unwrap()
+                } else {
+                    tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
+                }
             }
         });
 
@@ -73,10 +79,6 @@ impl Twister {
 
             let mut lfo = Lfo::new();
 
-            let mut looper_vocal_amount = 1.0;
-            let mut looper_send_multiplier = 1.0;
-            let mut looper_main_amount = 0.0;
-
             for channel in 0..4 {
                 tx_feedback.send(TwisterMessage::Event(LoopEvent { 
                     id: *control_ids.get(&Control::ChannelVolume(channel)).unwrap(), 
@@ -98,6 +100,23 @@ impl Twister {
                 last_values.insert(Control::ChannelReverbLfo(channel), 64);
                 last_values.insert(Control::ChannelDelayLfo(channel), 64);
                 last_values.insert(Control::ChannelModLfo(channel), 64);
+
+                // drum defaults
+                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                    id: *control_ids.get(&Control::DrumModX(channel)).unwrap(), 
+                    value: OutputValue::On(64),
+                    pos: last_pos
+                })).unwrap();
+                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                    id: *control_ids.get(&Control::DrumModY(channel)).unwrap(), 
+                    value: OutputValue::On(64),
+                    pos: last_pos
+                })).unwrap();
+                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                    id: *control_ids.get(&Control::DrumModZ(channel)).unwrap(), 
+                    value: OutputValue::On(0),
+                    pos: last_pos
+                })).unwrap();
             }
 
             last_values.insert(Control::LfoHold, lfo.hold);
@@ -108,8 +127,14 @@ impl Twister {
             last_values.insert(Control::ReturnVolumeLfo, 64);
 
             tx_feedback.send(TwisterMessage::Event(LoopEvent { 
-                id: *control_ids.get(&Control::LooperSend).unwrap(), 
-                value: OutputValue::On(0),
+                id: *control_ids.get(&Control::ChannelSend(3)).unwrap(), 
+                value: OutputValue::On(100),
+                pos: last_pos
+            })).unwrap();
+
+            tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                id: *control_ids.get(&Control::ChannelVolume(4)).unwrap(), 
+                value: OutputValue::On(100),
                 pos: last_pos
             })).unwrap();
 
@@ -157,34 +182,29 @@ impl Twister {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
                                     meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, value)).unwrap();
                                     kmix_output.send(&[176 + kmix_channel - 1, 1, value]).unwrap();
-
-                                    if channel == 3 {
-                                        tx_feedback.send(TwisterMessage::UpdateLooperSend).unwrap();
-                                    }
                                 },
                                 Control::ChannelReverb(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
                                     kmix_output.send(&[176 + kmix_channel - 1, 23, value]).unwrap();
 
-                                    if channel == 3 {
-                                        tx_feedback.send(TwisterMessage::UpdateLooperSend).unwrap();
+                                    if channel == 0 { // ext shares delay and reverb send with drums
+                                        kmix_output.send(&[176 + ext_channel - 1, 23, value]).unwrap();
                                     }
                                 },
                                 Control::ChannelDelay(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
                                     kmix_output.send(&[176 + kmix_channel - 1, 25, value]).unwrap();
 
-                                    if channel == 3 {
-                                        tx_feedback.send(TwisterMessage::UpdateLooperSend).unwrap();
+                                    if channel == 0 { // ext shares delay and reverb send with drums
+                                        kmix_output.send(&[176 + ext_channel - 1, 25, value]).unwrap();
                                     }
+                                },
+                                Control::ChannelSend(channel) => {
+                                    let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
+                                    kmix_output.send(&[176 + kmix_channel - 1, 27, value]).unwrap();
                                 },
                                 Control::ChannelMod(channel) => {
                                     match channel {
-                                        0 => {
-                                            for i in 8..16 {
-                                                blofeld_output.send(&[208 + i - 1, value]).unwrap();
-                                            }
-                                        },
                                         1 => {
                                             main_output.send(&[208, value]).unwrap();
                                         },
@@ -195,22 +215,23 @@ impl Twister {
                                     }
                                 },
 
-                                Control::LooperSend => {
-                                    let polar_value = midi_to_polar(value);
-                                    looper_vocal_amount = polar_value.min(0.0) * -1.0;
-                                    looper_main_amount = polar_value.max(0.0);
-                                    looper_send_multiplier = 1.0 - looper_main_amount;
-                                    tx_feedback.send(TwisterMessage::UpdateLooperSend).unwrap();
-                                },
                                 Control::DrumVelocity(trigger) => {
                                     let mut drum_params = drum_params.lock().unwrap();
                                     let trigger_index = trigger as usize % drum_params.velocities.len();
                                     drum_params.velocities[trigger_index] = value;
                                 },
-                                Control::DrumMod(trigger) => {
+                                Control::DrumModX(trigger) => {
                                     let mut drum_params = drum_params.lock().unwrap();
-                                    let trigger_index = trigger as usize % drum_params.mods.len();
-                                    drum_params.mods[trigger_index] = value;
+                                    let trigger_index = trigger as usize % drum_params.x.len();
+                                    drum_params.x[trigger_index] = value;
+                                },
+                                Control::DrumModY(trigger) => {
+                                    let mut drum_params = drum_params.lock().unwrap();
+                                    let trigger_index = trigger as usize % drum_params.y.len();
+                                    drum_params.y[trigger_index] = value;
+                                },
+                                Control::DrumModZ(trigger) => {
+                                    blofeld_output.send(&[176 + 1 + trigger as u8, 94, value]).unwrap();
                                 },
                                 Control::ChannelRepeat(channel) => {
                                     let mut params = params.lock().unwrap();
@@ -260,6 +281,9 @@ impl Twister {
                                 Control::ChannelModLfo(channel) => {
                                     lfo_amounts.insert(Control::ChannelMod(channel), midi_to_polar(value));
                                 },
+                                Control::ChannelSendLfo(channel) => {
+                                    lfo_amounts.insert(Control::ChannelSend(channel), midi_to_polar(value));
+                                },
                                 Control::ReturnVolume => {
                                     meta_tx.send(AudioRecorderEvent::ChannelVolume(5, value)).unwrap();
                                     kmix_output.send(&[176 + fx_return_channel - 1, 1, value]).unwrap();
@@ -282,38 +306,6 @@ impl Twister {
                         tx_feedback.send(TwisterMessage::Refresh(control)).unwrap();
 
                         recorder.add(event);
-                    },
-
-                    TwisterMessage::UpdateLooperSend => {
-                        let vocal_kmix_channel = kmix_channel_map[3];
-                        
-                        let vocal_volume = last_values.get(&Control::ChannelVolume(3)).unwrap_or(&100);
-                        let vocal_reverb = last_values.get(&Control::ChannelReverb(3)).unwrap_or(&0);
-                        let vocal_delay = last_values.get(&Control::ChannelDelay(3)).unwrap_or(&0);
-
-                        let channel_volume = ((*vocal_volume as f64 * looper_send_multiplier) + (100.0 * (1.0 - looper_send_multiplier))).min(127.0) as u8;
-                        let channel_reverb = (*vocal_reverb as f64 * looper_send_multiplier).min(127.0) as u8;
-                        let channel_delay = (*vocal_delay as f64 * looper_send_multiplier).min(127.0) as u8;
-
-                        // looper send amounts
-                        for channel in &main_mix_kmix_channels {
-                            let amount = if channel == &vocal_kmix_channel && looper_vocal_amount > 0.0 {
-                                looper_vocal_amount
-                            } else {
-                                looper_main_amount
-                            };
-                            kmix_output.send(&[176 + channel - 1, 27, (amount * 127.0).min(127.0) as u8]).unwrap();
-                        }
-
-                        // return volume
-                        kmix_output.send(&[176 + looper_return_channel - 1, 1, channel_volume]).unwrap();
-                        meta_tx.send(AudioRecorderEvent::ChannelVolume(4, channel_volume)).unwrap();
-
-                        // return reverb
-                        kmix_output.send(&[176 + looper_return_channel - 1, 23, channel_reverb]).unwrap();
-
-                        // return delay
-                        kmix_output.send(&[176 + looper_return_channel - 1, 25, channel_delay]).unwrap();
                     },
 
                     TwisterMessage::Recording(control, recording) => {
@@ -340,9 +332,9 @@ impl Twister {
                                 let drum_params = drum_params.lock().unwrap();
                                 drum_params.velocities[trigger as usize % drum_params.velocities.len()]
                             },
-                            Control::DrumMod(trigger) => {
+                            Control::DrumModX(trigger) => {
                                 let drum_params = drum_params.lock().unwrap();
-                                drum_params.mods[trigger as usize % drum_params.mods.len()]                            
+                                drum_params.x[trigger as usize % drum_params.x.len()]                            
                             },
                             Control::ChannelRepeat(channel) => {
                                 let params = params.lock().unwrap();
@@ -396,6 +388,22 @@ impl Twister {
 
                             }
                         }
+                    },
+                    TwisterMessage::AlignButton(pressed) => {
+                        let mut params = params.lock().unwrap();
+                        if let Some(id) = control_ids.get(&Control::Tempo) {
+                            if pressed {
+                                align_button_pressed_at = Instant::now();
+                                output.send(&[181, id.clone() as u8, 40]).unwrap();
+                            } else {
+                                output.send(&[181, id.clone() as u8, 0]).unwrap();
+                                if align_button_pressed_at.elapsed() > Duration::from_millis(300) {
+                                    params.align_offset = last_pos;
+                                } else {
+                                    params.align_offset = MidiTime::zero();
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -410,12 +418,12 @@ impl Twister {
 #[derive(Debug)]
 enum TwisterMessage {
     ControlChange(Control, OutputValue),
+    AlignButton(bool),
     Event(LoopEvent),
     Send(Control),
     Refresh(Control),
     Recording(Control, bool),
-    Clock(FromClock),
-    UpdateLooperSend
+    Clock(FromClock)
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
@@ -424,15 +432,18 @@ enum Control {
     ChannelReverb(u32),
     ChannelDelay(u32),
     ChannelMod(u32),
-    LooperSend,
+    ChannelSend(u32),
 
     ChannelVolumeLfo(u32),
     ChannelReverbLfo(u32),
     ChannelDelayLfo(u32),
     ChannelModLfo(u32),
+    ChannelSendLfo(u32),
 
     DrumVelocity(u32),
-    DrumMod(u32),
+    DrumModX(u32),
+    DrumModY(u32),
+    DrumModZ(u32),
 
     ChannelRepeat(u32),
 
@@ -467,7 +478,8 @@ impl Control {
 
         match coords {
             // Bank A
-            (0, 3, 3)  => Control::LooperSend,
+            (0, 0, 3)  => Control::ChannelVolume(4),
+            (0, 3, 3)  => Control::ChannelSend(3),
             (0, row, 0) => Control::ChannelVolume(row),
             (0, row, 1) => Control::ChannelReverb(row),
             (0, row, 2) => Control::ChannelDelay(row),
@@ -475,9 +487,9 @@ impl Control {
 
             // Bank B
             (1, 0, col) => Control::DrumVelocity(col),
-            (1, 1, col) => Control::DrumMod(col),
-            (1, 2, col) => Control::DrumVelocity(col + 4),
-            (1, 3, col) => Control::DrumMod(col + 4),
+            (1, 1, col) => Control::DrumModX(col),
+            (1, 2, col) => Control::DrumModY(col),
+            (1, 3, col) => Control::DrumModZ(col),
 
             // Bank C
             (2, row, 0) => Control::ChannelRepeat(row),
@@ -496,6 +508,8 @@ impl Control {
             (2, 3, 3) => Control::DelayFeedback,
 
             // Bank D
+            (3, 0, 3)  => Control::ChannelVolumeLfo(4),
+            (3, 3, 3)  => Control::ChannelSendLfo(3),
             (3, row, 0) => Control::ChannelVolumeLfo(row),
             (3, row, 1) => Control::ChannelReverbLfo(row),
             (3, row, 2) => Control::ChannelDelayLfo(row),

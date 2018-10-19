@@ -22,6 +22,8 @@ use scale::{Scale, Offset};
 use clock_source::ClockSource;
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams, ChannelRepeat};
 use chunk::{Shape, Coords, ChunkMap};
+use std::sync::atomic::AtomicUsize;
+use ::midi_time::MidiTime;
 
 fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
@@ -39,17 +41,20 @@ fn main() {
     let scale = Scale::new(69, 0);
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
-        channel_repeat
+        channel_repeat,
+        align_offset: MidiTime::zero()
     }));
     
     let drum_params = Arc::new(Mutex::new(devices::BlofeldDrumParams {
-        mods: [0, 0, 0, 0, 0, 0, 0, 0],
-        velocities: [110, 110, 110, 110, 100, 100, 100, 100]
+        x: [0, 0, 0, 0],
+        y: [0, 0, 0, 0],
+        velocities: [110, 110, 110, 110]
     }));
     
     let bass_offset = Offset::new(-2, -4);
     let keys_offset = Offset::new(-1, -4);
     let vox_offset = Offset::new(-2, -4);
+    let sp404_offset = Arc::new(AtomicUsize::new(0));
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
     let vt3_output_port = midi_connection::get_shared_output("VT-3");
@@ -63,6 +68,14 @@ fn main() {
     ]);
 
     let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
+        ChunkMap::new(
+            Box::new(devices::SP404Offset::new(Arc::clone(&sp404_offset))),
+            Coords::new(8, 0), // top row, page 2
+            Shape::new(1, 8),
+            71, // grey
+            None
+        ),
+
         ChunkMap::new(
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))),
             Coords::new(1 + 8, 0), 
@@ -96,10 +109,18 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlofeldDrums::new(blofeld_port.clone(), 8, Arc::clone(&drum_params))), 
+            Box::new(devices::BlofeldDrums::new(blofeld_port.clone(), 2, Arc::clone(&drum_params))), 
             Coords::new(0, 0), 
-            Shape::new(1, 8),
+            Shape::new(1, 4),
             15, // yellow
+            Some(0)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::SP404::new(main_output_port.clone(), 10, Arc::clone(&sp404_offset))), 
+            Coords::new(0, 4), 
+            Shape::new(1, 4),
+            11, // orange
             Some(0)
         ),
 
