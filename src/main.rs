@@ -29,7 +29,7 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
     
-    let main_io_name = "pisound";
+    let main_io_name = "UM-ONE";
 
     // setup default repeat rates
     let mut channel_repeat = HashMap::new();
@@ -64,10 +64,10 @@ fn main() {
         main_output_port.clone(),
         vt3_output_port.clone(),
         blofeld_port.clone(),
-        midi_connection::get_shared_output("Launchpad MK2")
+        midi_connection::get_shared_output("Launchpad MK2 2")
     ]);
 
-    let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
+    let launchpad = LoopGridLaunchpad::new("Launchpad MK2 2", vec![
         ChunkMap::new(
             Box::new(devices::SP404Offset::new(Arc::clone(&sp404_offset))),
             Coords::new(8, 0), // top row, page 2
@@ -125,7 +125,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(blofeld_port.clone(), 6, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(1, 0), 
             Shape::new(2, 8),
             59, // pink

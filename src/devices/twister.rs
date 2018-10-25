@@ -206,7 +206,7 @@ impl Twister {
                                 Control::ChannelMod(channel) => {
                                     match channel {
                                         1 => {
-                                            main_output.send(&[208, value]).unwrap();
+                                            blofeld_output.send(&[208 - 1 + 6, value]).unwrap();
                                         },
                                         2 => {
                                             blofeld_output.send(&[208, value]).unwrap();

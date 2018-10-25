@@ -846,7 +846,7 @@ impl LoopGridLaunchpad {
                         }
 
                         recorder.add(event);
-                        audio_recorder.trigger();
+                        // audio_recorder.trigger();
                     },
                     LoopGridMessage::ClearRecording => {
                         last_changed_triggers.clear();
