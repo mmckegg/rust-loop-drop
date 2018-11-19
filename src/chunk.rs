@@ -1,4 +1,4 @@
-pub use std::time::SystemTime;
+pub use std::time::{SystemTime, Duration};
 pub use ::output_value::OutputValue;
 
 pub trait Triggerable {
@@ -8,6 +8,7 @@ pub trait Triggerable {
     fn get_chokes_for (&self, id: u32) -> Option<Vec<u32>> { None }
     fn latch_mode (&self) -> LatchMode { LatchMode::None }
     fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
+    fn latency_offset (&self) -> Option<Duration> { None }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]

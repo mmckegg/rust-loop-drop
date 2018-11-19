@@ -2,6 +2,8 @@ use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode};
 use ::midi_connection;
 use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
 pub use ::scale::Scale;
 
 pub struct SP404 {
@@ -50,5 +52,9 @@ impl Triggerable for SP404 {
 
     fn schedule_mode (&self) -> ScheduleMode {
         ScheduleMode::Percussion
+    }
+
+    fn latency_offset (&self) -> Option<Duration> {
+        Some(Duration::from_millis(5))
     }
 }

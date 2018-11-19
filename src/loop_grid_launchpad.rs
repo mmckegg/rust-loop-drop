@@ -282,6 +282,7 @@ impl LoopGridLaunchpad {
         thread::spawn(move || {
             let mut mapping: HashMap<Coords, MidiMap> = HashMap::new();
             let mut chunks: Vec<Box<Triggerable>> = Vec::new();
+            let mut chunk_latency_offsets: HashMap<usize, Duration> = HashMap::new();
             let mut chunk_colors: Vec<Light> = Vec::new();
             let mut chunk_channels: HashMap<usize, u32> = HashMap::new();
             let mut chunk_trigger_ids: Vec<Vec<u32>> = Vec::new();
@@ -305,6 +306,10 @@ impl LoopGridLaunchpad {
 
                 if let Some(channel) = item.channel {
                     chunk_channels.insert(chunk_index, channel);
+                }
+
+                if let Some(latency_offset) = item.chunk.latency_offset() {
+                    chunk_latency_offsets.insert(chunk_index, latency_offset);
                 }
 
                 chunks.push(item.chunk);
@@ -420,6 +425,11 @@ impl LoopGridLaunchpad {
 
                         let mut events = get_events(last_pos, last_length, align_offset, &recorder, &out_transforms);
 
+                        // peak at next tick events, so that we can trigger early if chunk needs latency compensation
+                        for event in get_events(last_pos + last_length, last_length, align_offset, &recorder, &out_transforms) {
+                            events.push(event);
+                        }
+
                         let mut ranked = HashMap::new();
                         for (key, value) in &last_triggered {
                             for id in value.iter() {
@@ -446,12 +456,22 @@ impl LoopGridLaunchpad {
                         });
 
                         for event in events {
-                            if event.value.is_on() {
-                                if let Some(mapping) = mapping.get(&Coords::from(event.id)) {
-                                    last_triggered.entry(mapping.chunk_index).or_insert(CircularQueue::with_capacity(8)).push(event.id);
+                            // apply event offset
+                            if let Some(mapping) = mapping.get(&Coords::from(event.id)) {
+                                let shifted_event_pos = if let Some(offset) = chunk_latency_offsets.get(&mapping.chunk_index) {
+                                    pos_with_latency_compensation(tick_duration, event.pos, *offset)
+                                } else {
+                                    event.pos
+                                };
+
+                                // now filter out events that occur before or after the playback window
+                                if shifted_event_pos >= last_pos && shifted_event_pos < (last_pos + last_length) {
+                                    if event.value.is_on() {
+                                        last_triggered.entry(mapping.chunk_index).or_insert(CircularQueue::with_capacity(8)).push(event.id);
+                                    }
+                                    tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                                 }
                             }
-                            tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                         }
 
                         tx_feedback.send(LoopGridMessage::ChunkTick).unwrap();
@@ -820,12 +840,14 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::Event(event) => {
-                        let new_value = event.value.clone();
-                        let offset = event.pos - last_pos;
-                        let fraction = (offset.frac() as f64) / 256.0;
-                        let tick_nano = ((tick_duration.subsec_nanos() as f64 * fraction) * length_multiplier) as u32;
-                        let time = last_tick_at + Duration::new(0, tick_nano);
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
+                            let new_value = event.value.clone();
+                            let offset = event.pos - last_pos;
+                            let tick_nano = (tick_duration.subsec_nanos() as f64 * offset.as_float()) as u32;
+                            
+                            let latency_offset = chunk_latency_offsets.get(&mapped.chunk_index).unwrap_or(&Duration::from_nanos(0));
+
+                            let time = last_tick_at + Duration::new(0, tick_nano) - *latency_offset;
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
                                     if let Some(chunk) = chunks.get(mapped.chunk_index) {
@@ -1074,7 +1096,6 @@ impl LoopGridLaunchpad {
                                     sustained_values.insert(*id, value.clone());
                                 }
                             }
-                            println!("SUSTAINED {:?}", sustained_values);
                         } else {
                             sustained_values.clear();
                         }
@@ -1469,4 +1490,8 @@ fn get_all_ids_in_this_chunk <'a> (id: u32, chunks: &Vec<Box<Triggerable>>, mapp
     } else {
         Vec::new()
     }
+}
+
+fn pos_with_latency_compensation (tick_duration: Duration, pos: MidiTime, offset: Duration) -> MidiTime {
+    pos - MidiTime::from_float(offset.subsec_nanos() as f64 / tick_duration.subsec_nanos() as f64)
 }
