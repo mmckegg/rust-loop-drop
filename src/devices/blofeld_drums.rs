@@ -50,6 +50,9 @@ impl Triggerable for BlofeldDrums {
                 self.midi_port.send_at(&[176 - 1 + channel, 1, mod_value], at).unwrap();
                 self.midi_port.send_at(&[208 - 1 + channel, pressure_value], at).unwrap();
 
+                // send note off (choke previous drum)
+                self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+
                 // send note
                 self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();
                 self.output_values.insert(id, (channel, note_id, velocity));
