@@ -41,7 +41,8 @@ lazy_static! {
 pub struct LoopGridParams {
     pub swing: f64,
     pub channel_repeat: HashMap<u32, ChannelRepeat>,
-    pub align_offset: MidiTime
+    pub align_offset: MidiTime,
+    pub reset_automation: bool
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -983,6 +984,10 @@ impl LoopGridLaunchpad {
                                     for id in 0..128 {
                                         new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
                                     }
+
+                                    // HACK: send a message to twister to clear automation
+                                    let mut params = params.lock().unwrap();
+                                    params.reset_automation = true;
                                 } else {
                                     if selecting_scale {
                                         for id in 64..128 {

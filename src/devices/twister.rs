@@ -102,6 +102,7 @@ impl Twister {
                 last_values.insert(Control::ChannelReverbLfo(channel), 64);
                 last_values.insert(Control::ChannelDelayLfo(channel), 64);
                 last_values.insert(Control::ChannelModLfo(channel), 64);
+                last_values.insert(Control::Tempo, 64);
 
                 // drum defaults
                 tx_feedback.send(TwisterMessage::Event(LoopEvent { 
@@ -362,6 +363,28 @@ impl Twister {
                     TwisterMessage::Clock(msg) => {
                         match msg {
                             FromClock::Schedule { pos, length } => {
+                                let mut params = params.lock().unwrap();
+                                if params.reset_automation {
+                                    // HACK: ack reset message from clear all
+                                    params.reset_automation = false;
+                                    loops.clear();
+
+                                    for control in control_ids.keys() {
+                                        tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                                    }
+
+                                    // reset LFO
+                                    for channel in 0..5 {
+                                        tx_feedback.send(TwisterMessage::ControlChange(Control::ChannelVolumeLfo(channel), OutputValue::On(64))).unwrap();
+                                        tx_feedback.send(TwisterMessage::ControlChange(Control::ChannelReverbLfo(channel), OutputValue::On(64))).unwrap();
+                                        tx_feedback.send(TwisterMessage::ControlChange(Control::ChannelDelayLfo(channel), OutputValue::On(64))).unwrap();
+                                        tx_feedback.send(TwisterMessage::ControlChange(Control::ChannelModLfo(channel), OutputValue::On(64))).unwrap();
+                                        tx_feedback.send(TwisterMessage::ControlChange(Control::ChannelSendLfo(channel), OutputValue::On(64))).unwrap();
+                                    }
+
+                                    tx_feedback.send(TwisterMessage::ControlChange(Control::ReturnVolumeLfo, OutputValue::On(64))).unwrap();
+                                }
+
                                 let mut scheduled = HashSet::new();
                                 for (control, value) in &loops {
                                     let offset = value.offset % value.length;

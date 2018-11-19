@@ -43,7 +43,8 @@ fn main() {
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
         channel_repeat,
-        align_offset: MidiTime::zero()
+        align_offset: MidiTime::zero(),
+        reset_automation: false
     }));
     
     let drum_params = Arc::new(Mutex::new(devices::BlofeldDrumParams {
