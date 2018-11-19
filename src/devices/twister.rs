@@ -6,6 +6,7 @@ use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
 use ::loop_grid_launchpad::{LoopGridParams, ChannelRepeat};
 use ::audio_recorder::AudioRecorderEvent;
+use ::throttled_output::ThrottledOutput;
 use std::time::{Duration, Instant};
 use ::lfo::Lfo;
 
@@ -74,6 +75,7 @@ impl Twister {
             let mut blofeld_output = blofeld_output;
             let drum_params = drum_params;
             let mut kmix_output = midi_connection::get_shared_output(&kmix_port_name);
+            let mut throttled_kmix_output = ThrottledOutput::new(kmix_output);
 
             let mut lfo_amounts = HashMap::new();
 
@@ -180,28 +182,28 @@ impl Twister {
                             match control {
                                 Control::ChannelVolume(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
-                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, value)).unwrap();
-                                    kmix_output.send(&[176 + kmix_channel - 1, 1, value]).unwrap();
+                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, value));
+                                    throttled_kmix_output.send(&[176 + kmix_channel - 1, 1, value]);
                                 },
                                 Control::ChannelReverb(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
-                                    kmix_output.send(&[176 + kmix_channel - 1, 23, value]).unwrap();
+                                    throttled_kmix_output.send(&[176 + kmix_channel - 1, 23, value]);
 
                                     if channel == 0 { // ext shares delay and reverb send with drums
-                                        kmix_output.send(&[176 + ext_channel - 1, 23, value]).unwrap();
+                                        throttled_kmix_output.send(&[176 + ext_channel - 1, 23, value]);
                                     }
                                 },
                                 Control::ChannelDelay(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
-                                    kmix_output.send(&[176 + kmix_channel - 1, 25, value]).unwrap();
+                                    throttled_kmix_output.send(&[176 + kmix_channel - 1, 25, value]);
 
                                     if channel == 0 { // ext shares delay and reverb send with drums
-                                        kmix_output.send(&[176 + ext_channel - 1, 25, value]).unwrap();
+                                        throttled_kmix_output.send(&[176 + ext_channel - 1, 25, value]);
                                     }
                                 },
                                 Control::ChannelSend(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
-                                    kmix_output.send(&[176 + kmix_channel - 1, 27, value]).unwrap();
+                                    throttled_kmix_output.send(&[176 + kmix_channel - 1, 27, value]);
                                 },
                                 Control::ChannelMod(channel) => {
                                     match channel {
@@ -286,7 +288,7 @@ impl Twister {
                                 },
                                 Control::ReturnVolume => {
                                     meta_tx.send(AudioRecorderEvent::ChannelVolume(5, value)).unwrap();
-                                    kmix_output.send(&[176 + fx_return_channel - 1, 1, value]).unwrap();
+                                    throttled_kmix_output.send(&[176 + fx_return_channel - 1, 1, value]);
                                 },
                                 Control::ReturnVolumeLfo => {
                                     lfo_amounts.insert(Control::ReturnVolume, midi_to_polar(value));
@@ -380,6 +382,8 @@ impl Twister {
                                     }
                                 }
                                 last_pos = pos;
+
+                                throttled_kmix_output.flush();
                             },
                             FromClock::Tempo(value) => {
                                 tx_feedback.send(TwisterMessage::Refresh(Control::Tempo)).unwrap();

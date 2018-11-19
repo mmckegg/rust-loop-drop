@@ -17,6 +17,7 @@ mod devices;
 mod scale;
 mod audio_recorder;
 mod lfo;
+mod throttled_output;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
