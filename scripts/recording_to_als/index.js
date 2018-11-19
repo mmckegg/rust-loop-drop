@@ -21,7 +21,10 @@ var tempo = null
 var ticks = []
 var duration = 0
 var length = 0
-var tempoMultiplier = 1
+
+// sync the K-Mix clock and Raspberry Pi 
+var recordingTimeMultiplier = 0.9999541021
+var tempoMultiplier = 1 / recordingTimeMultiplier
 
 fs.mkdirSync(projectPath)
 
@@ -75,7 +78,7 @@ console.log('Parsing events...')
 fs.readFileSync(eventsPath, 'utf8').split('\n').forEach(line => {
   let event = tryParse(line)
   if (event) {
-    var time = event[0]
+    var time = event[0] * recordingTimeMultiplier
     var type = event[1]
 
     var lastTempoEvent = tempoEvents[tempoEvents.length - 1]
@@ -117,7 +120,7 @@ fs.readFileSync(eventsPath, 'utf8').split('\n').forEach(line => {
 
 var lastTempo = tempoEvents[tempoEvents.length - 1] ? tempoEvents[tempoEvents.length - 1].tempo : tempo
 tempoEvents.push({
-  time: duration, beat: length, tempo: lastTempo
+  time: duration, beat: length, tempo: lastTempo * tempoMultiplier
 })
 
 console.log('Exporting tracks...')
