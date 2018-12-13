@@ -59,12 +59,12 @@ fn main() {
     let sp404_offset = Arc::new(AtomicUsize::new(0));
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
-    let vt3_output_port = midi_connection::get_shared_output("VT-3");
+    let vt4_output_port = midi_connection::get_shared_output("VT-4");
     let blofeld_port = midi_connection::get_shared_output("Blofeld");
 
     let mut clock = ClockSource::new(main_io_name, vec![
         main_output_port.clone(),
-        vt3_output_port.clone(),
+        vt4_output_port.clone(),
         blofeld_port.clone(),
         midi_connection::get_shared_output("Launchpad MK2")
     ]);
@@ -113,7 +113,7 @@ fn main() {
         ChunkMap::new(
             Box::new(devices::BlofeldDrums::new(blofeld_port.clone(), 2, Arc::clone(&drum_params))), 
             Coords::new(0, 0), 
-            Shape::new(1, 4),
+            Shape::new(1, 8),
             15, // yellow
             Some(0)
         ),
@@ -143,7 +143,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::VT3::new(vt3_output_port.clone(), Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Box::new(devices::VT4::new(vt4_output_port.clone(), Arc::clone(&scale), Arc::clone(&vox_offset))), 
             Coords::new(6, 0), 
             Shape::new(2, 8),
             43, // blue

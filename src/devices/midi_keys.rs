@@ -7,8 +7,8 @@ pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
 
 pub struct MidiKeys {
-    midi_output: midi_connection::SharedMidiOutputConnection,
-    midi_channel: u8,
+    pub midi_output: midi_connection::SharedMidiOutputConnection,
+    pub midi_channel: u8,
     output_values: HashMap<u32, (u8, u8)>,
     scale: Arc<Mutex<Scale>>,
     offset: Arc<Mutex<Offset>>
@@ -23,6 +23,10 @@ impl MidiKeys {
             offset,
             scale
         }
+    }
+
+    pub fn scale (&self) -> std::sync::MutexGuard<'_, Scale, > {
+        self.scale.lock().unwrap()
     }
 }
 
