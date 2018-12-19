@@ -50,7 +50,7 @@ fn main() {
     let drum_params = Arc::new(Mutex::new(devices::BlofeldDrumParams {
         x: [0, 0, 0, 0],
         y: [0, 0, 0, 0],
-        velocities: [110, 110, 110, 110]
+        velocities: [110, 110, 110, 80, 110, 110, 110, 110]
     }));
     
     let bass_offset = Offset::new(-2, -4);
@@ -118,13 +118,13 @@ fn main() {
             Some(0)
         ),
 
-        ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 10, Arc::clone(&sp404_offset))), 
-            Coords::new(0, 4), 
-            Shape::new(1, 4),
-            11, // orange
-            Some(0)
-        ),
+        // ChunkMap::new(
+        //     Box::new(devices::SP404::new(main_output_port.clone(), 10, Arc::clone(&sp404_offset))), 
+        //     Coords::new(0, 4), 
+        //     Shape::new(1, 4),
+        //     11, // orange
+        //     Some(0)
+        // ),
 
         ChunkMap::new(
             Box::new(devices::MidiKeys::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 

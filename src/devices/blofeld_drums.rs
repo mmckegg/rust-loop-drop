@@ -37,8 +37,8 @@ impl Triggerable for BlofeldDrums {
                 let params = self.params.lock().unwrap();
                 let velocity_index = id as usize % params.velocities.len();
                 let velocity = params.velocities[velocity_index];
-                let mod_value = params.x[velocity_index];
-                let pressure_value = params.y[velocity_index];
+                let mod_value = params.x[id as usize % params.x.len()];
+                let pressure_value = params.y[id as usize % params.y.len()];
 
                 let channel = self.midi_channel + id as u8;
                 let note_id = 36;
@@ -62,7 +62,7 @@ impl Triggerable for BlofeldDrums {
 }
 
 pub struct BlofeldDrumParams {
-    pub velocities: [u8; 4],
+    pub velocities: [u8; 8],
     pub x: [u8; 4],
     pub y: [u8; 4]
 }
