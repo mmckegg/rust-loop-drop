@@ -416,12 +416,12 @@ impl Twister {
                         if let Some(id) = control_ids.get(&Control::Tempo) {
                             if pressed {
                                 align_button_pressed_at = Instant::now();
+                                params.align_offset = last_pos;
                                 output.send(&[181, id.clone() as u8, 40]).unwrap();
                             } else {
                                 output.send(&[181, id.clone() as u8, 0]).unwrap();
-                                if align_button_pressed_at.elapsed() > Duration::from_millis(300) {
-                                    params.align_offset = last_pos;
-                                } else {
+                                if align_button_pressed_at.elapsed() < Duration::from_millis(300) {
+                                    // cancel if released immediately
                                     params.align_offset = MidiTime::zero();
                                 }
                             }
