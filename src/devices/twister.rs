@@ -115,6 +115,11 @@ impl Twister {
                     value: OutputValue::On(64),
                     pos: last_pos
                 })).unwrap();
+                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                    id: *control_ids.get(&Control::DrumModZ(channel)).unwrap(), 
+                    value: OutputValue::On(0),
+                    pos: last_pos
+                })).unwrap();
             }
 
             last_values.insert(Control::LfoHold, lfo.hold);
@@ -511,7 +516,7 @@ impl Control {
             (1, 0, col) => Control::DrumVelocity(col),
             (1, 1, col) => Control::DrumModX(col),
             (1, 2, col) => Control::DrumModY(col),
-            (1, 3, col) => Control::DrumVelocity(col + 4),
+            (1, 3, col) => Control::DrumModZ(col),
 
             // Bank C
             (2, row, 0) => Control::ChannelRepeat(row),
