@@ -69,6 +69,9 @@ fn main() {
         midi_connection::get_shared_output("Launchpad MK2")
     ]);
 
+    // auto send clock start every 32 beats (for arp sync)
+    clock.sync_clock_start(blofeld_port.clone());
+
     let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
         ChunkMap::new(
             Box::new(devices::SP404Offset::new(Arc::clone(&sp404_offset))),

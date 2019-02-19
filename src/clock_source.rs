@@ -166,6 +166,24 @@ impl ClockSource {
         }
     }
 
+    pub fn sync_clock_start (&mut self, output: midi_connection::SharedMidiOutputConnection) {
+        let clock = self.add_rx();
+        // pipe clock in
+        thread::spawn(move || {
+            let mut output = output;
+            for msg in clock.receiver {
+                match msg {
+                    FromClock::Schedule {pos, ..} => {
+                        if pos % MidiTime::from_beats(32) == MidiTime::zero() {
+                            output.send(&[242, 0, 0]).unwrap();
+                        }
+                    },
+                    _ => ()
+                }
+            }
+        });
+    }
+
     pub fn add_rx (&mut self) -> RemoteClock {
         RemoteClock {
             receiver: self.bus.add_rx(),
