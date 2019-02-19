@@ -644,6 +644,11 @@ impl LoopGridLaunchpad {
                                 for id in get_all_ids_in_this_chunk(id, &chunks, &mapping, &chunk_trigger_ids) {
                                     tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
                                 }
+                            } else if selection.contains(&id) {
+                                // refresh all in selection if part of selection
+                                for id in &selection {
+                                    tx_feedback.send(LoopGridMessage::RefreshOverride(*id)).unwrap();
+                                }
                             } else {
                                 tx_feedback.send(LoopGridMessage::RefreshOverride(id)).unwrap();
                             }
@@ -664,7 +669,13 @@ impl LoopGridLaunchpad {
                                     transform = LoopTransform::Value(OutputValue::Off);
                                 }
                             }
-                        } 
+                        }
+
+                        // if this note is part of selection, and other notes in selection are being overridden, then suppress this trigger
+                        let selection_active = selection.iter().any(|x| override_values.get(x).unwrap_or(&LoopTransform::None).is_active());
+                        if transform.is_active() && !override_values.get(&id).unwrap_or(&LoopTransform::None).is_active() && selection.contains(&id) && selection_active {
+                            transform = LoopTransform::Value(OutputValue::Off);
+                        }
 
                         if out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
                             out_transforms.insert(id, transform);
