@@ -77,7 +77,6 @@ impl Triggerable for VT4 {
             if Some(key) != self.last_key {
                 self.midi_keys.midi_output.send(&[176, 48, key]).unwrap();
                 self.last_key = Some(key);
-                println!("Set Key {}", key);
             }
         }
     }

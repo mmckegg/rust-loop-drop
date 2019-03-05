@@ -1107,7 +1107,6 @@ impl LoopGridLaunchpad {
                                 if let Some(next_offset) = loop_state.previous_index_for(selection_override_offset.unwrap_or(0), &selection) {
                                     selection_override_offset = Some(next_offset);
                                     tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
-                                    println!("PARTIAL UNDO! {:?}", selection_override_offset);
                                 }
                             } else {
                                 loop_state.undo();
@@ -1127,7 +1126,6 @@ impl LoopGridLaunchpad {
                                 if let Some(next_offset) = loop_state.next_index_for(selection_override_offset.unwrap_or(0), &selection) {
                                     selection_override_offset = Some(next_offset);
                                     tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
-                                    println!("PARTIAL UNDO! {:?}", selection_override_offset);
                                 }
                             } else {
                                 loop_state.redo();
