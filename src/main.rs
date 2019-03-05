@@ -48,9 +48,8 @@ fn main() {
     }));
     
     let drum_params = Arc::new(Mutex::new(devices::BlofeldDrumParams {
-        x: [0, 0, 0, 0],
-        y: [0, 0, 0, 0],
-        velocities: [110, 110, 110, 110]
+        x: [0, 0, 0, 0, 0, 0, 0, 0],
+        velocities: [110, 110, 110, 110, 110, 110, 110, 110]
     }));
     
     let bass_offset = Offset::new(-2, -4);
@@ -60,17 +59,17 @@ fn main() {
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
     let vt4_output_port = midi_connection::get_shared_output("VT-4");
-    let blofeld_port = midi_connection::get_shared_output("Blofeld");
+    let digitakt_port = midi_connection::get_shared_output("Elektron Digitakt");
 
-    let mut clock = ClockSource::new(main_io_name, vec![
+    let mut clock = ClockSource::new("Elektron Digitakt", vec![
         main_output_port.clone(),
         vt4_output_port.clone(),
-        blofeld_port.clone(),
+        // digitakt_port.clone(),
         midi_connection::get_shared_output("Launchpad MK2")
     ]);
 
     // auto send clock start every 32 beats (for arp sync)
-    clock.sync_clock_start(blofeld_port.clone());
+    clock.sync_clock_start(main_output_port.clone());
 
     let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
         ChunkMap::new(
@@ -114,7 +113,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlofeldDrums::new(blofeld_port.clone(), 2, Arc::clone(&drum_params))), 
+            Box::new(devices::BlofeldDrums::new(digitakt_port.clone(), 1, main_output_port.clone(), 16, Arc::clone(&drum_params))), 
             Coords::new(0, 0), 
             Shape::new(1, 8),
             15, // yellow
@@ -122,41 +121,49 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 10, Arc::clone(&sp404_offset))), 
-            Coords::new(0, 4), 
-            Shape::new(1, 4),
-            11, // orange
-            Some(0)
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::SP404::new(main_output_port.clone(), 10, 0, Arc::clone(&sp404_offset))), 
             Coords::new(1, 0), 
-            Shape::new(2, 8),
-            59, // pink
+            Shape::new(1, 4),
+            9, // orange
             Some(1)
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(blofeld_port.clone(), 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
-            Coords::new(3, 0), 
+            Box::new(devices::SP404::new(main_output_port.clone(), 10, 4, Arc::clone(&sp404_offset))), 
+            Coords::new(1, 4), 
+            Shape::new(1, 4),
+            11, // orange
+            Some(1)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Coords::new(2, 0), 
             Shape::new(3, 8),
-            71, // grey
+            59, // pink
             Some(2)
         ),
 
         ChunkMap::new(
-            Box::new(devices::VT4::new(vt4_output_port.clone(), Arc::clone(&scale), Arc::clone(&vox_offset))), 
-            Coords::new(6, 0), 
-            Shape::new(2, 8),
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Coords::new(5, 0), 
+            Shape::new(3, 8),
             43, // blue
             Some(3)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::VT4::new(vt4_output_port.clone(), Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Coords::new(6 + 8, 0), 
+            Shape::new(2, 8),
+            71, // grey
+            None
         )
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
 
     let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix",
         main_output_port.clone(),
-        blofeld_port.clone(),
+        digitakt_port.clone(),
         Arc::clone(&drum_params),
         Arc::clone(&params),
         clock.add_rx(),

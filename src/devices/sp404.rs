@@ -9,14 +9,16 @@ pub use ::scale::Scale;
 pub struct SP404 {
     last_value: Option<(u8, u8, u8)>,
     offset: Arc<AtomicUsize>,
+    start: u32,
     midi_channel: u8,
     midi_port: midi_connection::SharedMidiOutputConnection
 }
 
 impl SP404 {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, offset: Arc<AtomicUsize>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, start: u32, offset: Arc<AtomicUsize>) -> Self {
         SP404 {
             last_value: None,
+            start,
             offset,
             midi_channel,
             midi_port
@@ -37,7 +39,7 @@ impl Triggerable for SP404 {
                 };
 
                 let velocity = 127;
-                let note_id = (47 + ((offset_value % 5) * 12) + (id as usize)) as u8;
+                let note_id = (47 + ((offset_value % 5) * 12) + ((id + self.start) as usize)) as u8;
 
                 // choke last value
                 if let Some((channel, note_id, _)) = self.last_value {
