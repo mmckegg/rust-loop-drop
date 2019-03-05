@@ -176,6 +176,11 @@ impl AudioRecorder {
         }
     }
 
+    pub fn is_recording (&self) -> bool {
+        let mut children = self.children.lock().unwrap();
+        children.is_running()
+    }
+
     pub fn start (&mut self) {
         if let Some(failed_at) = self.failed_at {
             if failed_at.elapsed().unwrap() < Duration::from_secs(5) {

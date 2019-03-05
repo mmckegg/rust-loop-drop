@@ -112,6 +112,7 @@ pub enum LoopGridMessage {
     RefreshActive,
     RefreshRecording,
     RefreshSelectState,
+    RefreshLoopButton,
     ClearSelection,
     RefreshUndoRedoLights,
     SetRate(MidiTime),
@@ -389,14 +390,15 @@ impl LoopGridLaunchpad {
             // display state
             let mut active: HashSet<u32> = HashSet::new();
             let mut recording: HashSet<u32> = HashSet::new();
+            let mut last_audio_recorder_state = false;
 
             let mut last_beat_light = SIDE_BUTTONS[7];
             let mut last_repeat_light = SIDE_BUTTONS[7];
 
             // default button lights
-            launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
             launchpad_output.send(&[176, 109, Light::RedLow.value()]).unwrap();
             launchpad_output.send(&[176, 110, Light::BlueDark.value()]).unwrap();
+            tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
 
             for id in 0..128 {
@@ -408,6 +410,12 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::Schedule(position, length) => {
                         let params = params.lock().unwrap();
                         let align_offset = params.align_offset;
+
+                        let audio_recorder_state = audio_recorder.is_recording();
+                        if last_audio_recorder_state != audio_recorder_state {
+                            tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
+                            last_audio_recorder_state = audio_recorder_state;
+                        }
 
                         // calculate bpm (unknown if syncing to external clock)
                         let current_time = SystemTime::now();
@@ -544,6 +552,13 @@ impl LoopGridLaunchpad {
 
                         launchpad_output.send(&[176, 106, color.value()]).unwrap();
                         launchpad_output.send(&[176, 107, color.value()]).unwrap();
+                    },
+                    LoopGridMessage::RefreshLoopButton => {
+                        if last_audio_recorder_state {
+                            launchpad_output.send(&[178, 104, Light::Red.value()]).unwrap();
+                        } else {
+                            launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
+                        }
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         let current_index = currently_held_inputs.iter().position(|v| v == &id);
@@ -908,7 +923,7 @@ impl LoopGridLaunchpad {
                                 launchpad_output.send(&[176, 104, Light::Green.value()]).unwrap();
                             } else {
                                 loop_held = false;
-                                launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
+                                tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
                                 let since_press = last_pos - loop_from;
                                 let threshold = MidiTime::from_ticks(20);
                                 let mut new_loop = loop_state.get().clone();
