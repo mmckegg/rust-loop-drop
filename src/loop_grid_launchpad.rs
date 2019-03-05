@@ -326,6 +326,10 @@ impl LoopGridLaunchpad {
                     tx_loop_state.send(LoopGridMessage::ClearRecording).unwrap();
                 }
             });
+
+            // create base level undo
+            loop_state.set(LoopCollection::new(loop_length));
+
             let mut repeating = false;
             let mut repeat_off_beat = false;
             let (_midi_to_id, id_to_midi) = get_grid_map();
@@ -337,6 +341,7 @@ impl LoopGridLaunchpad {
             let mut holding = false;
             let mut holding_at = MidiTime::zero();
             let mut selecting = false;
+            let mut selection_override_offset = None;
 
             let mut loop_held = false;
             let mut loop_from = MidiTime::from_ticks(0);
@@ -656,7 +661,13 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshOverride(id) => {
                         let loop_collection = loop_state.get();
-                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
+                        let selection_override_loop_collection = if let Some(offset) = selection_override_offset {
+                            loop_state.retrieve(offset)
+                        } else {
+                            None
+                        };
+
+                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection);
 
                         // suppress if there are inputs held and monophonic scheduling
                         if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic && transform.is_active() {
@@ -955,6 +966,31 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::ClearSelection => {
+                        // commit selection override offset
+                        if let Some(offset) = selection_override_offset {
+                            if offset != 0 {
+                                let new_loop = if let Some(offset_loop) = loop_state.retrieve(offset) {
+                                    let mut new_loop = loop_state.get().clone();
+                                    for id in &selection {
+                                        if let Some(transform) = offset_loop.transforms.get(id) {
+                                            new_loop.transforms.insert(*id, transform.clone());
+                                        } else {
+                                            new_loop.transforms.remove(id);
+                                        }
+                                    }
+                                    Some(new_loop)
+                                } else {
+                                    None
+                                };
+                                
+                                if let Some(new_loop) = new_loop {
+                                    loop_state.set(new_loop);
+                                }
+                            }
+          
+                            selection_override_offset = None;
+                        }
+
                         for id in &selection {
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
                         }
@@ -965,7 +1001,9 @@ impl LoopGridLaunchpad {
                         }
 
                         selection.clear();
+
                         tx_feedback.send(LoopGridMessage::RefreshSelectState).unwrap();
+                        tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
                     },
                     LoopGridMessage::RefreshShouldFlatten => {
                         let new_value = &selection_override != &LoopTransform::None || override_values.values().any(|value| value != &LoopTransform::None) || sustained_values.len() > 0;
@@ -1004,6 +1042,9 @@ impl LoopGridLaunchpad {
                                 loop_state.set(new_loop);
                             } else if selection.len() > 0 {
                                 let mut new_loop = loop_state.get().clone();
+
+                                // clear the override offset (otherwise it will interfere if we try and clear)
+                                selection_override_offset = None;
 
                                 for id in &selection {
                                     new_loop.transforms.insert(id.clone(), LoopTransform::Value(OutputValue::Off));
@@ -1047,6 +1088,12 @@ impl LoopGridLaunchpad {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
                             } else if selecting {
                                 loop_length = get_half_loop_length(loop_length).max(MidiTime::from_measure(1, 4));
+                            } else if selection.len() > 0 {
+                                if let Some(next_offset) = loop_state.previous_index_for(selection_override_offset.unwrap_or(0), &selection) {
+                                    selection_override_offset = Some(next_offset);
+                                    tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
+                                    println!("PARTIAL UNDO! {:?}", selection_override_offset);
+                                }
                             } else {
                                 loop_state.undo();
                             }
@@ -1061,6 +1108,12 @@ impl LoopGridLaunchpad {
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting {
                                 tx_feedback.send(LoopGridMessage::DoubleLoopLength).unwrap();
+                            } else if selection.len() > 0 {
+                                if let Some(next_offset) = loop_state.next_index_for(selection_override_offset.unwrap_or(0), &selection) {
+                                    selection_override_offset = Some(next_offset);
+                                    tx_feedback.send(LoopGridMessage::RefreshSelectionOverride).unwrap();
+                                    println!("PARTIAL UNDO! {:?}", selection_override_offset);
+                                }
                             } else {
                                 loop_state.redo();
                             }
@@ -1102,6 +1155,15 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::SustainButton(pressed) => {
                         if pressed {
+                            if suppressing {
+                                let current_loop = loop_state.get();
+                                for id in 0..128 {
+                                    let should_change = current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::None;
+                                    if should_change {
+                                        sustained_values.insert(id, LoopTransform::Value(OutputValue::Off));
+                                    }
+                                }
+                            }
                             for (id, value) in &override_values {
                                 if value != &LoopTransform::None {
                                     sustained_values.insert(*id, value.clone());
@@ -1172,7 +1234,12 @@ impl LoopGridLaunchpad {
 
                         for id in 0..128 {
                             let loop_collection = loop_state.get();
-                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection);
+                            let selection_override_loop_collection = if let Some(offset) = selection_override_offset {
+                                loop_state.retrieve(offset)
+                            } else {
+                                None
+                            };
+                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection);
                             
                             if out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
                                 out_transforms.insert(id, transform);
@@ -1271,10 +1338,16 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection) -> LoopTransform {
+fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>) -> LoopTransform {
     let mut result = LoopTransform::None;
 
-    if let Some(ref transform) = loop_collection.transforms.get(&id) {
+    let collection = if selection.contains(&id) && override_collection.is_some() {
+        override_collection.unwrap()
+    } else {
+        loop_collection
+    };
+
+    if let Some(ref transform) = collection.transforms.get(&id) {
         result = transform.apply(&result);
     }
 
