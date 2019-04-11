@@ -38,30 +38,24 @@ var tracks = [
     volumeEvents: []
   }, {
     id: 9,
+    name: 'ext',
+    channels: [5],
+    fileName: `${baseName}-ext.wav`,
+    volumeEvents: []
+  }, {
+    id: 10,
     name: 'bass',
     channels: [2],
     fileName: `${baseName}-bass.wav`,
     volumeEvents: []
   }, {
-    id: 10,
+    id: 11,
     name: 'synth',
     channels: [3,4],
     fileName: `${baseName}-synth.wav`,
     volumeEvents: []
   }, {
-    id: 11,
-    name: 'exta',
-    channels: [5],
-    fileName: `${baseName}-exta.wav`,
-    volumeEvents: []
-  }, {
     id: 12,
-    name: 'extb',
-    channels: [6],
-    fileName: `${baseName}-extb.wav`,
-    volumeEvents: []
-  }, {
-    id: 13,
     name: 'fx',
     channels: [7, 8],
     fileName: `${baseName}-fx.wav`,

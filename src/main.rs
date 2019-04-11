@@ -49,7 +49,7 @@ fn main() {
     
     let drum_params = Arc::new(Mutex::new(devices::BlofeldDrumParams {
         x: [0, 0, 0, 0, 0, 0, 0, 0],
-        velocities: [110, 110, 110, 110, 110, 110, 110, 110]
+        velocities: [110, 110, 110, 110, 110, 90, 90, 100]
     }));
     
     let bass_offset = Offset::new(-2, -4);

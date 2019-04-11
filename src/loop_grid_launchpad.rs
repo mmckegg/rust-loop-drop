@@ -1168,8 +1168,10 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::SustainButton(pressed) => {
                         if pressed {
-                            if suppressing {
-                                let current_loop = loop_state.get();
+                            let current_loop = loop_state.get();
+
+                            // if there is a selection, suppress everything
+                            if suppressing || selection.len() > 0 {
                                 for id in 0..128 {
                                     let should_change = current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::None;
                                     if should_change {
@@ -1177,6 +1179,7 @@ impl LoopGridLaunchpad {
                                     }
                                 }
                             }
+                            
                             for (id, value) in &override_values {
                                 if value != &LoopTransform::None {
                                     sustained_values.insert(*id, value.clone());

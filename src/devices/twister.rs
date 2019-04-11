@@ -134,8 +134,6 @@ impl Twister {
             last_values.insert(Control::LfoSpeed, lfo.speed);
             last_values.insert(Control::ReturnVolume, 100);
             last_values.insert(Control::ReturnVolumeLfo, 64);
-            last_values.insert(Control::DrumFilter, 64);
-
 
             for received in rx {
                 match received {
@@ -179,7 +177,7 @@ impl Twister {
                             match control {
                                 Control::ChannelVolume(channel) => {
                                     let kmix_channel = kmix_channel_map[channel as usize % kmix_channel_map.len()];
-                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, value));
+                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(channel, value)).unwrap();
                                     throttled_kmix_output.send(&[176 + kmix_channel - 1, 1, value]);
                                 },
                                 Control::ChannelReverb(channel) => {
@@ -275,7 +273,7 @@ impl Twister {
                                     lfo_amounts.insert(Control::ChannelMod(channel), midi_to_polar(value));
                                 },
                                 Control::ReturnVolume => {
-                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(5, value)).unwrap();
+                                    meta_tx.send(AudioRecorderEvent::ChannelVolume(4, value)).unwrap();
                                     throttled_kmix_output.send(&[176 + fx_return_channel - 1, 1, value]);
                                 },
                                 Control::ReturnVolumeLfo => {

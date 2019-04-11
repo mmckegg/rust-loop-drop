@@ -33,7 +33,20 @@ impl MidiKeys {
 fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>) -> u8 {
     let scale = scale.lock().unwrap();
     let offset = offset.lock().unwrap();
-    let scale_offset = offset.base + offset.offset;
+    let mut scale_offset = offset.base + offset.offset;
+
+    let col = (id % 8) as i32;
+    println!("col {} scale_offset {}", col, scale_offset);
+
+    // hacky chord inversions
+    if offset.offset > -7 && offset.offset < 7 {
+        if col + offset.offset > 8 {
+            scale_offset -= 7
+        } else if col + offset.offset < 0 {
+            scale_offset += 7
+        }
+    }
+
     (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8
 }
 

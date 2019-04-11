@@ -27,9 +27,9 @@ impl Lfo {
     // Returns a value between 0 and 1
     pub fn new () -> Self {
         Lfo {
-            skew: 64,
+            skew: 0,
             hold: 0,
-            speed: 64,
+            speed: 50,
             offset: 64
         }
     }
