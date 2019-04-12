@@ -36,7 +36,6 @@ fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>)
     let mut scale_offset = offset.base + offset.offset;
 
     let col = (id % 8) as i32;
-    println!("col {} scale_offset {}", col, scale_offset);
 
     // hacky chord inversions
     if offset.offset > -7 && offset.offset < 7 {

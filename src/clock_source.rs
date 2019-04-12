@@ -101,7 +101,6 @@ impl ClockSource {
                     last_changed_at = Instant::now();
                     ticks_at_last_changed = ticks;
                     last_tempo = tempo;
-                    println!("tempo changed {}", tempo);
                 }
 
                 broadcast_clock.send(ClockMessage::InternalTick).unwrap();

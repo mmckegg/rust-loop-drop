@@ -9,17 +9,17 @@ pub struct BlofeldDrums {
     midi_channel: u8,
     sync_port: midi_connection::SharedMidiOutputConnection,
     sync_channel: u8,
-    params: Arc<Mutex<BlofeldDrumParams>>,
+    velocities: Arc<Mutex<HashMap<u32, u8>>>,
     output_values: HashMap<u32, (u8, u8, u8)>
 }
 
 impl BlofeldDrums {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sync_port: midi_connection::SharedMidiOutputConnection, sync_channel: u8, params: Arc<Mutex<BlofeldDrumParams>>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sync_port: midi_connection::SharedMidiOutputConnection, sync_channel: u8, velocities: Arc<Mutex<HashMap<u32, u8>>>) -> Self {
         BlofeldDrums {
             midi_port,
             sync_port,
             sync_channel,
-            params,
+            velocities,
             midi_channel: channel,
             output_values: HashMap::new()
         }
@@ -38,21 +38,13 @@ impl Triggerable for BlofeldDrums {
                 }
             },
             OutputValue::On(_) => {
-                let params = self.params.lock().unwrap();
-                let velocity_index = id as usize % params.velocities.len();
-                let velocity = params.velocities[velocity_index];
+                let velocities = self.velocities.lock().unwrap();
+                let velocity = *velocities.get(&id).unwrap_or(&50);
                 // let mod_value = params.x[velocity_index];
                 // let pressure_value = params.y[velocity_index];
 
                 let channel = self.midi_channel + id as u8;
                 let note_id = 36;
-
-                // ensure velocity enabled
-                self.midi_port.send_at(&[176 - 1 + channel, 91, 120], at).unwrap();
-
-                // set mod
-                // self.midi_port.send_at(&[176 - 1 + channel, 1, mod_value], at).unwrap();
-                // self.midi_port.send_at(&[208 - 1 + channel, pressure_value], at).unwrap();
 
                 // send note off (choke previous drum)
                 self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();

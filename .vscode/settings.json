@@ -1,16 +1,21 @@
 {
     "cSpell.words": [
+        "adsr",
         "arecord",
         "guard",
+        "highpass",
         "humantime",
         "kaoss",
         "kmix",
+        "lowpass",
         "midir",
         "mutex",
         "name",
         "plughw",
         "port",
+        "porta",
         "remoteable",
+        "sidechain",
         "triggerable",
         "unswing",
         "unswug"

@@ -1,24 +1,27 @@
 use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode};
 use ::midi_connection;
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+use std::collections::HashMap;
 
 pub use ::scale::Scale;
 
 pub struct SP404 {
     last_value: Option<(u8, u8, u8)>,
     offset: Arc<AtomicUsize>,
+    velocities: Arc<Mutex<HashMap<u32, u8>>>,
     start: u32,
     midi_channel: u8,
     midi_port: midi_connection::SharedMidiOutputConnection
 }
 
 impl SP404 {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, start: u32, offset: Arc<AtomicUsize>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, start: u32, offset: Arc<AtomicUsize>, velocities: Arc<Mutex<HashMap<u32, u8>>>) -> Self {
         SP404 {
             last_value: None,
             start,
+            velocities,
             offset,
             midi_channel,
             midi_port
@@ -31,6 +34,9 @@ impl Triggerable for SP404 {
         match value {
             OutputValue::Off => (),
             OutputValue::On(_) => {
+                let velocities = self.velocities.lock().unwrap();
+                let velocity = *velocities.get(&id).unwrap_or(&80);
+
                 let mut offset_value = self.offset.load(Ordering::Relaxed);
                 let mut channel = if offset_value < 5 {
                     self.midi_channel
@@ -38,7 +44,6 @@ impl Triggerable for SP404 {
                     self.midi_channel + 1
                 };
 
-                let velocity = 127;
                 let note_id = (47 + ((offset_value % 5) * 12) + ((id + self.start) as usize)) as u8;
 
                 // choke last value

@@ -577,7 +577,7 @@ impl LoopGridLaunchpad {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
                             } else {
-                                if selecting_scale && id >= 8 && id < 48 { // hack to avoid including drums/vox
+                                if selecting_scale { // hack to avoid including drums/vox
                                     selection.insert(scale_id);
                                 } else {
                                     selection.insert(id);
@@ -596,7 +596,7 @@ impl LoopGridLaunchpad {
 
                                 for row in from_row..to_row {
                                     for col in from_col..to_col {
-                                        let row_offset = if selecting_scale && row >= 1 && row <= 5 { 8 } else { 0 };
+                                        let row_offset = if selecting_scale { 8 } else { 0 };
                                         let id = Coords::id_from(row + row_offset, col);
                                         selection.insert(id);
                                         tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
@@ -606,7 +606,7 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            let in_scale_view = (id >= 8 && id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) || changing_drum_patch;
+                            let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) || changing_drum_patch;
 
                             if in_scale_view  {
                                 input_values.insert(scale_id, value);
@@ -726,8 +726,8 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::RefreshGridButton(id) => {
                         let base_id = id % 64;
 
-                        let in_scale_view = (base_id >= 8 && base_id < 48 && selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
-                            ((base_id < 8 || base_id >= 48) && selecting && selecting_scale_held) || 
+                        let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || 
+                            (selecting && selecting_scale_held) || 
                             selection.contains(&(base_id + 64));
 
                         let (id, background_id) = if in_scale_view {
