@@ -128,6 +128,7 @@ impl Twister {
             last_values.insert(Control::BassPitchEnv, 64);
             last_values.insert(Control::BassFilterEnv, 64);
             last_values.insert(Control::BassCutoff, 64);
+            last_values.insert(Control::BassSub, 127);
             last_values.insert(Control::BassAdsr(2), 127);
 
             tx_feedback.send(TwisterMessage::Event(LoopEvent { 
