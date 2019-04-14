@@ -42,6 +42,7 @@ fn main() {
     let scale = Scale::new(69, 0);
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
+        frozen: false,
         channel_repeat,
         align_offset: MidiTime::zero(),
         reset_automation: false

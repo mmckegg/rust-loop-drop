@@ -74,8 +74,9 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
                         Some(ref mut port) => {
                             // send current values
                             for (&(msg, id), value) in &current_values {
-                                if value > &0 {
-                                    port.send(&[msg, id, *value]);
+                                // resend 0 for CCs, but not for anything else
+                                if (msg >= 176 && msg < 192) || value > &0 {
+                                    port.send(&[msg, id, *value]).unwrap();
                                 }
                             }
                         },

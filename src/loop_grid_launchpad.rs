@@ -40,6 +40,7 @@ lazy_static! {
 
 pub struct LoopGridParams {
     pub swing: f64,
+    pub frozen: bool,
     pub channel_repeat: HashMap<u32, ChannelRepeat>,
     pub align_offset: MidiTime,
     pub reset_automation: bool
@@ -370,6 +371,8 @@ impl LoopGridLaunchpad {
             let mut currently_held_rates: Vec<usize> = Vec::new();
             let mut last_changed_triggers: HashMap<u32, MidiTime> = HashMap::new();
 
+            let mut frozen_loop: Option<LoopCollection> = None;
+
             // out state
             let mut current_swing: f64 = 0.0;
             let mut out_transforms: HashMap<u32, LoopTransform> = HashMap::new();
@@ -675,8 +678,16 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::RefreshOverride(id) => {
-                        let loop_collection = loop_state.get();
-                        let selection_override_loop_collection = if let Some(offset) = selection_override_offset {
+                        // use frozen loop if present
+                        let loop_collection = if let Some(frozen_loop) = &frozen_loop {
+                            frozen_loop
+                        } else {
+                            loop_state.get()
+                        };
+
+                        let selection_override_loop_collection = if frozen_loop.is_some() {
+                            None
+                        } else if let Some(offset) = selection_override_offset {
                             loop_state.retrieve(offset)
                         } else {
                             None
@@ -1167,25 +1178,21 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
                     },
                     LoopGridMessage::SustainButton(pressed) => {
+                        // send frozen to twister
+                        let mut params = params.lock().unwrap();
+                        params.frozen = pressed;
+
                         if pressed {
                             let current_loop = loop_state.get();
-
-                            // if there is a selection, suppress everything
-                            if suppressing || selection.len() > 0 {
-                                for id in 0..128 {
-                                    let should_change = current_loop.transforms.get(&id).unwrap_or(&LoopTransform::None) != &LoopTransform::None;
-                                    if should_change {
-                                        sustained_values.insert(id, LoopTransform::Value(OutputValue::Off));
-                                    }
-                                }
-                            }
-                            
+                            frozen_loop = Some(current_loop.clone());
+        
                             for (id, value) in &override_values {
                                 if value != &LoopTransform::None {
                                     sustained_values.insert(*id, value.clone());
                                 }
                             }
                         } else {
+                            frozen_loop = None;
                             sustained_values.clear();
                         }
 
@@ -1249,7 +1256,12 @@ impl LoopGridLaunchpad {
                         let params = params.lock().unwrap();
 
                         for id in 0..128 {
-                            let loop_collection = loop_state.get();
+                            let loop_collection = if let Some(frozen_loop) = &frozen_loop {
+                                frozen_loop
+                            } else {
+                                loop_state.get()
+                            };
+
                             let selection_override_loop_collection = if let Some(offset) = selection_override_offset {
                                 loop_state.retrieve(offset)
                             } else {
