@@ -9,10 +9,12 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::Arc;
 pub use std::time::SystemTime;
+type Listener = Box<Fn(&mut MidiOutputConnection) + Send + 'static>;
 
 const APP_NAME: &str = "Loop Drop";
 
 pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
+
     let mut current_output: Option<MidiOutputConnection> = None;
 
     let (tx, rx) = mpsc::channel();
@@ -21,6 +23,7 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
     let (queue_tx, queue) = mpsc::channel::<(MidiMessage, SystemTime)>();
 
     let tx_notify = tx.clone();
+    let tx_listener = tx.clone();
 
     // reconnect loop
     thread::spawn(move || {
@@ -52,6 +55,7 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
     // event loop
     thread::spawn(move || {
         let mut current_values: HashMap<(u8, u8), u8> = HashMap::new();
+        let mut listeners: Vec<Listener> = Vec::new();
         for msg in rx {
             match msg {
                 SharedMidiOutputEvent::Send(midi_msg) => match midi_msg {
@@ -73,6 +77,10 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
                     match current_output {
                         Some(ref mut port) => {
                             // send current values
+                            let mut listeners = &listeners;
+                            for listener in listeners {
+                                listener(port)
+                            }
                             for (&(msg, id), value) in &current_values {
                                 // resend 0 for CCs, but not for anything else
                                 if (msg >= 176 && msg < 192) || value > &0 {
@@ -82,6 +90,10 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
                         },
                         None => ()
                     }
+                },
+
+                SharedMidiOutputEvent::AddListener(listener) => {
+                    listeners.push(listener)
                 }
             };
         }
@@ -224,6 +236,10 @@ impl SharedMidiOutputConnection {
 
         Ok(())
     }
+
+    pub fn on_connect<F>(&mut self, callback: F) where F: Fn(&mut MidiOutputConnection) + Send + 'static {
+        self.tx.send(SharedMidiOutputEvent::AddListener(Box::new(callback)));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -237,6 +253,7 @@ enum MidiMessage {
 enum SharedMidiOutputEvent {
     Send(MidiMessage),
     SendAt(MidiMessage, SystemTime),
+    AddListener(Listener),
     Changed
 }
 

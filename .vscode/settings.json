@@ -18,6 +18,8 @@
         "sidechain",
         "triggerable",
         "unswing",
-        "unswug"
-    ]
+        "unswug",
+        "zoia"
+    ],
+    "editor.formatOnPaste": true
 }

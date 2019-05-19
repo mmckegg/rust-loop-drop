@@ -10,7 +10,6 @@ use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::{Arc, Mutex};
 use std::cmp::Ordering;
-use ::audio_recorder::{AudioRecorder, AudioRecorderEvent};
 
 use ::midi_connection;
 use ::midi_time::MidiTime;
@@ -23,6 +22,8 @@ use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, LatchMode, ScheduleMode};
 use ::scale::Scale;
 
 const SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
+const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
+
 const DEFAULT_VELOCITY: u8 = 100;
 
 lazy_static! {
@@ -187,7 +188,6 @@ impl Light {
 
 pub struct LoopGridLaunchpad {
     _input: midi_connection::ThreadReference,
-    pub meta_tx: mpsc::Sender<AudioRecorderEvent>,
     pub remote_tx: mpsc::Sender<LoopGridRemoteEvent>
 }
 
@@ -196,28 +196,24 @@ impl LoopGridLaunchpad {
         let (tx, rx) = mpsc::channel();
         let (remote_tx, remote_rx) = mpsc::channel();
 
-        let mut audio_recorder = AudioRecorder::new();
-
         let tx_remote =  mpsc::Sender::clone(&tx);
         let tx_input =  mpsc::Sender::clone(&tx);
         let tx_clock =  mpsc::Sender::clone(&tx);
         let tx_feedback =  mpsc::Sender::clone(&tx);
         let tx_loop_state =  mpsc::Sender::clone(&tx);
-        let meta_tx = audio_recorder.tx.clone();
 
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
+        launchpad_output.on_connect(move |mut port| {
+            // send sysex message to put launchpad into live mode
+            port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x40, 0x2F, 0x6D, 0x3E, 0x0A, 0xF7]).unwrap();
+        });
 
         let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message| {
             if message[0] == 144 || message[0] == 128 {
-                let side_button = SIDE_BUTTONS.iter().position(|&x| x == message[1]);
                 let grid_button = midi_to_id.get(&message[1]);
-                if side_button.is_some() {
-                    let rate_index = side_button.unwrap();
-                    let active = message[2] > 0;
-                    tx_input.send(LoopGridMessage::RateButton(rate_index, active)).unwrap();
-                } else if grid_button.is_some() {
+                if grid_button.is_some() {
                     let value = if message[2] > 0 {
                         OutputValue::On(DEFAULT_VELOCITY)
                     } else {
@@ -228,18 +224,24 @@ impl LoopGridLaunchpad {
                 } ;
             } else if message[0] == 176 {
                 let active = message[2] > 0;
-                let to_send = match message[1] {
-                    104 => LoopGridMessage::LoopButton(active),
-                    105 => LoopGridMessage::FlattenButton(active),
-                    106 => LoopGridMessage::UndoButton(active),
-                    107 => LoopGridMessage::RedoButton(active),
-                    108 => LoopGridMessage::HoldButton(active),
-                    109 => LoopGridMessage::SuppressButton(active),
-                    110 => LoopGridMessage::ScaleButton(active),
-                    111 => LoopGridMessage::SelectButton(active),
-                    _ => LoopGridMessage::None
-                };
-                tx_input.send(to_send).unwrap();
+
+                if let Some(id) = SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
+                    let active = message[2] > 0;
+                    tx_input.send(LoopGridMessage::RateButton(id, active)).unwrap();
+                } else if let Some(id) = TOP_BUTTONS.iter().position(|&x| x == message[1]) {
+                    let to_send = match id {
+                        0 => LoopGridMessage::LoopButton(active),
+                        1 => LoopGridMessage::FlattenButton(active),
+                        2 => LoopGridMessage::UndoButton(active),
+                        3 => LoopGridMessage::RedoButton(active),
+                        4 => LoopGridMessage::HoldButton(active),
+                        5 => LoopGridMessage::SuppressButton(active),
+                        6 => LoopGridMessage::ScaleButton(active),
+                        7 => LoopGridMessage::SelectButton(active),
+                        _ => LoopGridMessage::None
+                    };
+                    tx_input.send(to_send).unwrap();
+                }
             }
         });
 
@@ -393,14 +395,13 @@ impl LoopGridLaunchpad {
             // display state
             let mut active: HashSet<u32> = HashSet::new();
             let mut recording: HashSet<u32> = HashSet::new();
-            let mut last_audio_recorder_state = false;
 
             let mut last_beat_light = SIDE_BUTTONS[7];
             let mut last_repeat_light = SIDE_BUTTONS[7];
 
             // default button lights
-            launchpad_output.send(&[176, 109, Light::RedLow.value()]).unwrap();
-            launchpad_output.send(&[176, 110, Light::BlueDark.value()]).unwrap();
+            launchpad_output.send(&[176, TOP_BUTTONS[5], Light::RedLow.value()]).unwrap();
+            launchpad_output.send(&[176, TOP_BUTTONS[6], Light::BlueDark.value()]).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
 
@@ -414,20 +415,11 @@ impl LoopGridLaunchpad {
                         let params = params.lock().unwrap();
                         let align_offset = params.align_offset;
 
-                        let audio_recorder_state = audio_recorder.is_recording();
-                        if last_audio_recorder_state != audio_recorder_state {
-                            tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
-                            last_audio_recorder_state = audio_recorder_state;
-                        }
-
                         // calculate bpm (unknown if syncing to external clock)
                         let current_time = SystemTime::now();
                         last_tick_durations.push(current_time.duration_since(last_tick_at).unwrap());
                         tick_duration = last_tick_durations.iter().sum::<Duration>() / (last_tick_durations.len() as u32);
                         last_tick_at = current_time;
-
-                        // record ticks in output file
-                        audio_recorder.tx.send(AudioRecorderEvent::Tick).unwrap();
 
                         // only read swing on 8th notes to prevent back scheduling
                         if (position - align_offset) % MidiTime::from_ticks(12) == MidiTime::zero() {
@@ -553,15 +545,11 @@ impl LoopGridLaunchpad {
                             Light::RedLow
                         };
 
-                        launchpad_output.send(&[176, 106, color.value()]).unwrap();
-                        launchpad_output.send(&[176, 107, color.value()]).unwrap();
+                        launchpad_output.send(&[176, TOP_BUTTONS[2], color.value()]).unwrap();
+                        launchpad_output.send(&[176, TOP_BUTTONS[3], color.value()]).unwrap();
                     },
                     LoopGridMessage::RefreshLoopButton => {
-                        if last_audio_recorder_state {
-                            launchpad_output.send(&[178, 104, Light::Red.value()]).unwrap();
-                        } else {
-                            launchpad_output.send(&[176, 104, Light::YellowMed.value()]).unwrap();
-                        }
+                        launchpad_output.send(&[176, TOP_BUTTONS[0], Light::YellowMed.value()]).unwrap();
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         let current_index = currently_held_inputs.iter().position(|v| v == &id);
@@ -731,7 +719,6 @@ impl LoopGridLaunchpad {
                         }
                     },  
                     LoopGridMessage::TempoChanged(value) => {
-                        audio_recorder.tx.send(AudioRecorderEvent::Tempo(value)).unwrap();
                         launchpad_output.send(&launchpad_text(&value.to_string())).unwrap();
                     },
                     LoopGridMessage::RefreshGridButton(id) => {
@@ -883,7 +870,7 @@ impl LoopGridLaunchpad {
                         };
 
                         if select_out != new_state {
-                            launchpad_output.send(&[178, 111, new_state.value()]).unwrap();
+                            launchpad_output.send(&[178, TOP_BUTTONS[7], new_state.value()]).unwrap();
                             select_out = new_state;
                         }
                     },
@@ -896,6 +883,7 @@ impl LoopGridLaunchpad {
                             let latency_offset = chunk_latency_offsets.get(&mapped.chunk_index).unwrap_or(&Duration::from_nanos(0));
 
                             let time = last_tick_at + Duration::new(0, tick_nano) - *latency_offset;
+                            
                             match maybe_update(&mut out_values, event.id, new_value) {
                                 Some(_) => {
                                     if let Some(chunk) = chunks.get(mapped.chunk_index) {
@@ -917,7 +905,6 @@ impl LoopGridLaunchpad {
                         }
 
                         recorder.add(event);
-                        audio_recorder.trigger();
                     },
                     LoopGridMessage::ClearRecording => {
                         last_changed_triggers.clear();
@@ -931,7 +918,7 @@ impl LoopGridLaunchpad {
                             if pressed {
                                 loop_held = true;
                                 loop_from = last_pos;
-                                launchpad_output.send(&[176, 104, Light::Green.value()]).unwrap();
+                                launchpad_output.send(&[176, TOP_BUTTONS[0], Light::Green.value()]).unwrap();
                             } else {
                                 loop_held = false;
                                 tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
@@ -1040,7 +1027,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 Light::Off
                             };
-                            launchpad_output.send(&[176, 105, color.value()]).unwrap();
+                            launchpad_output.send(&[176, TOP_BUTTONS[1], color.value()]).unwrap();
                         }
                     },
                     LoopGridMessage::FlattenButton(pressed) => {
@@ -1204,9 +1191,9 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshSelectingScale => {
                         if selecting_scale {
-                            launchpad_output.send(&[178, 110, Light::Yellow.value()]).unwrap();    
+                            launchpad_output.send(&[178, TOP_BUTTONS[6], Light::Yellow.value()]).unwrap();    
                         } else {
-                            launchpad_output.send(&[176, 110, Light::BlueDark.value()]).unwrap();
+                            launchpad_output.send(&[176, TOP_BUTTONS[6], Light::BlueDark.value()]).unwrap();
                         };
 
 
@@ -1307,7 +1294,7 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::ChunkTick => {
                         for chunk in &mut chunks {
-                            chunk.on_tick();
+                            chunk.on_tick(last_pos);
                         }
                     },
                     LoopGridMessage::FlushChoke => {
@@ -1325,7 +1312,6 @@ impl LoopGridLaunchpad {
 
         LoopGridLaunchpad {
             _input: input,
-            meta_tx,
             remote_tx
         }
     }

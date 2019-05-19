@@ -1,7 +1,7 @@
 use ::midi_connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::chunk::{Triggerable, OutputValue, SystemTime, MidiTime};
 
 pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
@@ -67,7 +67,7 @@ impl Triggerable for MidiKeys {
         }
     }
 
-    fn on_tick (&mut self) {
+    fn on_tick (&mut self, _: MidiTime) {
         let mut to_update = HashMap::new();
         for (id, (note_id, velocity)) in &self.output_values {
             let new_note_id = get_note_id(*id, &self.scale, &self.offset);

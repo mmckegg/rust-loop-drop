@@ -1,4 +1,4 @@
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::chunk::{Triggerable, OutputValue, SystemTime, MidiTime};
 use ::midi_connection;
 use std::sync::{Arc, Mutex};
 
@@ -9,6 +9,7 @@ pub struct BlofeldDrums {
     midi_channel: u8,
     sync_port: midi_connection::SharedMidiOutputConnection,
     sync_channel: u8,
+    last_pos: MidiTime,
     velocities: Arc<Mutex<HashMap<u32, u8>>>,
     output_values: HashMap<u32, (u8, u8, u8)>
 }
@@ -18,6 +19,7 @@ impl BlofeldDrums {
         BlofeldDrums {
             midi_port,
             sync_port,
+            last_pos: MidiTime::zero(),
             sync_channel,
             velocities,
             midi_channel: channel,
@@ -27,27 +29,56 @@ impl BlofeldDrums {
 }
 
 impl Triggerable for BlofeldDrums {
+    fn on_tick (&mut self, time: MidiTime) {
+        self.last_pos = time;
+    }
+
     fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
                     // HACK: disable off notes because this is doing weird things to blofeld for drum envelopes
-                    // self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                    self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
                     self.output_values.remove(&id);
+
+                    if id == 0 {
+                        self.sync_port.send_at(&[128 - 1 + self.sync_channel, 36, 0], at).unwrap();
+                    }
                 }
             },
             OutputValue::On(_) => {
                 let velocities = self.velocities.lock().unwrap();
-                let velocity = *velocities.get(&id).unwrap_or(&50);
+                let base_velocity = 100;
+                let velocity_pos = self.last_pos.ticks() / MidiTime::from_measure(1, 4).ticks() % 8;
+                let pos = self.last_pos % MidiTime::from_measure(1, 4);
+                let mut velocity = if pos.ticks() == 0 {
+                    *velocities.get(&(velocity_pos as u32)).unwrap_or(&base_velocity)
+                } else {
+                    base_velocity
+                };
+
                 // let mod_value = params.x[velocity_index];
                 // let pressure_value = params.y[velocity_index];
 
-                let channel = self.midi_channel + id as u8;
+                let mut channel = self.midi_channel + id as u8;
+
+                if channel >= 5 {
+                    // hack to lower velocity of hats, etc
+                    velocity = (velocity as f32 * 0.5) as u8;
+                }
+
+                if channel >= 7 {
+                    channel += 2
+                }
+
                 let note_id = 36;
 
                 // send note off (choke previous drum)
-                self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                // self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+
+                // set level
+                self.midi_port.send_at(&[176 - 1 + channel, 7, velocity], at).unwrap();
 
                 // send note
                 self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();

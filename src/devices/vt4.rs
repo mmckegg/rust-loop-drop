@@ -2,11 +2,10 @@ use ::midi_connection;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode};
+use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode, MidiTime};
 use ::devices::MidiKeys;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
-
 pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
 
@@ -60,7 +59,7 @@ impl Triggerable for VT4 {
         self.midi_keys.trigger(id, value, time)
     }
 
-    fn on_tick (&mut self) {
+    fn on_tick (&mut self, _: MidiTime) {
         let in_robot_mode = self.in_robot_mode.load(Ordering::Relaxed);
 
         // only update key if not in robot mode (as it kills robot mode when it changes)

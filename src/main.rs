@@ -15,7 +15,6 @@ mod output_value;
 mod chunk;
 mod devices;
 mod scale;
-mod audio_recorder;
 mod lfo;
 mod throttled_output;
 
@@ -30,7 +29,12 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
     
-    let main_io_name = "pisound";
+    let main_io_name = "UM-ONE";
+    let launchpad_io_name = if cfg!(target_os = "linux") {
+        "Launchpad Pro"
+    } else {
+        "Launchpad Pro Live Port"
+    };
 
     // setup default repeat rates
     let mut channel_repeat = HashMap::new();
@@ -56,18 +60,16 @@ fn main() {
     let sp404_offset = Arc::new(AtomicUsize::new(0));
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
-    let digitakt_port = midi_connection::get_shared_output("Elektron Digitakt");
 
-    let mut clock = ClockSource::new("Elektron Digitakt", vec![
-        main_output_port.clone(),
-        // digitakt_port.clone(),
-        midi_connection::get_shared_output("Launchpad MK2")
+    let mut clock = ClockSource::new(main_io_name, vec![
+        // main_output_port.clone(),
+        midi_connection::get_shared_output(launchpad_io_name)
     ]);
 
-    // auto send clock start every 32 beats (for arp sync)
-    clock.sync_clock_start(main_output_port.clone());
+    // auto send clock start every 32 beats (for arp sync) [breaks volca sample]
+    // clock.sync_clock_start(main_output_port.clone());
 
-    let launchpad = LoopGridLaunchpad::new("Launchpad MK2", vec![
+    let launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
         ChunkMap::new(
             Box::new(devices::VelocityMap::new(Arc::clone(&drum_velocities))),
             Coords::new(0 + 8, 0),
@@ -125,7 +127,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlofeldDrums::new(digitakt_port.clone(), 1, main_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::BlofeldDrums::new(main_output_port.clone(), 1, main_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
             Shape::new(1, 8),
             15, // yellow
@@ -133,7 +135,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 10, 0, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
+            Box::new(devices::SP404::new(main_output_port.clone(), 13, 0, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
             Coords::new(1, 0), 
             Shape::new(1, 4),
             9, // orange
@@ -141,7 +143,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 10, 4, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
+            Box::new(devices::SP404::new(main_output_port.clone(), 13, 4, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
             Coords::new(1, 4), 
             Shape::new(1, 4),
             11, // orange
@@ -149,7 +151,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
             59, // pink
@@ -157,7 +159,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
             43, // blue
@@ -165,12 +167,10 @@ fn main() {
         )
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
 
-    let _twister = devices::Twister::new("Midi Fighter Twister", "K-Mix",
+    let _twister = devices::Twister::new("Midi Fighter Twister",
         main_output_port.clone(),
-        digitakt_port.clone(),
         Arc::clone(&params),
-        clock.add_rx(),
-        launchpad.meta_tx.clone()
+        clock.add_rx()
     );
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
