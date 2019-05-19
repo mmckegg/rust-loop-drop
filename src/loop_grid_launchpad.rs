@@ -477,6 +477,7 @@ impl LoopGridLaunchpad {
                                     if event.value.is_on() {
                                         last_triggered.entry(mapping.chunk_index).or_insert(CircularQueue::with_capacity(8)).push(event.id);
                                     }
+
                                     tx_feedback.send(LoopGridMessage::Event(event)).unwrap();
                                 }
                             }
@@ -813,12 +814,31 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshActive => {
                         let current_loop = loop_state.get();
+                        let selection_override_loop_collection = if frozen_loop.is_some() {
+                            None
+                        } else if let Some(offset) = selection_override_offset {
+                            loop_state.retrieve(offset)
+                        } else {
+                            None
+                        };
+
                         let mut ids = HashSet::new();
                         for (id, transform) in &current_loop.transforms {
-                            if transform.is_active() {
+                            if is_active(transform, id, &recorder) {
                                 ids.insert(*id);
                             }
-                        }                        
+                        }
+
+                        for id in &selection {
+                            if let Some(override_loop) = selection_override_loop_collection {
+                                if is_active(override_loop.transforms.get(id).unwrap_or(&LoopTransform::None), id, &recorder) {
+                                    ids.insert(*id);
+                                } else {
+                                    ids.remove(id);
+                                }
+                            }
+                        }
+
                         let (added, removed) = update_ids(&ids, &mut active);
  
                         for id in added {
@@ -916,6 +936,7 @@ impl LoopGridLaunchpad {
                             }
                         } else {
                             if pressed {
+                                commit_selection_override(&mut selection_override_offset, &mut loop_state, &selection, &mut last_changed_triggers, &last_pos);
                                 loop_held = true;
                                 loop_from = last_pos;
                                 launchpad_output.send(&[176, TOP_BUTTONS[0], Light::Green.value()]).unwrap();
@@ -949,6 +970,11 @@ impl LoopGridLaunchpad {
                                     }
                                 }
 
+                                for id in &selection {
+                                    // include events in selection when looping 
+                                    recording_ids.insert(*id);
+                                }
+
                                 for id in 0..128 {
                                     // include ids that are recording, or if selecting, all active IDs!
                                     let selected = selecting || selection.contains(&id);
@@ -979,30 +1005,7 @@ impl LoopGridLaunchpad {
                         }
                     },
                     LoopGridMessage::ClearSelection => {
-                        // commit selection override offset
-                        if let Some(offset) = selection_override_offset {
-                            if offset != 0 {
-                                let new_loop = if let Some(offset_loop) = loop_state.retrieve(offset) {
-                                    let mut new_loop = loop_state.get().clone();
-                                    for id in &selection {
-                                        if let Some(transform) = offset_loop.transforms.get(id) {
-                                            new_loop.transforms.insert(*id, transform.clone());
-                                        } else {
-                                            new_loop.transforms.remove(id);
-                                        }
-                                    }
-                                    Some(new_loop)
-                                } else {
-                                    None
-                                };
-                                
-                                if let Some(new_loop) = new_loop {
-                                    loop_state.set(new_loop);
-                                }
-                            }
-          
-                            selection_override_offset = None;
-                        }
+                        commit_selection_override(&mut selection_override_offset, &mut loop_state, &selection, &mut last_changed_triggers, &last_pos);
 
                         for id in &selection {
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
@@ -1032,6 +1035,8 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::FlattenButton(pressed) => {
                         if pressed {
+                            commit_selection_override(&mut selection_override_offset, &mut loop_state, &selection, &mut last_changed_triggers, &last_pos);
+
                             if should_flatten {
                                 let mut new_loop = loop_state.get().clone();
 
@@ -1055,9 +1060,6 @@ impl LoopGridLaunchpad {
                                 loop_state.set(new_loop);
                             } else if selection.len() > 0 {
                                 let mut new_loop = loop_state.get().clone();
-
-                                // clear the override offset (otherwise it will interfere if we try and clear)
-                                selection_override_offset = None;
 
                                 for id in &selection {
                                     new_loop.transforms.insert(id.clone(), LoopTransform::Value(OutputValue::Off));
@@ -1592,4 +1594,41 @@ fn get_all_ids_in_this_chunk <'a> (id: u32, chunks: &Vec<Box<Triggerable>>, mapp
 
 fn pos_with_latency_compensation (tick_duration: Duration, pos: MidiTime, offset: Duration) -> MidiTime {
     pos - MidiTime::from_float(offset.subsec_nanos() as f64 / tick_duration.subsec_nanos() as f64)
+}
+
+fn commit_selection_override (selection_override_offset: &mut Option<isize>, loop_state: &mut LoopState, selection: &HashSet<u32>, last_changed_triggers: &mut HashMap<u32, MidiTime>, last_pos: &MidiTime) {
+    // commit selection override offset
+    if let Some(offset) = *selection_override_offset {
+        if offset != 0 {
+            let new_loop = if let Some(offset_loop) = loop_state.retrieve(offset) {
+                let mut new_loop = loop_state.get().clone();
+                for id in selection {
+                    if let Some(transform) = offset_loop.transforms.get(id) {
+                        new_loop.transforms.insert(*id, transform.clone());
+                    } else {
+                        new_loop.transforms.remove(id);
+                    }
+                    last_changed_triggers.insert(*id, *last_pos);
+                }
+                Some(new_loop)
+            } else {
+                None
+            };
+            
+            if let Some(new_loop) = new_loop {
+                loop_state.set(new_loop);
+            }
+        }
+
+        *selection_override_offset = None;
+    }
+}
+
+fn is_active (transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) -> bool {
+    match transform {
+        LoopTransform::Range {pos, length} => {
+            loop_recorder.has_events(*id, *pos, *pos + *length)
+        },
+        _ => transform.is_active()
+    }
 }
