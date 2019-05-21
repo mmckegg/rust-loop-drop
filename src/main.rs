@@ -1,4 +1,6 @@
 #[macro_use] extern crate lazy_static;
+extern crate rand;
+use rand::Rng;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -30,6 +32,8 @@ fn main() {
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
     
     let main_io_name = "UM-ONE";
+    let blofeld_io_name = "Blofeld";
+
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro"
     } else {
@@ -43,7 +47,8 @@ fn main() {
     channel_repeat.insert(2, ChannelRepeat::Global);
     channel_repeat.insert(3, ChannelRepeat::Global);
 
-    let scale = Scale::new(69, 0);
+    let scale = Scale::new(rand::thread_rng().gen_range(64, 75), rand::thread_rng().gen_range(0, 6));
+
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
         frozen: false,
@@ -55,11 +60,18 @@ fn main() {
     let drum_velocities = Arc::new(Mutex::new(HashMap::new()));
     let sp404_velocities = Arc::new(Mutex::new(HashMap::new()));
 
+    { // release lock
+        let mut v = drum_velocities.lock().unwrap();
+        v.insert(0, 127);
+        v.insert(4, 127);
+    }
+
     let bass_offset = Offset::new(-2, -4);
     let keys_offset = Offset::new(-1, -4);
     let sp404_offset = Arc::new(AtomicUsize::new(0));
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
+    let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
 
     let mut clock = ClockSource::new(main_io_name, vec![
         // main_output_port.clone(),
@@ -151,7 +163,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(blofeld_output_port.clone(), 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
             59, // pink
@@ -159,7 +171,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(blofeld_output_port.clone(), 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
             43, // blue
@@ -169,6 +181,7 @@ fn main() {
 
     let _twister = devices::Twister::new("Midi Fighter Twister",
         main_output_port.clone(),
+        blofeld_output_port.clone(),
         Arc::clone(&params),
         clock.add_rx()
     );

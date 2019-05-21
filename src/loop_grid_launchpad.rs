@@ -21,7 +21,8 @@ use ::clock_source::{RemoteClock, ToClock, FromClock};
 use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, LatchMode, ScheduleMode};
 use ::scale::Scale;
 
-const SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
+const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
+const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
 const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
 
 const DEFAULT_VELOCITY: u8 = 100;
@@ -36,6 +37,26 @@ lazy_static! {
         MidiTime::from_measure(1, 4),
         MidiTime::from_measure(1, 6),
         MidiTime::from_measure(1, 8)
+    ];
+    static ref LOOP_LENGTHS: [MidiTime; 8] = [
+        MidiTime::from_beats(1),
+        MidiTime::from_beats(2),
+        MidiTime::from_beats(3),
+        MidiTime::from_beats(4),
+        MidiTime::from_beats(8),
+        MidiTime::from_beats(16),
+        MidiTime::from_beats(32),
+        MidiTime::from_beats(64)
+    ];
+    static ref ALIGN_OFFSET_NUDGES: [MidiTime; 8] = [
+        MidiTime::from_ticks(-12),
+        MidiTime::from_ticks(-6),
+        MidiTime::from_ticks(-3),
+        MidiTime::from_ticks(-1),
+        MidiTime::from_ticks(1),
+        MidiTime::from_ticks(3),
+        MidiTime::from_ticks(6),
+        MidiTime::from_ticks(12)
     ];
 }
 
@@ -110,6 +131,7 @@ pub enum LoopGridMessage {
     RefreshGridButton(u32),
     RefreshSelectionOverride,
     RefreshSideButtons,
+    RefreshLoopLength,
     RefreshShouldFlatten,
     RefreshActive,
     RefreshRecording,
@@ -119,6 +141,7 @@ pub enum LoopGridMessage {
     RefreshUndoRedoLights,
     SetRate(MidiTime),
     RateButton(usize, bool),
+    LengthButton(usize, bool),
     TriggerChunk(MidiMap, OutputValue, SystemTime),
     TempoChanged(usize),
     RefreshSelectingScale,
@@ -205,7 +228,7 @@ impl LoopGridLaunchpad {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
-        launchpad_output.on_connect(move |mut port| {
+        launchpad_output.on_connect(move |port| {
             // send sysex message to put launchpad into live mode
             port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x40, 0x2F, 0x6D, 0x3E, 0x0A, 0xF7]).unwrap();
         });
@@ -225,7 +248,9 @@ impl LoopGridLaunchpad {
             } else if message[0] == 176 {
                 let active = message[2] > 0;
 
-                if let Some(id) = SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
+                if let Some(id) = LEFT_SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
+                    tx_input.send(LoopGridMessage::LengthButton(id, active)).unwrap();
+                } else if let Some(id) = RIGHT_SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
                     let active = message[2] > 0;
                     tx_input.send(LoopGridMessage::RateButton(id, active)).unwrap();
                 } else if let Some(id) = TOP_BUTTONS.iter().position(|&x| x == message[1]) {
@@ -325,6 +350,7 @@ impl LoopGridLaunchpad {
                 loop_length = value.length;
                 tx_loop_state.send(LoopGridMessage::InitialLoop).unwrap();
                 tx_loop_state.send(LoopGridMessage::RefreshActive).unwrap();
+                tx_loop_state.send(LoopGridMessage::RefreshLoopLength).unwrap();
 
                 if change == LoopStateChange::Set {
                     tx_loop_state.send(LoopGridMessage::ClearRecording).unwrap();
@@ -346,6 +372,7 @@ impl LoopGridLaunchpad {
             let mut holding_at = MidiTime::zero();
             let mut selecting = false;
             let mut selection_override_offset = None;
+            let mut refresh_loop_length_in = None;
 
             let mut loop_held = false;
             let mut loop_from = MidiTime::from_ticks(0);
@@ -365,6 +392,7 @@ impl LoopGridLaunchpad {
             let mut last_pos = MidiTime::from_ticks(0);
             let mut last_length = MidiTime::from_ticks(0);
             let mut length_multiplier = 0.0;
+            let mut align_offset = MidiTime::zero();
 
             let mut sustained_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
@@ -386,8 +414,8 @@ impl LoopGridLaunchpad {
             let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
 
             // hack for setting default states on latches
-            trigger_latch_for.insert(4, Coords::id_from(3 + 8, 0));
-            trigger_latch_for.insert(5, Coords::id_from(4 + 8, 5));
+            trigger_latch_for.insert(5, Coords::id_from(5 + 8, 0));
+            trigger_latch_for.insert(6, Coords::id_from(6 + 8, 5));
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
@@ -396,8 +424,8 @@ impl LoopGridLaunchpad {
             let mut active: HashSet<u32> = HashSet::new();
             let mut recording: HashSet<u32> = HashSet::new();
 
-            let mut last_beat_light = SIDE_BUTTONS[7];
-            let mut last_repeat_light = SIDE_BUTTONS[7];
+            let mut last_beat_light = RIGHT_SIDE_BUTTONS[7];
+            let mut last_repeat_light = RIGHT_SIDE_BUTTONS[7];
 
             // default button lights
             launchpad_output.send(&[176, TOP_BUTTONS[5], Light::RedLow.value()]).unwrap();
@@ -413,7 +441,6 @@ impl LoopGridLaunchpad {
                 match received {
                     LoopGridMessage::Schedule(position, length) => {
                         let params = params.lock().unwrap();
-                        let align_offset = params.align_offset;
 
                         // calculate bpm (unknown if syncing to external clock)
                         let current_time = SystemTime::now();
@@ -483,19 +510,27 @@ impl LoopGridLaunchpad {
                             }
                         }
 
+                        if let Some(remain) = refresh_loop_length_in {
+                            if remain > 0 { 
+                                refresh_loop_length_in = Some(remain - 1);
+                            } else {
+                                refresh_loop_length_in = None;
+                                tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
+                            }
+                        }
+
                         tx_feedback.send(LoopGridMessage::ChunkTick).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
                     },
                     LoopGridMessage::RefreshSideButtons => {
-                        let params = params.lock().unwrap();
-                        let pos = last_pos - params.align_offset;
+                        let pos = last_pos - align_offset;
 
                         let beat_display_multiplier = (24.0 * 8.0) / loop_length.ticks() as f64;
                         let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
 
-                        let current_beat_light = SIDE_BUTTONS[shifted_beat_position % 8];
-                        let current_repeat_light = SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
+                        let current_beat_light = RIGHT_SIDE_BUTTONS[shifted_beat_position % 8];
+                        let current_repeat_light = RIGHT_SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &rate).unwrap_or(0)];
 
                         let rate_color = if repeat_off_beat { Light::RedMed } else { Light::YellowMed };
                         let scale_color = Light::GreenDark;
@@ -528,7 +563,7 @@ impl LoopGridLaunchpad {
 
                         if beat_start {
                             launchpad_output.send(&[144, current_beat_light, Light::White.value()]).unwrap();
-                        } else if last_pos.beat_tick() == 3 {
+                        } else if pos.beat_tick() == 3 {
                             launchpad_output.send(&[144, current_beat_light, base_beat_light.unwrap_or(Light::GreenLow).value()]).unwrap();
                         }
 
@@ -551,6 +586,26 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::RefreshLoopButton => {
                         launchpad_output.send(&[176, TOP_BUTTONS[0], Light::YellowMed.value()]).unwrap();
+                    },
+                    LoopGridMessage::RefreshLoopLength => {
+                        for (index, id) in LEFT_SIDE_BUTTONS.iter().enumerate() {
+
+                            let prev_button_length = *LOOP_LENGTHS.get(index.wrapping_sub(1)).unwrap_or(&MidiTime::zero());
+                            let button_length = LOOP_LENGTHS[index];
+                            let next_button_length = *LOOP_LENGTHS.get(index + 1).unwrap_or(&(LOOP_LENGTHS[LOOP_LENGTHS.len() - 1] * 2));
+
+                            let result = if button_length == loop_length {
+                                Light::Yellow
+                            } else if loop_length < button_length && loop_length > prev_button_length {
+                                Light::Red
+                            } else if loop_length > button_length && loop_length < next_button_length {
+                                Light::Red
+                            } else {
+                                Light::Off
+                            };
+
+                            launchpad_output.send(&[176, *id, result.value()]).unwrap();
+                        }
                     },
                     LoopGridMessage::GridInput(_stamp, id, value) => {
                         let current_index = currently_held_inputs.iter().position(|v| v == &id);
@@ -708,19 +763,19 @@ impl LoopGridLaunchpad {
 
                             last_changed_triggers.insert(id, last_pos);
 
-                            let params = params.lock().unwrap();
                             let pos = current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
  
                             // send new value
-                            if let Some(value) = get_value(id, pos, params.align_offset, &recorder, &out_transforms, true) {
+                            if let Some(value) = get_value(id, pos, align_offset, &recorder, &out_transforms, true) {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                     id, value, pos
                                 })).unwrap();
                             }
                         }
                     },  
-                    LoopGridMessage::TempoChanged(value) => {
-                        launchpad_output.send(&launchpad_text(&value.to_string())).unwrap();
+                    LoopGridMessage::TempoChanged(_value) => {
+                        // text is not supported by launchpad pro in Live mode
+                        // launchpad_output.send(&launchpad_text(&value.to_string())).unwrap();
                     },
                     LoopGridMessage::RefreshGridButton(id) => {
                         let base_id = id % 64;
@@ -951,6 +1006,7 @@ impl LoopGridLaunchpad {
                                     // loop range between loop button down and up
                                     let quantized_length = MidiTime::quantize_length(last_pos - loop_from);
                                     loop_length = quantized_length;
+                                    tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
                                 } else {
                                     // loop range to loop button down using last loop_length
                                     loop_from = loop_from - loop_length
@@ -1100,9 +1156,11 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::UndoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale_held {
+                                // nudge clock backwards (modify timing of existing loop)
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
                             } else if selecting {
                                 loop_length = get_half_loop_length(loop_length).max(MidiTime::from_measure(1, 4));
+                                tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
                             } else if selection.len() > 0 {
                                 if let Some(next_offset) = loop_state.previous_index_for(selection_override_offset.unwrap_or(0), &selection) {
                                     selection_override_offset = Some(next_offset);
@@ -1115,12 +1173,14 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::DoubleLoopLength => {
                         loop_length = get_double_loop_length(loop_length).min(MidiTime::from_beats(32));
+                        tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
                     },
                     LoopGridMessage::RedoButton(pressed) => {
                         if pressed {
                             if selecting && selecting_scale_held {
+                                // nudge clock forwards
                                 clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
-                            } else if selecting {
+                            } else if selecting { 
                                 tx_feedback.send(LoopGridMessage::DoubleLoopLength).unwrap();
                             } else if selection.len() > 0 {
                                 if let Some(next_offset) = loop_state.next_index_for(selection_override_offset.unwrap_or(0), &selection) {
@@ -1218,6 +1278,32 @@ impl LoopGridLaunchpad {
                             tx_feedback.send(LoopGridMessage::SetRate(rate)).unwrap();
                             repeat_off_beat = selecting;
                             repeating = id > 0 || repeat_off_beat;
+                        }
+                    },
+                    LoopGridMessage::LengthButton(button_id, pressed) => {
+                        if pressed {
+                            if selecting {
+                                // nudge align offset
+                                let nudge_offset = ALIGN_OFFSET_NUDGES[button_id % ALIGN_OFFSET_NUDGES.len()];
+                                align_offset = align_offset + nudge_offset;
+
+                                // flash offset amount
+                                let iter = if button_id < 4 {
+                                    button_id..4
+                                } else {
+                                    4..(button_id + 1)
+                                };
+
+                                for id in iter {
+                                    launchpad_output.send(&[176, LEFT_SIDE_BUTTONS[id], Light::Purple.value()]).unwrap();
+                                }
+
+                                refresh_loop_length_in = Some(nudge_offset.ticks().abs());
+    
+                            } else {
+                                loop_length = LOOP_LENGTHS[button_id % LOOP_LENGTHS.len()];
+                                tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
+                            }
                         }
                     },
                     LoopGridMessage::SetRate(value) => {
@@ -1627,7 +1713,14 @@ fn commit_selection_override (selection_override_offset: &mut Option<isize>, loo
 fn is_active (transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) -> bool {
     match transform {
         LoopTransform::Range {pos, length} => {
-            loop_recorder.has_events(*id, *pos, *pos + *length)
+            let has_events = loop_recorder.has_events(*id, *pos, *pos + *length);
+            let has_start_value = if let Some(event) = loop_recorder.get_event_at(*id, *pos) {
+                event.is_on()
+            } else { 
+                true
+            };
+
+            has_events || has_start_value
         },
         _ => transform.is_active()
     }
