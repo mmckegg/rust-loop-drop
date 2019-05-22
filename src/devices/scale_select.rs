@@ -26,5 +26,16 @@ impl Triggerable for ScaleSelect {
         }
     }
 
+    fn get_active (&self) -> Option<HashSet<u32>> {
+        let current_scale = self.scale.lock().unwrap();
+
+        let mut result = HashSet::new();
+        if current_scale.scale >= 0 {
+            result.insert(current_scale.scale as u32);
+        }
+        Some(result)
+    }
+
+
     fn latch_mode (&self) -> LatchMode { LatchMode::LatchSingle }
 }

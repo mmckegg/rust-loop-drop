@@ -1,5 +1,6 @@
-use ::chunk::{Triggerable, OutputValue, SystemTime};
+use ::chunk::{Triggerable, OutputValue, SystemTime, LatchMode};
 use std::sync::{Arc, Mutex};
+use std::collections::HashSet;
 
 use std::collections::HashMap;
 
@@ -27,4 +28,16 @@ impl Triggerable for VelocityMap {
             }
         }
     }
+
+    fn get_active (&self) -> Option<HashSet<u32>> {
+        let values = self.values.lock().unwrap();
+
+        let mut result = HashSet::new();
+        for (key, _) in values.iter() { 
+            result.insert(*key);
+        }
+        Some(result)
+    }
+
+    fn latch_mode (&self) -> LatchMode { LatchMode::NoSuppress }
 }

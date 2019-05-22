@@ -316,7 +316,10 @@ impl LoopGridLaunchpad {
             let mut chunk_channels: HashMap<usize, u32> = HashMap::new();
             let mut chunk_trigger_ids: Vec<Vec<u32>> = Vec::new();
 
-            let scale = scale;
+            let mut no_suppress = HashSet::new();
+            let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
+            let mut loop_length = MidiTime::from_beats(8);
+            let mut base_loop = LoopCollection::new(loop_length);
 
             for mut item in chunk_map {
                 let mut count = 0;
@@ -327,6 +330,24 @@ impl LoopGridLaunchpad {
                         mapping.insert(Coords::new(row, col), MidiMap {chunk_index, id: count});   
                         trigger_ids.push(Coords::id_from(row, col));                
                         count += 1;
+                    }
+                }
+
+                if item.chunk.latch_mode() != LatchMode::None {
+                    for id in &trigger_ids {
+                        no_suppress.insert(*id);
+                    }
+                }
+
+                if let Some(active) = item.chunk.get_active() {
+                    for id in active {
+                        if let Some(trigger_id) = trigger_ids.get(id as usize) {
+                            if item.chunk.latch_mode() == LatchMode::LatchSingle {
+                                trigger_latch_for.insert(chunk_index, *trigger_id);
+                            } else {
+                                base_loop.transforms.insert(*trigger_id, LoopTransform::Value(OutputValue::On(100)));
+                            }
+                        }
                     }
                 }
 
@@ -345,7 +366,6 @@ impl LoopGridLaunchpad {
             }
 
 
-            let mut loop_length = MidiTime::from_beats(8);
             let mut loop_state = LoopState::new(loop_length, move |value, change| {
                 loop_length = value.length;
                 tx_loop_state.send(LoopGridMessage::InitialLoop).unwrap();
@@ -358,7 +378,7 @@ impl LoopGridLaunchpad {
             });
 
             // create base level undo
-            loop_state.set(LoopCollection::new(loop_length));
+            loop_state.set(base_loop);
 
             let mut repeating = false;
             let mut repeat_off_beat = false;
@@ -411,11 +431,6 @@ impl LoopGridLaunchpad {
             let mut select_out = Light::Off;
             let mut last_repeat_light_out = Light::Off;
             let mut last_triggered: HashMap<usize, CircularQueue<u32>> = HashMap::new();
-            let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
-
-            // hack for setting default states on latches
-            trigger_latch_for.insert(5, Coords::id_from(5 + 8, 0));
-            trigger_latch_for.insert(6, Coords::id_from(6 + 8, 5));
 
             let mut last_choke_output = HashMap::new();
             let mut choke_queue = HashSet::new();
@@ -617,9 +632,7 @@ impl LoopGridLaunchpad {
                             currently_held_inputs.remove(index);
                         }
 
-                        let changing_drum_patch = id < 8 && selecting && selecting_scale_held;
-
-                        if selecting && value.is_on() && !changing_drum_patch {
+                        if selecting && value.is_on() {
                             if selection.contains(&id) {
                                 selection.remove(&scale_id);
                                 selection.remove(&id);
@@ -653,7 +666,7 @@ impl LoopGridLaunchpad {
 
                             tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
                         } else {
-                            let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id) || changing_drum_patch;
+                            let in_scale_view = (selecting_scale && (selection.len() == 0 || !selection.contains(&id))) || selection.contains(&scale_id);
 
                             if in_scale_view  {
                                 input_values.insert(scale_id, value);
@@ -662,7 +675,6 @@ impl LoopGridLaunchpad {
                                 input_values.insert(id, value);
                                 input_values.remove(&(scale_id));
                             }
-
                             tx_feedback.send(LoopGridMessage::RefreshInput(id)).unwrap();
                             tx_feedback.send(LoopGridMessage::RefreshInput(scale_id)).unwrap();
                         }
@@ -737,7 +749,7 @@ impl LoopGridLaunchpad {
                             None
                         };
 
-                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection);
+                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &no_suppress);
 
                         // suppress if there are inputs held and monophonic scheduling
                         if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic && transform.is_active() {
@@ -829,7 +841,9 @@ impl LoopGridLaunchpad {
                             Light::Off
                         };
 
-                        let new_value = if triggering {
+                        let new_value = if triggering && selection.contains(&id) {
+                            LaunchpadLight::Pulsing(Light::White)
+                        } else if triggering {
                             LaunchpadLight::Constant(Light::White)
                         } else if selection.contains(&id) {
                             LaunchpadLight::Pulsing(selection_color)
@@ -1127,7 +1141,9 @@ impl LoopGridLaunchpad {
 
                                 if selecting {
                                     for id in 0..128 {
-                                        new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                        if !no_suppress.contains(&id) {
+                                            new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                        }
                                     }
 
                                     // HACK: send a message to twister to clear automation
@@ -1137,12 +1153,16 @@ impl LoopGridLaunchpad {
                                     if selecting_scale {
                                         for id in 64..128 {
                                             // just erase scale events
-                                            new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                            if !no_suppress.contains(&id) {
+                                                new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                            }
                                         }
                                     } else {
                                         for id in 0..64 {
                                             // just erase scale events
-                                            new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                            if !no_suppress.contains(&id) {
+                                                new_loop.transforms.insert(id, LoopTransform::Value(OutputValue::Off));
+                                            }
                                         }
                                     }
                                 }
@@ -1342,7 +1362,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 None
                             };
-                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection);
+                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &no_suppress);
                             
                             if out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
                                 out_transforms.insert(id, transform);
@@ -1440,7 +1460,7 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>) -> LoopTransform {
+fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>, no_suppress: &HashSet<u32>) -> LoopTransform {
     let mut result = LoopTransform::None;
 
     let collection = if selection.contains(&id) && override_collection.is_some() {
@@ -1453,7 +1473,7 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
         result = transform.apply(&result);
     }
 
-    if (selection.len() == 0 || selection.contains(&id)) && result.is_active() {
+    if ((selection.len() == 0 && !no_suppress.contains(&id)) || selection.contains(&id)) && result.is_active() {
         result = selection_override.apply(&result);
     }
 

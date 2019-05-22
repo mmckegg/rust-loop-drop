@@ -26,5 +26,15 @@ impl Triggerable for RootSelect {
         }
     }
 
+    fn get_active (&self) -> Option<HashSet<u32>> {
+        let current_scale = self.scale.lock().unwrap();
+
+        let mut result = HashSet::new();
+        if current_scale.root >= 64 {
+            result.insert(current_scale.root as u32 - 64);
+        }
+        Some(result)
+    }
+
     fn latch_mode (&self) -> LatchMode { LatchMode::LatchSingle }
 }
