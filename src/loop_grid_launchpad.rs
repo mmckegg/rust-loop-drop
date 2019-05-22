@@ -333,7 +333,7 @@ impl LoopGridLaunchpad {
                     }
                 }
 
-                if item.chunk.latch_mode() != LatchMode::None {
+                if item.chunk.latch_mode() == LatchMode::NoSuppress {
                     for id in &trigger_ids {
                         no_suppress.insert(*id);
                     }
