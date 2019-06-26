@@ -17,24 +17,24 @@ impl ThrottledOutput {
     }
 
     pub fn flush (&mut self) {
-        for ((msg, cc), value) in &self.unsent_values {
-            self.midi_connection.send(&[*msg, *cc, *value]).unwrap();
-        }
-        self.unsent_values.clear();
-        self.sent_keys.clear();
+        // for ((msg, cc), value) in &self.unsent_values {
+        //     self.midi_connection.send(&[*msg, *cc, *value]).unwrap();
+        // }
+        // self.unsent_values.clear();
+        // self.sent_keys.clear();
     }
 
     pub fn send (&mut self, message: &[u8]) {
-        if message.len() == 3 {
-            let key = (message[0], message[1]);
-            if self.sent_keys.contains(&key) {
-                self.unsent_values.insert(key, message[2]);
-            } else {
-                self.midi_connection.send(message).unwrap();
-                self.sent_keys.insert(key);
-            }
-        } else {
+        // if message.len() == 3 {
+        //     let key = (message[0], message[1]);
+        //     if self.sent_keys.contains(&key) {
+        //         self.unsent_values.insert(key, message[2]);
+        //     } else {
+        //         self.midi_connection.send(message).unwrap();
+        //         self.sent_keys.insert(key);
+        //     }
+        // } else {
             self.midi_connection.send(message).unwrap();
-        }
+        // }
     }
 }

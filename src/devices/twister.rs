@@ -17,16 +17,21 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
 
-        let kick_channel = 1;
-        let bass_channel = 11;
-        let synth_channel = 12;
-        let zoia_channel = 14;
-        let zoia_fx_channel = 15;
+        let channel_map = [1, 4, 2, 3];
+
+        let drum_channel = 1;
+        let bass_channel = 2;
+        let synth_channel = 3;
+        let slicer_channel = 4;
+        let reverb_channel = 6;
+        let delay_channel = 7;
+
+        let mixer_offset = 7;
 
         let channel_offsets = [11, 21, 31, 41];
 
@@ -59,17 +64,7 @@ impl Twister {
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
             let mut throttled_main_output = ThrottledOutput::new(main_output);
-            let mut throttled_blofeld_output = ThrottledOutput::new(blofeld_output);
-
-            let mut synth_env = 0.0;
-            let mut synth_attack = 0.0;
-            let mut synth_decay = 0.0;
-            let mut synth_sustain = 1.0;
-
-            let mut bass_env = 0.0;
-            let mut bass_attack = 0.0;
-            let mut bass_decay = 0.0;
-            let mut bass_sustain = 1.0;
+            // let mut throttled_main_output = ThrottledOutput::new(blofeld_output);
 
             let mut frozen = false;
             let mut frozen_values = None;
@@ -93,25 +88,23 @@ impl Twister {
             last_values.insert(Control::LfoSkew, lfo.skew);
             last_values.insert(Control::LfoSpeed, lfo.speed);
 
-            last_values.insert(Control::SynthFilter, 64);
-            last_values.insert(Control::BassFilter, 64);
-
             last_values.insert(Control::KickDecay, 64);
             last_values.insert(Control::KickPitch, 64);
             last_values.insert(Control::KickDuck, 64);
+
+            last_values.insert(Control::SamplePitch, 64);
+
 
             last_values.insert(Control::SynthPitch, 64);
             last_values.insert(Control::SynthEnv, 64);
             last_values.insert(Control::SynthPitchEnv, 64);
             last_values.insert(Control::SynthFilterEnv, 64);
-            last_values.insert(Control::SynthHighpass, 10);
-            last_values.insert(Control::SynthLowpass, 64);
+            last_values.insert(Control::SynthCutoff, 64);
             last_values.insert(Control::SynthDuty, 127);
             last_values.insert(Control::SynthAdsr(2), 127);
             last_values.insert(Control::SynthAdsr(3), 64);
 
             last_values.insert(Control::BassPitch, 64);
-            last_values.insert(Control::BassDrive, 10);
 
             last_values.insert(Control::BassEnv, 64);
             last_values.insert(Control::BassPitchEnv, 64);
@@ -179,8 +172,7 @@ impl Twister {
 
                         match control {
                             Control::ChannelControl(channel, control) => {
-                                let cc = channel_offsets[channel as usize % channel_offsets.len()] + control;
-                                throttled_main_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
+                                throttled_main_output.send(&[176 + channel_map[channel as usize] + mixer_offset - 1, control as u8 + 1, value]);
                             },
                             Control::Tempo => {
                                 clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
@@ -197,19 +189,19 @@ impl Twister {
                                 };
                             },
                             Control::ReverbTime => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 11, value]);
+                                throttled_main_output.send(&[176 + reverb_channel - 1, 1, value]);
                             },
                             Control::ReverbPre => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 12, value]);
+                                throttled_main_output.send(&[176 + reverb_channel - 1, 2, value]);
                             },
                             Control::DelayTimeA => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 21, value]);
+                                // throttled_main_output.send(&[176 + zoia_fx_channel - 1, 21, value]);
                             },
                             Control::DelayTimeB => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 22, value]);
+                                throttled_main_output.send(&[176 + delay_channel - 1, 1, value]);
                             },
                             Control::DelayFeedback => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 23, value]);
+                                throttled_main_output.send(&[176 + delay_channel - 1, 2, value]);
                             },
                             Control::LfoSpeed => {
                                 lfo.speed = value;
@@ -224,94 +216,113 @@ impl Twister {
                                 lfo.offset = value;
                             },
                             Control::KickDecay => {
-                                throttled_main_output.send(&[(176 - 1) + kick_channel, 48, value]);
+                                // slicer bit reduction
+                                throttled_main_output.send(&[(176 - 1) + slicer_channel + mixer_offset, 5, value]);
                             },
                             Control::KickPitch => {
-                                throttled_main_output.send(&[(176 - 1) + kick_channel, 43, value]);
+                                // slicer bit crush
+                                throttled_main_output.send(&[(176 - 1) + slicer_channel + mixer_offset, 6, value]);
                             },
                             Control::KickDuck => {
-                                throttled_main_output.send(&[(176 - 1) + zoia_fx_channel, 2, value]);
+                                // bass bit crush
+                                throttled_main_output.send(&[(176 - 1) + bass_channel + mixer_offset, 6, value]);
                             },
                             Control::BassAdsr(param) => {
-                                 match param {
-                                    0 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 95, value]);
-                                        bass_attack = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendBassEnvelope(0)).unwrap();
-                                    },
-                                    1 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 96, value]);
-                                        bass_decay = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendBassEnvelope(1)).unwrap();
-                                    },
-                                    2 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 97, value]);
-                                        bass_sustain = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendBassEnvelope(2)).unwrap();
-                                    },
-                                    _ => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 100, value]);
-                                        throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 106, value]);
-                                    }
-                                }
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, param as u8 + 1, value]);
+                            },
+
+                            Control::SynthAdsr(param) => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, param as u8 + 1, value]);
                             },
 
                             Control::BassPorta => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 5, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 5, value]);
+                            },
+
+                            Control::SynthPorta => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 5, value]);
                             },
 
                             Control::BassCutoff => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 69, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 6, value]);
+                            },
+
+                            Control::SynthCutoff => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 6, value]);
                             },
 
                             Control::BassRes => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 70, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 7, value]);
+                            },
+
+                            Control::SynthRes => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 7, value]);
                             },
 
                             Control::BassFilterEnv => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 73, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 8, value]);
+                            },
+
+                            Control::SynthFilterEnv => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 8, value]);
                             },
 
                             Control::BassWaveform => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 52, 127 - value]);
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 56, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 9, value]);
+                            },
+                           
+                            Control::SynthWaveform => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 9, value]);
                             },
 
                             Control::BassSub => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 58, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 10, value]);
+                            },
+
+                            Control::SynthSub => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 10, value]);
                             },
 
                             Control::BassNoise => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 60, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 11, value]);
+                            },
+                            
+                            Control::SynthNoise => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 11, value]);
                             },
 
                             Control::BassEnv => {
-                                bass_env = midi_to_polar(value);
-                                tx_feedback.send(TwisterMessage::SendBassEnvelope(0)).unwrap();   
-                                tx_feedback.send(TwisterMessage::SendBassEnvelope(1)).unwrap();   
-                                tx_feedback.send(TwisterMessage::SendBassEnvelope(2)).unwrap();   
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 12, value]);
+                            },
+
+                            Control::SynthEnv => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 12, value]);
                             },
 
                             Control::BassDuty => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 33, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 13, value]);
+                            },
+
+                            Control::SynthDuty => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 13, value]);
                             },
 
                             Control::BassVibrato => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 1, value]);
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 14, value]);
                             },
 
-                            Control::BassDrive => {
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 4, value]);
+                            Control::SynthVibrato => {
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 14, value]);
                             },
 
-                            Control::BassFilter => {
-                                let value = if value < 64 {
-                                    ((63 - value) * 2, 0)
+                            Control::SamplePitch => {
+                                // hack around detent on mf twister
+                                let value = if value == 63 {
+                                    64
                                 } else {
-                                    (0, (value - 64) * 2)
+                                    value
                                 };
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 11, value.0]);
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 12, value.1]);
+                                throttled_main_output.send(&[(224 - 1) + slicer_channel, 0, value]);
                             },
 
                             Control::BassPitch => {
@@ -321,100 +332,7 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                throttled_blofeld_output.send(&[(224 - 1) + bass_channel, 0, value]);
-                            },
-
-                            Control::BassPitchEnv => {
-                                // hack around detent on mf twister
-                                let value = if value < 64 {
-                                    value + 1
-                                } else {
-                                    value
-                                };
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 2, value]);
-                            },
-
-
-                            Control::SynthDrive => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 4, value]);
-                            },
-
-                            Control::SynthAdsr(param) => {
-                                match param {
-                                    0 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 95, value]);
-                                        synth_attack = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendSynthEnvelope(0)).unwrap();
-                                    },
-                                    1 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 96, value]);
-                                        synth_decay = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendSynthEnvelope(1)).unwrap();
-                                    },
-                                    2 => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 97, value]);
-                                        synth_sustain = midi_to_float(value);
-                                        tx_feedback.send(TwisterMessage::SendSynthEnvelope(2)).unwrap();
-                                    },
-                                    _ => {
-                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 100, value]);
-                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 106, value]);
-                                    }
-                                }
-                            },
-
-                            Control::SynthFilter => {
-                                let value = if value < 64 {
-                                    ((63 - value) * 2, 0)
-                                } else {
-                                    (0, (value - 64) * 2)
-                                };
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 11, value.0]);
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 12, value.1]);
-                            },
-
-                            Control::SynthHighpass => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 80, value]);
-                            },
-
-                            Control::SynthLowpass => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 69, value]);
-                            },
-
-                            Control::SynthRes => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 70, value]);
-                            },
-
-                            Control::SynthFilterEnv => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 73, value]);
-                            },
-
-                            Control::SynthWaveform => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 52, 127 - value]);
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 56, value]);
-                            },
-
-                            Control::SynthSub => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 58, value]);
-                            },
-
-                            Control::SynthNoise => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 60, value]);
-                            },
-
-                            Control::SynthEnv => {
-                                synth_env = midi_to_polar(value);
-                                tx_feedback.send(TwisterMessage::SendSynthEnvelope(0)).unwrap();   
-                                tx_feedback.send(TwisterMessage::SendSynthEnvelope(1)).unwrap();   
-                                tx_feedback.send(TwisterMessage::SendSynthEnvelope(2)).unwrap();   
-                            },
-
-                            Control::SynthDuty => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 33, value]);
-                            },
-
-                            Control::SynthVibrato => {
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 1, value]);
+                                throttled_main_output.send(&[(224 - 1) + bass_channel, 0, value]);
                             },
 
                             Control::SynthPitch => {
@@ -424,7 +342,17 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                throttled_blofeld_output.send(&[(224 - 1) + synth_channel, 0, value]);
+                                throttled_main_output.send(&[(224 - 1) + synth_channel, 0, value]);
+                            },
+
+                            Control::BassPitchEnv => {
+                                // hack around detent on mf twister
+                                let value = if value < 64 {
+                                    value + 1
+                                } else {
+                                    value
+                                };
+                                throttled_main_output.send(&[(176 - 1) + bass_channel, 16, value]);
                             },
 
                             Control::SynthPitchEnv => {
@@ -434,7 +362,7 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 2, value]);
+                                throttled_main_output.send(&[(176 - 1) + synth_channel, 16, value]);
                             },
 
                             Control::None => ()
@@ -500,14 +428,14 @@ impl Twister {
                                 }
 
                                 // emit beat tick for tap delay tempo
-                                if pos % MidiTime::from_beats(1) == MidiTime::zero() {
-                                    let value = if pos % MidiTime::from_beats(2) == MidiTime::zero() {
-                                        127 // rise
-                                    } else {
-                                        0 // fall
-                                    };
-                                    throttled_main_output.send(&[176 - 1 + zoia_fx_channel, 1, value])
-                                }
+                                // if pos % MidiTime::from_beats(1) == MidiTime::zero() {
+                                //     let value = if pos % MidiTime::from_beats(2) == MidiTime::zero() {
+                                //         127 // rise
+                                //     } else {
+                                //         0 // fall
+                                //     };
+                                //     throttled_main_output.send(&[176 - 1 + zoia_fx_channel, 1, value])
+                                // }
 
                                 if params.frozen != frozen {
                                     frozen = params.frozen;
@@ -555,48 +483,12 @@ impl Twister {
                                 last_pos = pos;
 
                                 throttled_main_output.flush();
-                                throttled_blofeld_output.flush();
-
                             },
                             FromClock::Tempo(value) => {
                                 tx_feedback.send(TwisterMessage::Refresh(Control::Tempo)).unwrap();
                             },
                             FromClock::Jump => {
 
-                            }
-                        }
-                    },
-
-                    TwisterMessage::SendSynthEnvelope(param) => {
-                        match param {
-                            0 => {
-                                let value = float_to_midi(synth_attack * synth_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 101, value]);
-                            },
-                            1 => {
-                                let value = float_to_midi(synth_decay * synth_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 102, value]);
-                            },
-                            _ => {
-                                let value = float_to_midi((1.0 - synth_env) + synth_sustain * synth_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 103, value]);
-                            }
-                        }
-                    },
-
-                    TwisterMessage::SendBassEnvelope(param) => {
-                        match param {
-                            0 => {
-                                let value = float_to_midi(bass_attack * bass_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 101, value]);
-                            },
-                            1 => {
-                                let value = float_to_midi(bass_decay * bass_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 102, value]);
-                            },
-                            _ => {
-                                let value = float_to_midi((1.0 - bass_env) + bass_sustain * bass_env);
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 103, value]);
                             }
                         }
                     }
@@ -615,8 +507,6 @@ enum TwisterMessage {
     ControlChange(Control, OutputValue),
     Event(LoopEvent),
     Send(Control),
-    SendSynthEnvelope(u8),
-    SendBassEnvelope(u8),
     Refresh(Control),
     Recording(Control, bool),
     Clock(FromClock)
@@ -643,6 +533,8 @@ enum Control {
     ReverbTime,
     ReverbPre,
 
+    SamplePitch,
+
     BassAdsr(u32),
     BassPorta,
     BassCutoff,
@@ -657,14 +549,9 @@ enum Control {
     BassPitch,
     BassPitchEnv,
 
-    BassDrive,
-    BassFilter,
-    SynthDrive,
-    SynthFilter,
-
     SynthAdsr(u32),
-    SynthHighpass,
-    SynthLowpass,
+    SynthPorta,
+    SynthCutoff,
     SynthRes,
     SynthFilterEnv,
     SynthWaveform,
@@ -672,10 +559,10 @@ enum Control {
     SynthNoise,
     SynthEnv,
     SynthDuty,
-    SynthPitch,
     SynthVibrato,
+    SynthPitch,
     SynthPitchEnv,
-
+    
     None
 }
 
@@ -694,8 +581,6 @@ impl Control {
 
         match coords {
             // Bank A
-            (0, 2, 3) => Control::BassFilter,
-            (0, 3, 3) => Control::SynthFilter,
             (0, row, col) => Control::ChannelControl(row, col),
 
             // Bank B
@@ -703,13 +588,7 @@ impl Control {
             (1, 0, 2) => Control::Swing,
             (1, 0, 3) => Control::Tempo,
 
-            (1, 1, 1) => Control::KickPitch,
-            (1, 1, 2) => Control::KickDecay,
-            (1, 2, 1) => Control::KickDuck,
-
-            (1, 2, 0) => Control::BassDrive,
-            (1, 3, 0) => Control::SynthDrive,
-
+            (1, 1, 2) => Control::SamplePitch,
             (1, 2, 2) => Control::ReverbTime,
             (1, 3, 2) => Control::ReverbPre,
   
@@ -740,8 +619,8 @@ impl Control {
             // Bank D
             (3, 0, col) => Control::SynthAdsr(col),
 
-            (3, 1, 0) => Control::SynthHighpass,
-            (3, 1, 1) => Control::SynthLowpass,
+            (3, 1, 0) => Control::SynthPorta,
+            (3, 1, 1) => Control::SynthCutoff,
             (3, 1, 2) => Control::SynthRes,
             (3, 1, 3) => Control::SynthFilterEnv,
 

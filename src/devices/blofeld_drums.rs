@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
+const DRUMS: [u8; 8] = [36, 38, 39, 37, 50, 41, 43, 52];
+
 pub struct BlofeldDrums {
     midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
@@ -43,7 +45,7 @@ impl Triggerable for BlofeldDrums {
                     self.output_values.remove(&id);
 
                     if id == 0 {
-                        self.sync_port.send_at(&[128 - 1 + self.sync_channel, 36, 0], at).unwrap();
+                        self.sync_port.send_at(&[128 - 1 + self.sync_channel, 24, 0], at).unwrap();
                     }
                 }
             },
@@ -61,31 +63,19 @@ impl Triggerable for BlofeldDrums {
                 // let mod_value = params.x[velocity_index];
                 // let pressure_value = params.y[velocity_index];
 
-                let mut channel = self.midi_channel + id as u8;
+                let mut channel = self.midi_channel; // + id as u8;
 
-                if channel >= 5 {
-                    // hack to lower velocity of hats, etc
-                    velocity = (velocity as f32 * 0.5) as u8;
-                }
-
-                if channel >= 7 {
-                    channel += 2
-                }
-
-                let note_id = 36;
+                let note_id = DRUMS[id as usize % DRUMS.len()];
 
                 // send note off (choke previous drum)
                 // self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
-
-                // set level
-                self.midi_port.send_at(&[176 - 1 + channel, 7, velocity], at).unwrap();
 
                 // send note
                 self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();
 
                 // send sync if kick
                 if id == 0 {
-                    self.sync_port.send_at(&[144 - 1 + self.sync_channel, 36, velocity], at).unwrap();
+                    self.sync_port.send_at(&[144 - 1 + self.sync_channel, 24, velocity], at).unwrap();
                 }
 
                 self.output_values.insert(id, (channel, note_id, velocity));

@@ -55,7 +55,7 @@ impl Triggerable for MidiKeys {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (note_id, _) = *self.output_values.get(&id).unwrap();
-                    self.midi_output.send_at(&[144 + self.midi_channel - 1, note_id, 0], time).unwrap();
+                    self.midi_output.send_at(&[144-16 + self.midi_channel - 1, note_id, 0], time).unwrap();
                     self.output_values.remove(&id);
                 }
             },

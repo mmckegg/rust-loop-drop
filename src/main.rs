@@ -31,8 +31,7 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs());
     println!("Midi Inputs: {:?}", midi_connection::get_inputs());
     
-    let main_io_name = "UM-ONE";
-    let blofeld_io_name = "Blofeld";
+    let output_name = "IAC Driver LD Output";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro"
@@ -70,11 +69,10 @@ fn main() {
     let keys_offset = Offset::new(-1, -4);
     let sp404_offset = Arc::new(AtomicUsize::new(0));
 
-    let main_output_port = midi_connection::get_shared_output(main_io_name);
-    let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
+    let main_output_port = midi_connection::get_shared_output(output_name);
 
-    let mut clock = ClockSource::new(main_io_name, vec![
-        // main_output_port.clone(),
+    let mut clock = ClockSource::new("IAC Driver LD Cue", vec![
+        main_output_port.clone(),
         midi_connection::get_shared_output(launchpad_io_name)
     ]);
 
@@ -91,19 +89,43 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::VelocityMap::new(Arc::clone(&sp404_velocities))),
+            Box::new(devices::SP404Offset::new(Arc::clone(&sp404_offset))),
             Coords::new(1 + 8, 0),
-            Shape::new(1, 8),
-            126, // light orange
+            Shape::new(2, 8),
+            71, // dark grey
             None
         ),
 
         ChunkMap::new(
-            Box::new(devices::SP404Offset::new(Arc::clone(&sp404_offset))),
-            Coords::new(2 + 8, 0),
+            Box::new(devices::BlofeldDrums::new(main_output_port.clone(), 1, main_output_port.clone(), 1, Arc::clone(&drum_velocities))), 
+            Coords::new(0, 0), 
             Shape::new(1, 8),
-            71, // dark grey
-            None
+            15, // yellow
+            Some(0)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::SP404::new(main_output_port.clone(), 4, 4, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
+            Coords::new(1, 0), 
+            Shape::new(1, 8),
+            11, // orange
+            Some(1)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 2, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Coords::new(2, 0), 
+            Shape::new(3, 8),
+            59, // pink
+            Some(2)
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 3, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Coords::new(5, 0), 
+            Shape::new(3, 8),
+            43, // blue
+            Some(2)
         ),
 
         ChunkMap::new(
@@ -136,52 +158,11 @@ fn main() {
             Shape::new(2, 8),
             35, // green
             None
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::BlofeldDrums::new(main_output_port.clone(), 1, main_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
-            Coords::new(0, 0), 
-            Shape::new(1, 8),
-            15, // yellow
-            Some(0)
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 13, 0, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
-            Coords::new(1, 0), 
-            Shape::new(1, 4),
-            9, // orange
-            Some(1)
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::SP404::new(main_output_port.clone(), 13, 4, Arc::clone(&sp404_offset), Arc::clone(&sp404_velocities))), 
-            Coords::new(1, 4), 
-            Shape::new(1, 4),
-            11, // orange
-            Some(1)
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::MidiKeys::new(blofeld_output_port.clone(), 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
-            Coords::new(2, 0), 
-            Shape::new(3, 8),
-            59, // pink
-            Some(2)
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::MidiKeys::new(blofeld_output_port.clone(), 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
-            Coords::new(5, 0), 
-            Shape::new(3, 8),
-            43, // blue
-            Some(3)
         )
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
 
     let _twister = devices::Twister::new("Midi Fighter Twister",
         main_output_port.clone(),
-        blofeld_output_port.clone(),
         Arc::clone(&params),
         clock.add_rx()
     );

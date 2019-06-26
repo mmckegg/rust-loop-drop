@@ -38,19 +38,9 @@ impl Triggerable for SP404 {
                 let velocity = *velocities.get(&id).unwrap_or(&80);
 
                 let mut offset_value = self.offset.load(Ordering::Relaxed);
-                let mut channel = if offset_value < 5 {
-                    self.midi_channel
-                } else {
-                    self.midi_channel + 1
-                };
+                let mut channel = self.midi_channel;
 
-                let note_id = (47 + ((offset_value % 5) * 12) + ((id + self.start) as usize)) as u8;
-
-                // choke last value
-                if let Some((channel, note_id, _)) = self.last_value {
-                    self.midi_port.send_at(&[128 - 1 + channel, note_id, 0], time).unwrap();
-                }
-                self.last_value = Some((channel, note_id, velocity));
+                let note_id = (offset_value * 8 + id as usize) as u8;
 
                 self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], time).unwrap();
             }
@@ -59,9 +49,5 @@ impl Triggerable for SP404 {
 
     fn schedule_mode (&self) -> ScheduleMode {
         ScheduleMode::Percussion
-    }
-
-    fn latency_offset (&self) -> Option<Duration> {
-        Some(Duration::from_millis(5))
     }
 }
