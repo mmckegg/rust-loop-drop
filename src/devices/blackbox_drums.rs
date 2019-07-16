@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
-pub struct BlofeldDrums {
+const DRUMS: [u8; 8] = [48, 49, 50, 51, 44, 45, 46, 47];
+
+pub struct BlackboxDrums {
     midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     sync_port: midi_connection::SharedMidiOutputConnection,
@@ -14,9 +16,9 @@ pub struct BlofeldDrums {
     output_values: HashMap<u32, (u8, u8, u8)>
 }
 
-impl BlofeldDrums {
+impl BlackboxDrums {
     pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sync_port: midi_connection::SharedMidiOutputConnection, sync_channel: u8, velocities: Arc<Mutex<HashMap<u32, u8>>>) -> Self {
-        BlofeldDrums {
+        BlackboxDrums {
             midi_port,
             sync_port,
             last_pos: MidiTime::zero(),
@@ -28,7 +30,7 @@ impl BlofeldDrums {
     }
 }
 
-impl Triggerable for BlofeldDrums {
+impl Triggerable for BlackboxDrums {
     fn on_tick (&mut self, time: MidiTime) {
         self.last_pos = time;
     }
@@ -38,8 +40,7 @@ impl Triggerable for BlofeldDrums {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
-                    // HACK: disable off notes because this is doing weird things to blofeld for drum envelopes
-                    self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
+                    self.midi_port.send(&[144 - 1 + channel, note_id, 0]).unwrap();
                     self.output_values.remove(&id);
 
                     if id == 0 {
@@ -58,31 +59,13 @@ impl Triggerable for BlofeldDrums {
                     base_velocity
                 };
 
-                // let mod_value = params.x[velocity_index];
-                // let pressure_value = params.y[velocity_index];
-
-                let mut channel = self.midi_channel + id as u8;
-
-                if channel >= 5 {
-                    // hack to lower velocity of hats, etc
-                    velocity = (velocity as f32 * 0.5) as u8;
-                }
-
-                if channel >= 7 {
-                    channel += 2
-                }
-
-                let note_id = 36;
-
-                // send note off (choke previous drum)
-                // self.midi_port.send(&[128 - 1 + channel, note_id, 0]).unwrap();
-
-                // set level
-                self.midi_port.send_at(&[176 - 1 + channel, 7, velocity], at).unwrap();
+                let mut channel = self.midi_channel;
+                let note_id = DRUMS[id as usize % DRUMS.len()];
 
                 // send note
-                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();
-
+                self.midi_port.send_at(&[254], at).unwrap();
+                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();           
+                
                 // send sync if kick
                 if id == 0 {
                     self.sync_port.send_at(&[144 - 1 + self.sync_channel, 36, velocity], at).unwrap();
@@ -92,10 +75,4 @@ impl Triggerable for BlofeldDrums {
             }
         }
     }
-}
-
-pub struct BlofeldDrumParams {
-    pub velocities: [u8; 8],
-    pub x: [u8; 8],
-    // pub y: [u8; 4]
 }

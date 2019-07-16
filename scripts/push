@@ -1,6 +1,6 @@
 #!/bin/bash
 
 rxc && \
-    ssh debian@beaglebone.local "sudo systemctl stop rust-loop-drop" && \
-    scp target/arm-unknown-linux-gnueabihf/release/loop-drop debian@beaglebone.local:loop-drop && \
-    ssh debian@beaglebone.local -t "RUST_BACKTRACE=1 sudo ./loop-drop"
+    ssh pi@raspberrypi.local "sudo systemctl stop loop-drop" && \
+    scp target/arm-unknown-linux-gnueabihf/release/loop-drop pi@raspberrypi.local:loop-drop && \
+    ssh pi@raspberrypi.local -t "RUST_BACKTRACE=1 sudo ./loop-drop"

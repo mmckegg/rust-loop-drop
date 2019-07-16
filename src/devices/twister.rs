@@ -17,12 +17,13 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, blackbox_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
 
         let kick_channel = 1;
+        let slicer_channel = 2;
         let bass_channel = 11;
         let synth_channel = 12;
         let zoia_channel = 14;
@@ -49,6 +50,8 @@ impl Twister {
                 tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
             } else if message[0] == 177 {
                 tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
+            } else if message[0] == 179 && message[1] < 4 && message[2] == 127 {
+                tx_input.send(TwisterMessage::BankChange(message[1])).unwrap();
             }
         });
 
@@ -58,13 +61,16 @@ impl Twister {
             let mut last_values: HashMap<Control, u8> = HashMap::new();
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
-            let mut throttled_main_output = ThrottledOutput::new(main_output);
+            let mut throttled_blackbox_output = ThrottledOutput::new(blackbox_output);
             let mut throttled_blofeld_output = ThrottledOutput::new(blofeld_output);
+            let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
 
             let mut synth_env = 0.0;
             let mut synth_attack = 0.0;
             let mut synth_decay = 0.0;
             let mut synth_sustain = 1.0;
+
+            let mut current_bank = 0;
 
             let mut bass_env = 0.0;
             let mut bass_attack = 0.0;
@@ -96,6 +102,7 @@ impl Twister {
             last_values.insert(Control::SynthFilter, 64);
             last_values.insert(Control::BassFilter, 64);
 
+            last_values.insert(Control::SlicerPitch, 64);
             last_values.insert(Control::KickDecay, 64);
             last_values.insert(Control::KickPitch, 64);
             last_values.insert(Control::KickDuck, 64);
@@ -140,6 +147,11 @@ impl Twister {
 
             for received in rx {
                 match received {
+                    TwisterMessage::BankChange(bank) => {
+                        let mut params = params.lock().unwrap();
+                        params.bank = bank;
+                        println!("Bank changed {}", bank);
+                    },
                     TwisterMessage::ControlChange(control, value) => {
                         if let Some(id) = control_ids.get(&control) {
                             let allow = if loops.contains_key(&control) {
@@ -180,7 +192,7 @@ impl Twister {
                         match control {
                             Control::ChannelControl(channel, control) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + control;
-                                throttled_main_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
+                                throttled_zoia_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
                             },
                             Control::Tempo => {
                                 clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
@@ -197,19 +209,19 @@ impl Twister {
                                 };
                             },
                             Control::ReverbTime => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 11, value]);
+                                throttled_zoia_output.send(&[176 + zoia_fx_channel - 1, 11, value]);
                             },
                             Control::ReverbPre => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 12, value]);
+                                throttled_zoia_output.send(&[176 + zoia_fx_channel - 1, 12, value]);
                             },
                             Control::DelayTimeA => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 21, value]);
+                                throttled_zoia_output.send(&[176 + zoia_fx_channel - 1, 21, value]);
                             },
                             Control::DelayTimeB => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 22, value]);
+                                throttled_zoia_output.send(&[176 + zoia_fx_channel - 1, 22, value]);
                             },
                             Control::DelayFeedback => {
-                                throttled_main_output.send(&[176 + zoia_fx_channel - 1, 23, value]);
+                                throttled_zoia_output.send(&[176 + zoia_fx_channel - 1, 23, value]);
                             },
                             Control::LfoSpeed => {
                                 lfo.speed = value;
@@ -224,13 +236,28 @@ impl Twister {
                                 lfo.offset = value;
                             },
                             Control::KickDecay => {
-                                throttled_main_output.send(&[(176 - 1) + kick_channel, 48, value]);
+                                throttled_blackbox_output.send(&[(176 - 1) + kick_channel, 1, value]);
                             },
                             Control::KickPitch => {
-                                throttled_main_output.send(&[(176 - 1) + kick_channel, 43, value]);
+                                // hack around detent on mf twister
+                                let value = if value < 64 {
+                                    value + 1
+                                } else {
+                                    value
+                                };
+                                throttled_blackbox_output.send(&[(224 - 1) + kick_channel, 0, value]);
+                            },
+                            Control::SlicerPitch => {
+                                // hack around detent on mf twister
+                                let value = if value < 64 {
+                                    value + 1
+                                } else {
+                                    value
+                                };
+                                throttled_blackbox_output.send(&[(224 - 1) + slicer_channel, 0, value]);
                             },
                             Control::KickDuck => {
-                                throttled_main_output.send(&[(176 - 1) + zoia_fx_channel, 2, value]);
+                                throttled_zoia_output.send(&[(176 - 1) + zoia_fx_channel, 2, value]);
                             },
                             Control::BassAdsr(param) => {
                                  match param {
@@ -499,6 +526,11 @@ impl Twister {
                                     }
                                 }
 
+                                if current_bank != params.bank {
+                                    output.send(&[179, params.bank, 127]).unwrap();
+                                    current_bank = params.bank;
+                                }
+
                                 // emit beat tick for tap delay tempo
                                 if pos % MidiTime::from_beats(1) == MidiTime::zero() {
                                     let value = if pos % MidiTime::from_beats(2) == MidiTime::zero() {
@@ -506,7 +538,7 @@ impl Twister {
                                     } else {
                                         0 // fall
                                     };
-                                    throttled_main_output.send(&[176 - 1 + zoia_fx_channel, 1, value])
+                                    throttled_zoia_output.send(&[176 - 1 + zoia_fx_channel, 1, value])
                                 }
 
                                 if params.frozen != frozen {
@@ -554,7 +586,8 @@ impl Twister {
                                 }
                                 last_pos = pos;
 
-                                throttled_main_output.flush();
+                                throttled_blackbox_output.flush();
+                                throttled_zoia_output.flush();
                                 throttled_blofeld_output.flush();
 
                             },
@@ -613,6 +646,7 @@ impl Twister {
 #[derive(Debug, Clone)]
 enum TwisterMessage {
     ControlChange(Control, OutputValue),
+    BankChange(u8),
     Event(LoopEvent),
     Send(Control),
     SendSynthEnvelope(u8),
@@ -633,6 +667,7 @@ enum Control {
 
     KickDecay,
     KickPitch,
+    SlicerPitch,
     KickDuck,
 
     Tempo,
@@ -703,8 +738,9 @@ impl Control {
             (1, 0, 2) => Control::Swing,
             (1, 0, 3) => Control::Tempo,
 
-            (1, 1, 1) => Control::KickPitch,
-            (1, 1, 2) => Control::KickDecay,
+            (1, 1, 0) => Control::SlicerPitch,
+            (1, 1, 1) => Control::KickDecay,
+            (1, 1, 2) => Control::KickPitch,
             (1, 2, 1) => Control::KickDuck,
 
             (1, 2, 0) => Control::BassDrive,

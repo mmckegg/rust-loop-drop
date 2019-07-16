@@ -24,6 +24,9 @@ use ::scale::Scale;
 const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
 const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
 const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
+const BOTTOM_BUTTONS: [u8; 4] = [1, 2, 3, 4];
+const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
+const BANK_COLORS: [u8; 4] = [15, 9, 59, 43];
 
 const DEFAULT_VELOCITY: u8 = 100;
 
@@ -62,6 +65,7 @@ lazy_static! {
 
 pub struct LoopGridParams {
     pub swing: f64,
+    pub bank: u8,
     pub frozen: bool,
     pub channel_repeat: HashMap<u32, ChannelRepeat>,
     pub align_offset: MidiTime,
@@ -112,6 +116,7 @@ pub enum LoopGridRemoteEvent {
 #[derive(Debug, Copy, Clone)]
 pub enum LoopGridMessage {
     Schedule(MidiTime, MidiTime),
+    TwisterBank(u8),
     GridInput(u64, u32, OutputValue),
     LoopButton(bool),
     FlattenButton(bool),
@@ -130,6 +135,7 @@ pub enum LoopGridMessage {
     RefreshOverride(u32),
     RefreshGridButton(u32),
     RefreshSelectionOverride,
+    RefreshSelectedBank,
     RefreshSideButtons,
     RefreshLoopLength,
     RefreshShouldFlatten,
@@ -263,6 +269,16 @@ impl LoopGridLaunchpad {
                         5 => LoopGridMessage::SuppressButton(active),
                         6 => LoopGridMessage::ScaleButton(active),
                         7 => LoopGridMessage::SelectButton(active),
+                        _ => LoopGridMessage::None
+                    };
+                    tx_input.send(to_send).unwrap();
+                } else if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == message[1]) {
+                    // use last 4 bottom buttons as bank switchers
+                    if message[2] > 0 {
+                        tx_input.send(LoopGridMessage::TwisterBank(id as u8)).unwrap();
+                    }
+                } else if let Some(id) = BOTTOM_BUTTONS.iter().position(|&x| x == message[1]) {
+                    let to_send = match id {
                         _ => LoopGridMessage::None
                     };
                     tx_input.send(to_send).unwrap();
@@ -414,6 +430,8 @@ impl LoopGridLaunchpad {
             let mut length_multiplier = 0.0;
             let mut align_offset = MidiTime::zero();
 
+            let mut current_bank = 0;
+
             let mut sustained_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut override_values: HashMap<u32, LoopTransform> = HashMap::new();
             let mut input_values: HashMap<u32, OutputValue> = HashMap::new();
@@ -447,6 +465,7 @@ impl LoopGridLaunchpad {
             launchpad_output.send(&[176, TOP_BUTTONS[6], Light::BlueDark.value()]).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshLoopButton).unwrap();
             tx_feedback.send(LoopGridMessage::RefreshUndoRedoLights).unwrap();
+            tx_feedback.send(LoopGridMessage::RefreshSelectedBank).unwrap();
 
             for id in 0..128 {
                 tx_feedback.send(LoopGridMessage::RefreshGridButton(id)).unwrap();
@@ -534,9 +553,28 @@ impl LoopGridLaunchpad {
                             }
                         }
 
+                        if current_bank != params.bank {
+                            current_bank = params.bank;
+                            tx_feedback.send(LoopGridMessage::RefreshSelectedBank).unwrap();
+                        }
+
                         tx_feedback.send(LoopGridMessage::ChunkTick).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshSideButtons).unwrap();
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
+                    },
+                    LoopGridMessage::TwisterBank(bank) => {
+                        println!("lp bank button {}", bank);
+                        let mut params = params.lock().unwrap();
+                        params.bank = bank;
+                    },
+                    LoopGridMessage::RefreshSelectedBank => {
+                        for (index, id) in BANK_BUTTONS.iter().enumerate() {
+                            if current_bank == index as u8 {
+                                launchpad_output.send(&[176, *id as u8, Light::White.value()]).unwrap();
+                            } else {
+                                launchpad_output.send(&[176, *id as u8, BANK_COLORS[index]]).unwrap();
+                            }
+                        }
                     },
                     LoopGridMessage::RefreshSideButtons => {
                         let pos = last_pos - align_offset;

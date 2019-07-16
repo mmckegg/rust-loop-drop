@@ -30,7 +30,7 @@ pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
         let mut last_port = None;
         loop {
             let output = MidiOutput::new(APP_NAME).unwrap();
-            let current_port = get_output_port_index(&output, &port_name_notify);
+            let current_port = get_outputs(&output).iter().position(|item| item == &port_name_notify);
             if last_port.is_some() != current_port.is_some() {
                 tx_notify.send(SharedMidiOutputEvent::Changed).unwrap();
                 last_port = current_port;
@@ -119,7 +119,7 @@ where F: FnMut(u64, &[u8]) + Send + 'static {
         let mut current_input: Option<MidiInputConnection<()>> = None;
         loop {
             let input = MidiInput::new(APP_NAME).unwrap();
-            let current_port = get_input_port_index(&input, &port_name_notify);
+            let current_port = get_inputs(&input).iter().position(|item| item == &port_name_notify);
             if last_port.is_some() != current_port.is_some() {
                 if let Some(current_input) = current_input {
                     current_input.close();
@@ -145,64 +145,67 @@ where F: FnMut(u64, &[u8]) + Send + 'static {
 
 pub fn get_output (port_name: &str) -> Option<MidiOutputConnection> {
     let output = MidiOutput::new(APP_NAME).unwrap();
-    let port_number = match get_output_port_index(&output, port_name) {
+    let port_number = match get_outputs(&output).iter().position(|item| item == port_name) {
         None => return None,
         Some(value) => value
     };
     output.connect(port_number, port_name).ok()
 }
 
-pub fn get_outputs () -> Vec<String> {
-    let output = MidiOutput::new(APP_NAME).unwrap();
+pub fn get_outputs (output: &MidiOutput) -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..output.port_count() {
-        result.push(normalize_port_name(&output.port_name(i).unwrap()));
+        result.push(output.port_name(i).unwrap());
     }
 
-    result
+    normalize_port_names(&result)
 }
 
-pub fn get_inputs () -> Vec<String> {
-    let input = MidiInput::new(APP_NAME).unwrap();
+pub fn get_inputs (input: &MidiInput) -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..input.port_count() {
-        result.push(normalize_port_name(&input.port_name(i).unwrap()));
+        result.push(input.port_name(i).unwrap());
     }
 
-    result
+    normalize_port_names(&result)
 }
 
-fn get_input_port_index (input: &MidiInput, name: &str) -> Option<usize> {
-    let normalized_name = normalize_port_name(name);
-    for i in 0..input.port_count() {
-        if let &Ok(ref name) = &input.port_name(i) {
-            if normalize_port_name(&name) == normalized_name {
-                return Some(i);
-            }
-        }
-    }
-    None
-}
-
-fn get_output_port_index (output: &MidiOutput, name: &str) -> Option<usize> {
-    let normalized_name = normalize_port_name(name);
-    for i in 0..output.port_count() {
-        if let &Ok(ref name) = &output.port_name(i) {
-            if normalize_port_name(&name) == normalized_name {
-                return Some(i);
-            }
-        }
-    }
-    None
-}
-
-fn normalize_port_name (name: &str) -> String {
+fn normalize_port_names (names: &Vec<String>) -> Vec<String> {
     lazy_static! {
-        static ref RE: Regex = Regex::new(r"^([0-9]- )?(.+?)( [0-9]+:[0-9]+)?$").unwrap();
+        static ref RE: Regex = Regex::new(r"^([0-9]- )?(.+?)( [0-9]+:([0-9]+))?$").unwrap();
     }
-    RE.replace(name, "${2}").into_owned()
+
+    let mut result = Vec::new();
+
+    for name in names {
+        let base_device_name = RE.replace(name, "${2}").into_owned();
+        let device_port_index = RE.replace(name, "${4}").parse::<u32>().unwrap_or(0);
+        let mut device_index = 0;
+        let mut device_name = build_name(&base_device_name, device_index, device_port_index);
+
+        // find an available device name (deal with multiple devices with the same name)
+        while result.contains(&device_name) {
+            device_index += 1;
+            device_name = build_name(&base_device_name, device_index, device_port_index);
+        }
+
+        result.push(device_name);
+    }
+
+    result
+}
+
+fn build_name (base: &str, device_id: u32, port_id: u32) -> String {
+    let mut result = String::from(base);
+    if device_id > 0 {
+        result.push_str(&format!(" {}", device_id + 1))
+    }
+    if port_id > 0 {
+        result.push_str(&format!(" PORT {}", port_id + 1))
+    }
+    result
 }
 
 #[derive(Debug, Clone)]
