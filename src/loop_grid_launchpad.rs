@@ -427,7 +427,6 @@ impl LoopGridLaunchpad {
 
             let mut last_pos = MidiTime::from_ticks(0);
             let mut last_length = MidiTime::from_ticks(0);
-            let mut length_multiplier = 0.0;
             let mut align_offset = MidiTime::zero();
 
             let mut current_bank = 0;
@@ -484,13 +483,12 @@ impl LoopGridLaunchpad {
 
                         // only read swing on 8th notes to prevent back scheduling
                         if (position - align_offset) % MidiTime::from_ticks(12) == MidiTime::zero() {
-                            current_swing = params.swing
+                            current_swing = params.swing;
                         }
 
                         // get the swung position
                         last_pos = (position - align_offset).swing(current_swing) + align_offset;
                         last_length = (position - align_offset + length).swing(current_swing) + align_offset - last_pos;
-                        length_multiplier = last_length.as_float() / length.as_float();
 
                         let mut events = get_events(last_pos, last_length, align_offset, &recorder, &out_transforms);
 
@@ -812,7 +810,7 @@ impl LoopGridLaunchpad {
 
                             last_changed_triggers.insert(id, last_pos);
 
-                            let pos = current_pos(last_pos, last_tick_at, tick_duration, length_multiplier);
+                            let pos = current_pos(last_pos, last_tick_at, tick_duration);
  
                             // send new value
                             if let Some(value) = get_value(id, pos, align_offset, &recorder, &out_transforms, true) {
@@ -1004,6 +1002,7 @@ impl LoopGridLaunchpad {
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             let new_value = event.value.clone();
                             let offset = event.pos - last_pos;
+                            println!("offset {}", offset.as_float());
                             let tick_nano = (tick_duration.subsec_nanos() as f64 * offset.as_float()) as u32;
                             
                             let latency_offset = chunk_latency_offsets.get(&mapped.chunk_index).unwrap_or(&Duration::from_nanos(0));
@@ -1612,9 +1611,10 @@ fn get_events (position: MidiTime, length: MidiTime, align_offset: MidiTime, rec
                         }
                     }
 
+                    let offset = position - playback_pos;
                     if let Some(events) = recorder.get_range_for(*id, playback_pos, playback_pos + length) {
                         for event in events {
-                            event.with_pos(position).insert_into(&mut result);
+                            event.with_pos(event.pos + offset).insert_into(&mut result);
                         }
                     }
                 },
@@ -1664,7 +1664,7 @@ fn launchpad_text (text: &str) -> Vec<u8> {
     result
 }
 
-fn current_pos (last_pos: MidiTime, last_tick: SystemTime, tick_duration: Duration, length_multiplier: f64) -> MidiTime {
+fn current_pos (last_pos: MidiTime, last_tick: SystemTime, tick_duration: Duration) -> MidiTime {
     let now = SystemTime::now();
     let since = now.duration_since(last_tick).unwrap();
     let offset_amount = (since.subsec_nanos() as f64) / (tick_duration.subsec_nanos() as f64);
