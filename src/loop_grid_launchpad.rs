@@ -563,7 +563,6 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshRecording).unwrap();
                     },
                     LoopGridMessage::TwisterBank(bank) => {
-                        println!("lp bank button {}", bank);
                         let mut params = params.lock().unwrap();
                         params.bank = bank;
                     },

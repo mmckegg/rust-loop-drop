@@ -150,7 +150,6 @@ impl Twister {
                     TwisterMessage::BankChange(bank) => {
                         let mut params = params.lock().unwrap();
                         params.bank = bank;
-                        println!("Bank changed {}", bank);
                     },
                     TwisterMessage::ControlChange(control, value) => {
                         if let Some(id) = control_ids.get(&control) {
