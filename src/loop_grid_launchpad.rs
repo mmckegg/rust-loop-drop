@@ -153,6 +153,7 @@ pub enum LoopGridMessage {
     RefreshSelectingScale,
     FlushChoke,
     ChunkTick,
+    PlaySample(u8, bool),
     None
 }
 
@@ -221,7 +222,7 @@ pub struct LoopGridLaunchpad {
 }
 
 impl LoopGridLaunchpad {
-    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock, sample_midi_port: midi_connection::SharedMidiOutputConnection, sample_channel: u8, sample_note_offset: u8) -> Self {
         let (tx, rx) = mpsc::channel();
         let (remote_tx, remote_rx) = mpsc::channel();
 
@@ -278,8 +279,9 @@ impl LoopGridLaunchpad {
                         tx_input.send(LoopGridMessage::TwisterBank(id as u8)).unwrap();
                     }
                 } else if let Some(id) = BOTTOM_BUTTONS.iter().position(|&x| x == message[1]) {
+                    let active = message[2] > 0;
                     let to_send = match id {
-                        _ => LoopGridMessage::None
+                        _ => LoopGridMessage::PlaySample(id as u8, active)
                     };
                     tx_input.send(to_send).unwrap();
                 }
@@ -331,6 +333,7 @@ impl LoopGridLaunchpad {
             let mut chunk_colors: Vec<Light> = Vec::new();
             let mut chunk_channels: HashMap<usize, u32> = HashMap::new();
             let mut chunk_trigger_ids: Vec<Vec<u32>> = Vec::new();
+            let mut sample_midi_port = sample_midi_port;
 
             let mut no_suppress = HashSet::new();
             let mut trigger_latch_for: HashMap<usize, u32> = HashMap::new();
@@ -426,6 +429,7 @@ impl LoopGridLaunchpad {
             let mut tick_duration = Duration::from_millis(60 / 120 / 24 * 1000);
 
             let mut last_pos = MidiTime::from_ticks(0);
+            let mut last_raw_pos = MidiTime::from_ticks(0);
             let mut last_length = MidiTime::from_ticks(0);
             let mut align_offset = MidiTime::zero();
 
@@ -472,6 +476,14 @@ impl LoopGridLaunchpad {
 
             for received in rx {
                 match received {
+                    LoopGridMessage::PlaySample(id, pressed) => {
+                        let velocity = if pressed {
+                            120
+                        } else {
+                            0
+                        };
+                        sample_midi_port.send(&[144 - 1 + sample_channel, sample_note_offset + id, velocity]).unwrap();
+                    },
                     LoopGridMessage::Schedule(position, length) => {
                         let params = params.lock().unwrap();
 
@@ -487,6 +499,7 @@ impl LoopGridLaunchpad {
                         }
 
                         // get the swung position
+                        last_raw_pos = position;
                         last_pos = (position - align_offset).swing(current_swing) + align_offset;
                         last_length = (position - align_offset + length).swing(current_swing) + align_offset - last_pos;
 
@@ -1002,7 +1015,6 @@ impl LoopGridLaunchpad {
                         if let Some(mapped) = mapping.get(&Coords::from(event.id)) {
                             let new_value = event.value.clone();
                             let offset = event.pos - last_pos;
-                            println!("offset {}", offset.as_float());
                             let tick_nano = (tick_duration.subsec_nanos() as f64 * offset.as_float()) as u32;
                             
                             let latency_offset = chunk_latency_offsets.get(&mapped.chunk_index).unwrap_or(&Duration::from_nanos(0));
@@ -1438,7 +1450,7 @@ impl LoopGridLaunchpad {
                     },
                     LoopGridMessage::ChunkTick => {
                         for chunk in &mut chunks {
-                            chunk.on_tick(last_pos);
+                            chunk.on_tick(last_raw_pos);
                         }
                     },
                     LoopGridMessage::FlushChoke => {

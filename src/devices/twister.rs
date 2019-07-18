@@ -351,13 +351,9 @@ impl Twister {
                             },
 
                             Control::BassPitchEnv => {
-                                // hack around detent on mf twister
-                                let value = if value < 64 {
-                                    value + 1
-                                } else {
-                                    value
-                                };
-                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 2, value]);
+                                // controlling oscillator 2 semitone instead!
+                                let value = midi_to_polar(value) * 12.0;
+                                throttled_blofeld_output.send(&[(176 - 1) + bass_channel, 36, (value + 64.0) as u8 ]);
                             },
 
 
@@ -454,13 +450,9 @@ impl Twister {
                             },
 
                             Control::SynthPitchEnv => {
-                                // hack around detent on mf twister
-                                let value = if value < 64 {
-                                    value + 1
-                                } else {
-                                    value
-                                };
-                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 2, value]);
+                                // controlling oscillator 2 semitone instead!
+                                let value = midi_to_polar(value) * 12.0;
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 36, (value + 64.0) as u8]);
                             },
 
                             Control::None => ()
@@ -808,9 +800,9 @@ fn get_control_ids () -> HashMap<Control, u32> {
 
 fn midi_to_polar (value: u8) -> f64 {
     if value < 63 {
-        (value as f64 - 64.0) / 63.0
-    } else if value > 64 {
         (value as f64 - 63.0) / 63.0
+    } else if value > 64 {
+        (value as f64 - 64.0) / 63.0
     } else {
         0.0
     }

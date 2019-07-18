@@ -65,7 +65,8 @@ fn main() {
     }));
     
     let drum_velocities = Arc::new(Mutex::new(HashMap::new()));
-    let sp404_velocities = Arc::new(Mutex::new(HashMap::new()));
+    let slicer_mode = devices::BlackboxSlicerModeChooser::default_value();
+    let slicer_bank = devices::BlackboxSlicerBankChooser::default_value();
 
     { // release lock
         let mut v = drum_velocities.lock().unwrap();
@@ -86,8 +87,8 @@ fn main() {
         midi_connection::get_shared_output(launchpad_io_name)
     ]);
 
-    // auto send clock start every 32 beats (for arp sync) [breaks volca sample]
-    // clock.sync_clock_start(main_output_port.clone());
+    // auto send clock start every 32 beats (for arp sync)
+    clock.sync_clock_start(main_output_port.clone());
 
     let launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
         ChunkMap::new(
@@ -107,9 +108,17 @@ fn main() {
         // ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxSlicerOffset::new(Arc::clone(&slicer_offset))),
+            Box::new(devices::BlackboxSlicerModeChooser::new(Arc::clone(&slicer_mode))),
             Coords::new(1 + 8, 0),
-            Shape::new(1, 8),
+            Shape::new(1, 3),
+            126, // light orange
+            None
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::BlackboxSlicerBankChooser::new(Arc::clone(&slicer_bank))),
+            Coords::new(1 + 8, 3),
+            Shape::new(1, 5),
             71, // dark grey
             None
         ),
@@ -163,7 +172,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxSlicer::new(main_output_port.clone(), 2, 0, Arc::clone(&slicer_offset), Arc::clone(&sp404_velocities))), 
+            Box::new(devices::BlackboxSlicer::new(main_output_port.clone(), Arc::clone(&slicer_mode), Arc::clone(&slicer_bank))), 
             Coords::new(1, 0), 
             Shape::new(1, 8),
             9, // orange
@@ -185,7 +194,7 @@ fn main() {
             43, // blue
             Some(3)
         )
-    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx());
+    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), main_output_port.clone(), 10, 36);
 
     let _twister = devices::Twister::new("Midi Fighter Twister",
         main_output_port.clone(),

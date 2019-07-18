@@ -174,7 +174,8 @@ impl ClockSource {
                 match msg {
                     FromClock::Schedule {pos, ..} => {
                         if pos % MidiTime::from_beats(32) == MidiTime::zero() {
-                            output.send(&[242, 0, 0]).unwrap();
+                            // output.send(&[242, 0, 0]).unwrap();
+                            output.send(&[250, 0, 0]).unwrap();
                         }
                     },
                     _ => ()

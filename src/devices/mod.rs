@@ -8,12 +8,12 @@ mod scale_select;
 mod vt4;
 mod umi3;
 mod blackbox_slicer;
-mod blackbox_slicer_offset;
 mod velocity_map;
 
 pub use self::blackbox_drums::BlackboxDrums;
 pub use self::blackbox_slicer::BlackboxSlicer;
-pub use self::blackbox_slicer_offset::BlackboxSlicerOffset;
+pub use self::blackbox_slicer::BlackboxSlicerModeChooser;
+pub use self::blackbox_slicer::BlackboxSlicerBankChooser;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
 pub use self::velocity_map::VelocityMap;
