@@ -39,6 +39,7 @@ fn main() {
     
     let main_io_name = "UM-ONE 2";
     let zoia_io_name = "UM-ONE";
+    let vt4_io_name = "VT-4";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro"
@@ -81,6 +82,7 @@ fn main() {
 
     let main_output_port = midi_connection::get_shared_output(main_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
+    let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
 
     let mut clock = ClockSource::new(zoia_io_name, vec![
         main_output_port.clone(),
@@ -124,7 +126,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(zoia_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Box::new(devices::MidiKeys::new(vt4_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&vox_offset))), 
             Coords::new(2 + 8, 0),
             Shape::new(1, 8),
             125, // gross
@@ -197,7 +199,6 @@ fn main() {
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), main_output_port.clone(), 10, 36);
 
     let _twister = devices::Twister::new("Midi Fighter Twister",
-        main_output_port.clone(),
         main_output_port.clone(),
         zoia_output_port.clone(),
         Arc::clone(&params),
