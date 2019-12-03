@@ -24,11 +24,13 @@ impl Twister {
 
         let drums_channel = 1;
         let slicer_channel = 2;
-        let sampler_channel = 3;
+        let sampler_channel = 6;
 
         let bass_channel = 11;
         let synth_channel = 12;
+        let ext_channel = 13;
         let zoia_channel = 14;
+        let pedal_channel = 15;
 
         let channel_offsets = [10, 20, 30, 40];
 
@@ -100,11 +102,13 @@ impl Twister {
             last_values.insert(Control::SamplerSend, 0);
             last_values.insert(Control::BassSend, 0);
             last_values.insert(Control::SynthSend, 0);
+            last_values.insert(Control::ExtSend, 0);
 
             last_values.insert(Control::LfoShape, 0);
             last_values.insert(Control::LfoRate, 64);
 
             last_values.insert(Control::DrumMod, 64);
+            last_values.insert(Control::ExtMod, 64);
             last_values.insert(Control::SlicerMod, 64);
 
             last_values.insert(Control::BassFilterLfoAmount, 64);
@@ -142,6 +146,9 @@ impl Twister {
                 tx.send(TwisterMessage::Send(*control)).unwrap();
                 tx.send(TwisterMessage::Refresh(*control)).unwrap();
             }
+
+            // enable nemesis pedal!
+            throttled_zoia_output.send(&[176 + pedal_channel - 1, 38, 127]);
 
             for received in rx {
                 match received {
@@ -214,6 +221,7 @@ impl Twister {
                             },
                             Control::SlicerSend => {
                                 throttled_main_output.send(&[176 + slicer_channel - 1, 10, value / 2]);
+                                throttled_main_output.send(&[176 + slicer_channel - 1 + 1, 10, value / 2]);
                             },
                             Control::SamplerSend => {
                                 throttled_main_output.send(&[176 + sampler_channel - 1, 10, value / 2]);
@@ -226,6 +234,10 @@ impl Twister {
                             Control::SynthSend => {
                                 throttled_main_output.send(&[176 + synth_channel - 1, 77, value / 2]);
                                 throttled_main_output.send(&[176 + synth_channel - 1, 88, value / 2]);
+                            },
+                            Control::ExtSend => {
+                                throttled_main_output.send(&[176 + ext_channel - 1, 77, value / 2]);
+                                throttled_main_output.send(&[176 + ext_channel - 1, 88, value / 2]);
                             },
 
                             Control::BassFilterLfoAmount => {
@@ -265,6 +277,9 @@ impl Twister {
                                     value
                                 };
                                 throttled_main_output.send(&[(224 - 1) + drums_channel, 0, value]);
+                            },
+                            Control::ExtMod => {
+                                throttled_main_output.send(&[(208 - 1) + ext_channel, value]);
                             },
                             Control::SlicerMod => {
                                 throttled_main_output.send(&[(176 - 1) + slicer_channel, 1, value]);
@@ -647,11 +662,13 @@ enum Control {
     SamplerSend,
     BassSend,
     SynthSend,
+    ExtSend,
 
     KickDuckAmount,
     BassDrive,
 
     DrumMod,
+    ExtMod,
     SlicerMod,
     BassFilterLfoAmount,
     SynthFilterLfoAmount,
@@ -719,8 +736,8 @@ impl Control {
 
             (0, 0, 2) => Control::KickDuckAmount,
             (0, 1, 2) => Control::SamplerSend,
-            (0, 2, 2) => Control::BassDrive,
-            (0, 3, 2) => Control::ChannelChorus(3),
+            (0, 2, 2) => Control::ExtMod,
+            (0, 3, 2) => Control::ExtSend,
 
             // Bank B
 

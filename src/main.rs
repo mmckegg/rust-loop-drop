@@ -40,6 +40,7 @@ fn main() {
     let main_io_name = "UM-ONE 2";
     let zoia_io_name = "UM-ONE";
     let vt4_io_name = "VT-4";
+    let keyboard_io_name = "K-Board";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro"
@@ -126,7 +127,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vt4_output_port.clone(), 1, Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Box::new(devices::MidiKeys::new(main_output_port.clone(), 8, Arc::clone(&scale), Arc::clone(&vox_offset))), 
             Coords::new(2 + 8, 0),
             Shape::new(1, 8),
             125, // gross
@@ -198,6 +199,8 @@ fn main() {
         )
     ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), main_output_port.clone(), 10, 36);
 
+    let _keyboard = devices::KBoard::new(keyboard_io_name, main_output_port.clone(), 13, scale.clone());
+
     let _twister = devices::Twister::new("Midi Fighter Twister",
         main_output_port.clone(),
         zoia_output_port.clone(),
@@ -206,6 +209,8 @@ fn main() {
     );
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
+
+    let _vt4 = devices::VT4Key::new(main_output_port.clone(), 8, scale.clone(), clock.add_rx());
 
     clock.start();
 }
