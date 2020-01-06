@@ -170,13 +170,23 @@ impl ClockSource {
         // pipe clock in
         thread::spawn(move || {
             let mut output = output;
+            let mut resync = false;
             for msg in clock.receiver {
                 match msg {
                     FromClock::Schedule {pos, ..} => {
-                        if pos % MidiTime::from_beats(32) == MidiTime::zero() {
-                            // output.send(&[242, 0, 0]).unwrap();
-                            output.send(&[250, 0, 0]).unwrap();
+                        let length = if resync {
+                            4
+                        } else {
+                            32
+                        };
+                        if pos % MidiTime::from_beats(length) == MidiTime::zero() {
+                            output.send(&[242, 0, 0]).unwrap();
+                            resync = false;
+                            // output.send(&[250, 0, 0]).unwrap();
                         }
+                    },
+                    FromClock::Jump => {
+                        resync = true;
                     },
                     _ => ()
                 }

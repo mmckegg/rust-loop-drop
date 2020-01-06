@@ -63,7 +63,6 @@ impl Triggerable for BlackboxDrums {
                 let note_id = DRUMS[id as usize % DRUMS.len()];
 
                 // send note
-                self.midi_port.send_at(&[254], at).unwrap();
                 self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();           
                 
                 // send sync if kick

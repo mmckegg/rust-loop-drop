@@ -17,7 +17,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, pulse_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
         let (tx, rx) = mpsc::channel();
         let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
@@ -64,7 +64,9 @@ impl Twister {
             let mut last_values: HashMap<Control, u8> = HashMap::new();
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
-            let mut throttled_main_output = ThrottledOutput::new(main_output);
+            let mut throttled_pulse_output = ThrottledOutput::new(pulse_output);
+            let mut throttled_blofeld_output = ThrottledOutput::new(blofeld_output);
+            let mut throttled_blackbox_output = ThrottledOutput::new(blackbox_output);
             let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
 
             let mut synth_env = 0.0;
@@ -217,27 +219,42 @@ impl Twister {
                             },
 
                             Control::DrumSend => {
-                                throttled_main_output.send(&[176 + drums_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + drums_channel - 1, 10, value / 2]);
                             },
+                            
                             Control::SlicerSend => {
-                                throttled_main_output.send(&[176 + slicer_channel - 1, 10, value / 2]);
-                                throttled_main_output.send(&[176 + slicer_channel - 1 + 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + slicer_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + slicer_channel - 1 + 1, 10, value / 2]);
                             },
                             Control::SamplerSend => {
-                                throttled_main_output.send(&[176 + sampler_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 10, value / 2]);
+                            },
+                            Control::DrumMod => {
+                                let value = if value == 63 {
+                                    64
+                                } else {
+                                    value
+                                };
+                                throttled_blackbox_output.send(&[(224 - 1) + drums_channel, 0, value]);
+                            },
+                            Control::SlicerMod => {
+                                throttled_blackbox_output.send(&[(176 - 1) + slicer_channel, 1, value]);
                             },
                             Control::BassSend => {
                                 bass_volume_multiplier = 0.7 + (midi_to_float(value) * 0.3);
-                                throttled_main_output.send(&[176 + bass_channel - 1, 10, value / 2]);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
+                                throttled_pulse_output.send(&[176 + bass_channel - 1, 10, value / 2]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
                             },
                             Control::SynthSend => {
-                                throttled_main_output.send(&[176 + synth_channel - 1, 77, value / 2]);
-                                throttled_main_output.send(&[176 + synth_channel - 1, 88, value / 2]);
+                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 77, value / 2]);
+                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 88, value / 2]);
                             },
                             Control::ExtSend => {
-                                throttled_main_output.send(&[176 + ext_channel - 1, 77, value / 2]);
-                                throttled_main_output.send(&[176 + ext_channel - 1, 88, value / 2]);
+                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 77, value / 2]);
+                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 88, value / 2]);
+                            },
+                            Control::ExtMod => {
+                                throttled_blofeld_output.send(&[(208 - 1) + ext_channel, value]);
                             },
 
                             Control::BassFilterLfoAmount => {
@@ -270,73 +287,59 @@ impl Twister {
                                 lfo.hold = value;
                                 lfo.offset = value;
                             },
-                            Control::DrumMod => {
-                                let value = if value == 63 {
-                                    64
-                                } else {
-                                    value
-                                };
-                                throttled_main_output.send(&[(224 - 1) + drums_channel, 0, value]);
-                            },
-                            Control::ExtMod => {
-                                throttled_main_output.send(&[(208 - 1) + ext_channel, value]);
-                            },
-                            Control::SlicerMod => {
-                                throttled_main_output.send(&[(176 - 1) + slicer_channel, 1, value]);
-                            },
                             Control::KickDuckAmount => {
                                 throttled_zoia_output.send(&[(176 - 1) + zoia_channel, 2, value]);
                             },
 
                             Control::BassDrive => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 76, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 76, value]);
                             },
 
                             Control::BassAdsr(param) => {
                                 match param {
                                     0 => {
-                                        throttled_main_output.send(&[(176 - 1) + bass_channel, 14, value]);
+                                        throttled_pulse_output.send(&[(176 - 1) + bass_channel, 14, value]);
                                     },
                                     1 => {
-                                        throttled_main_output.send(&[(176 - 1) + bass_channel, 15, value]);
+                                        throttled_pulse_output.send(&[(176 - 1) + bass_channel, 15, value]);
                                     },
                                     2 => {
-                                        throttled_main_output.send(&[(176 - 1) + bass_channel, 16, value]);
+                                        throttled_pulse_output.send(&[(176 - 1) + bass_channel, 16, value]);
                                     },
                                     _ => {
-                                        throttled_main_output.send(&[(176 - 1) + bass_channel, 78, value]);
-                                        throttled_main_output.send(&[(176 - 1) + bass_channel, 4, 127 - value]);
+                                        throttled_pulse_output.send(&[(176 - 1) + bass_channel, 78, value]);
+                                        throttled_pulse_output.send(&[(176 - 1) + bass_channel, 4, 127 - value]);
                                     }
                                 }
                             },
 
                             Control::BassPorta => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 5, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 5, value]);
                             },
 
                             Control::BassCutoff => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 50, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 50, value]);
                             },
 
                             Control::BassRes => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 56, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 56, value]);
                             },
 
                             Control::BassFilterEnv => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 52, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 52, value]);
                             },
 
                             Control::BassWaveform => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 45, 127 - value]);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 46, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 45, 127 - value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 46, value]);
                             },
 
                             Control::BassSub => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 47, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 47, value]);
                             },
 
                             Control::BassNoise => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 48, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 48, value]);
                             },
 
                             Control::BassEnv => {
@@ -345,16 +348,16 @@ impl Twister {
                                 } else {
                                     100
                                 };
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 118, value]);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 118, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
                             },
 
                             Control::BassDuty => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 35, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 35, value]);
                             },
 
                             Control::BassVibrato => {
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 1, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 1, value]);
                             },
 
                             Control::BassPitch => {
@@ -364,66 +367,66 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                throttled_main_output.send(&[(224 - 1) + bass_channel, 0, value]);
+                                throttled_pulse_output.send(&[(224 - 1) + bass_channel, 0, value]);
                             },
 
                             Control::BassPitchOffset => {
                                 // oscillator 2 semitone
                                 let value = midi_to_polar(value) * 12.0;
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 36, (value + 64.0) as u8 ]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 36, (value + 64.0) as u8 ]);
                             },
 
                             Control::SynthAdsr(param) => {
                                 match param {
                                     0 => {
-                                        throttled_main_output.send(&[(176 - 1) + synth_channel, 95, value]);
+                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 95, value]);
                                         synth_attack = midi_to_float(value);
                                         tx_feedback.send(TwisterMessage::SendSynthEnvelope(0)).unwrap();
                                     },
                                     1 => {
-                                        throttled_main_output.send(&[(176 - 1) + synth_channel, 96, value]);
+                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 96, value]);
                                         synth_decay = midi_to_float(value);
                                         tx_feedback.send(TwisterMessage::SendSynthEnvelope(1)).unwrap();
                                     },
                                     2 => {
-                                        throttled_main_output.send(&[(176 - 1) + synth_channel, 97, value]);
+                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 97, value]);
                                         synth_sustain = midi_to_float(value);
                                         tx_feedback.send(TwisterMessage::SendSynthEnvelope(2)).unwrap();
                                     },
                                     _ => {
-                                        throttled_main_output.send(&[(176 - 1) + synth_channel, 100, value]);
-                                        throttled_main_output.send(&[(176 - 1) + synth_channel, 106, value]);
+                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 100, value]);
+                                        throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 106, value]);
                                     }
                                 }
                             },
 
                             Control::SynthHighpass => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 80, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 80, value]);
                             },
 
                             Control::SynthLowpass => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 69, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 69, value]);
                             },
 
                             Control::SynthRes => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 70, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 70, value]);
                             },
 
                             Control::SynthFilterEnv => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 73, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 73, value]);
                             },
 
                             Control::SynthWaveform => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 52, 127 - value]);
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 56, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 52, 127 - value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 56, value]);
                             },
 
                             Control::SynthSub => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 58, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 58, value]);
                             },
 
                             Control::SynthNoise => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 60, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 60, value]);
                             },
 
                             Control::SynthEnv => {
@@ -434,11 +437,11 @@ impl Twister {
                             },
 
                             Control::SynthDuty => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 33, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 33, value]);
                             },
 
                             Control::SynthVibrato => {
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 1, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 1, value]);
                             },
 
                             Control::SynthPitch => {
@@ -448,13 +451,13 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                throttled_main_output.send(&[(224 - 1) + synth_channel, 0, value]);
+                                throttled_blofeld_output.send(&[(224 - 1) + synth_channel, 0, value]);
                             },
 
                             Control::SynthPitchOffset => {
                                 // controlling oscillator 2 semitone instead!
                                 let value = midi_to_polar(value) * 12.0;
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 36, (value + 64.0) as u8]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 36, (value + 64.0) as u8]);
                             },
 
                             Control::None => ()
@@ -579,9 +582,10 @@ impl Twister {
                                 }
                                 last_pos = pos;
 
-                                throttled_main_output.flush();
+                                throttled_pulse_output.flush();
+                                throttled_blofeld_output.flush();
+                                throttled_blackbox_output.flush();
                                 throttled_zoia_output.flush();
-                                throttled_main_output.flush();
 
                             },
                             FromClock::Tempo(value) => {
@@ -597,15 +601,15 @@ impl Twister {
                         match param {
                             0 => {
                                 let value = float_to_midi(synth_attack * synth_env);
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 101, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 101, value]);
                             },
                             1 => {
                                 let value = float_to_midi(synth_decay * synth_env);
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 102, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 102, value]);
                             },
                             _ => {
                                 let value = float_to_midi((1.0 - synth_env) + synth_sustain * synth_env);
-                                throttled_main_output.send(&[(176 - 1) + synth_channel, 103, value]);
+                                throttled_blofeld_output.send(&[(176 - 1) + synth_channel, 103, value]);
                             }
                         }
                     },
@@ -614,15 +618,15 @@ impl Twister {
                         match param {
                             0 => {
                                 let value = float_to_midi(bass_attack * bass_env);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 101, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 101, value]);
                             },
                             1 => {
                                 let value = float_to_midi(bass_decay * bass_env);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 102, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 102, value]);
                             },
                             _ => {
                                 let value = float_to_midi((1.0 - bass_env) + bass_sustain * bass_env);
-                                throttled_main_output.send(&[(176 - 1) + bass_channel, 103, value]);
+                                throttled_pulse_output.send(&[(176 - 1) + bass_channel, 103, value]);
                             }
                         }
                     }
