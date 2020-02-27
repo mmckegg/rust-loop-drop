@@ -73,6 +73,7 @@ impl Twister {
             let mut synth_attack = 0.0;
             let mut synth_decay = 0.0;
             let mut synth_sustain = 1.0;
+            let mut last_delay_division = None;
 
             let mut current_bank = 0;
 
@@ -117,14 +118,17 @@ impl Twister {
             last_values.insert(Control::SynthFilterLfoAmount, 64);
 
             last_values.insert(Control::SynthPitch, 64);
-            last_values.insert(Control::SynthEnv, 64);
+            last_values.insert(Control::SynthVibrato, 40);
+            last_values.insert(Control::SynthEnv, 100);
             last_values.insert(Control::SynthPitchOffset, 64);
-            last_values.insert(Control::SynthFilterEnv, 64);
-            last_values.insert(Control::SynthHighpass, 10);
-            last_values.insert(Control::SynthLowpass, 64);
+            last_values.insert(Control::SynthFilterEnv, 80);
+            last_values.insert(Control::SynthHighpass, 50);
+            last_values.insert(Control::SynthLowpass, 60);
             last_values.insert(Control::SynthDuty, 127);
-            last_values.insert(Control::SynthAdsr(2), 127);
-            last_values.insert(Control::SynthAdsr(3), 64);
+            last_values.insert(Control::SynthAdsr(0), 64);
+            last_values.insert(Control::SynthAdsr(1), 75);
+            last_values.insert(Control::SynthAdsr(2), 110);
+            last_values.insert(Control::SynthAdsr(3), 70);
 
             last_values.insert(Control::BassDrive, 0);
             last_values.insert(Control::KickDuckAmount, 64);
@@ -136,12 +140,14 @@ impl Twister {
             last_values.insert(Control::BassCutoff, 40);
             last_values.insert(Control::BassSub, 127);
             last_values.insert(Control::BassDuty, 127);
+            last_values.insert(Control::BassPitchOffset, 102);
             last_values.insert(Control::BassAdsr(1), 50);
             last_values.insert(Control::BassAdsr(2), 30);
             last_values.insert(Control::BassAdsr(3), 64);
 
             last_values.insert(Control::Tempo, random_range(20, 80));
-            last_values.insert(Control::Swing, random_range(64, 70));
+            last_values.insert(Control::DelayDivision, 62);
+            last_values.insert(Control::Swing, 64);
 
             // update display and send all of the start values on load
             for control in control_ids.keys() {
@@ -267,6 +273,15 @@ impl Twister {
 
                             Control::Tempo => {
                                 clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
+                            },
+                            Control::DelayDivision => {
+                                let value = midi_to_float(value);
+                                let new_value = (value * 14.0) as u8;
+                                if last_delay_division != Some(new_value) {
+                                    println!("Set division {}", new_value);
+                                    throttled_zoia_output.send(&[176 + pedal_channel - 1, 42, new_value]);
+                                    last_delay_division = Some(new_value);
+                                }
                             },
                             Control::Swing => {
                                 let mut params = params.lock().unwrap();
@@ -678,6 +693,7 @@ enum Control {
     SynthFilterLfoAmount,
 
     Tempo,
+    DelayDivision,
     Swing,
     LfoShape,
     LfoRate,
@@ -745,7 +761,7 @@ impl Control {
 
             // Bank B
 
-            (1, 0, 3) => Control::Tempo,
+            (1, 0, 3) => Control::DelayDivision,
             (1, 1, 3) => Control::Swing,
 
             (1, row, 0) => Control::ChannelCrush(row),

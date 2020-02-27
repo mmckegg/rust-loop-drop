@@ -77,7 +77,7 @@ impl ClockSource {
             internal_clock_suppressed_to: Instant::now(),
             _midi_input: external_input,
             midi_outputs: output_ports,
-            tick_pos: MidiTime::zero(),
+            tick_pos: MidiTime::from_ticks(0),
             tx,
             tempo,
             broadcast,
@@ -89,33 +89,33 @@ impl ClockSource {
         let tempo_ref = Arc::clone(&self.tempo);
         let broadcast_clock = self.broadcast.clone();
 
-        thread::spawn(move || {
-            let mut last_changed_at = Instant::now();
-            let mut ticks_at_last_changed = 0;
-            let mut last_tempo = 120;
-            let mut ticks = 0;
-            loop {
-                let tempo = tempo_ref.load(Ordering::Relaxed);
+        // thread::spawn(move || {
+        //     let mut last_changed_at = Instant::now();
+        //     let mut ticks_at_last_changed = 0;
+        //     let mut last_tempo = 120;
+        //     let mut ticks = 0;
+        //     loop {
+        //         let tempo = tempo_ref.load(Ordering::Relaxed);
 
-                if tempo != last_tempo {
-                    last_changed_at = Instant::now();
-                    ticks_at_last_changed = ticks;
-                    last_tempo = tempo;
-                }
+        //         if tempo != last_tempo {
+        //             last_changed_at = Instant::now();
+        //             ticks_at_last_changed = ticks;
+        //             last_tempo = tempo;
+        //         }
 
-                broadcast_clock.send(ClockMessage::InternalTick).unwrap();
-                ticks += 1;
+        //         broadcast_clock.send(ClockMessage::InternalTick).unwrap();
+        //         ticks += 1;
 
-                let ticks_since_last_change = ticks - ticks_at_last_changed;
-                let beat_duration = 60.0 / last_tempo as f64;
-                let tick_duration = beat_duration / 24.0;
-                let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 * tick_duration);
-                let since_last_change = last_changed_at.elapsed();
-                if from_last_change_until_next_tick > since_last_change {
-                    thread::sleep(from_last_change_until_next_tick - since_last_change);
-                }
-            }
-        });
+        //         let ticks_since_last_change = ticks - ticks_at_last_changed;
+        //         let beat_duration = 60.0 / last_tempo as f64;
+        //         let tick_duration = beat_duration / 24.0;
+        //         let from_last_change_until_next_tick = duration_from_float(ticks_since_last_change as f64 * tick_duration);
+        //         let since_last_change = last_changed_at.elapsed();
+        //         if from_last_change_until_next_tick > since_last_change {
+        //             thread::sleep(from_last_change_until_next_tick - since_last_change);
+        //         }
+        //     }
+        // });
 
         self.bus.broadcast(FromClock::Tempo(DEFAULT_TEMPO));
 
@@ -136,7 +136,8 @@ impl ClockSource {
                 ClockMessage::ExternalTick => {
                     self.internal_clock_suppressed_to = Instant::now() + Duration::new(0, 500 * 1_000_000);
                     self.bus.broadcast(FromClock::Schedule {
-                        pos: self.tick_pos, 
+                        // bump tick offset to sync with blackbox
+                        pos: self.tick_pos, // - MidiTime::tick(),
                         length: MidiTime::tick()
                     });
                     for port in &mut self.midi_outputs {

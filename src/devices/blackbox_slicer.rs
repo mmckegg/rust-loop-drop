@@ -30,30 +30,35 @@ impl BlackboxSlicer {
 
 impl Triggerable for BlackboxSlicer {
     fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
+
+        let mode = self.mode.lock().unwrap();
+
+        let increment = if let BlackboxSlicerMode::AutoTrigger {rate, ..} = *mode {
+            24 / rate.ticks()
+        } else {
+            1
+        };
+
+        let bank = self.bank.lock().unwrap();
+        let (channel, note_id, slicer_id) = match *bank {
+            BlackboxSlicerBank::Single(channel, offset) => (channel, (36 + ((id + offset) * increment as u32) as u8) % 128, 0), 
+            BlackboxSlicerBank::Split(channel_a, channel_b) => {
+                if id < 4 {
+                    (channel_a, (36 + (id * increment as u32) as u8) % 128, 0)
+                } else {
+                    (channel_b, (36 + ((id - 4) * increment as u32) as u8) % 128, 1)
+                }
+            }
+        };
+
         match value {
-            OutputValue::Off => (),
+            OutputValue::Off => {
+                if *mode == BlackboxSlicerMode::Direct {
+                    self.midi_port.send_at(&[144 - 1 + channel, note_id, 0], time).unwrap();
+                }
+            },
             OutputValue::On(_) => {
                 let velocity = 120;
-                let mode = self.mode.lock().unwrap();
-                let bank = self.bank.lock().unwrap();
-
-                let increment = if let BlackboxSlicerMode::AutoTrigger {rate, ..} = *mode {
-                    24 / rate.ticks()
-                } else {
-                    1
-                };
-
-                let (channel, note_id, slicer_id) = match *bank {
-                    BlackboxSlicerBank::Single(channel) => (channel, (36 + (id * increment as u32) as u8) % 128, 0), 
-                    BlackboxSlicerBank::Split(channel_a, channel_b) => {
-                        if id < 4 {
-                            (channel_a, (36 + (id * increment as u32) as u8) % 128, 0)
-                        } else {
-                            (channel_b, (36 + ((id - 4) * increment as u32) as u8) % 128, 1)
-                        }
-                    }
-                };
-
                 // choke last value
                 if let Some((channel, note_id, _)) = self.last_value.get(&slicer_id) {
                     self.midi_port.send_at(&[144 - 1 + channel, *note_id, 0], time).unwrap();
@@ -80,7 +85,8 @@ impl Triggerable for BlackboxSlicer {
                             if last_value.1 < 127 {
                                 last_value.1 += 1;
                             }
-                            self.midi_port.send(&[144 - 1 + last_value.0, last_value.1, last_value.2]).unwrap();
+                            let velocity = (last_value.2 as f32 * 0.7) as u8;
+                            self.midi_port.send(&[144 - 1 + last_value.0, last_value.1, velocity]).unwrap();
                         }
                     } else if trigger_pos == length {
                         self.midi_port.send(&[144 - 1 + last_value.0, last_value.1, 0]).unwrap();
@@ -116,8 +122,8 @@ lazy_static! {
             rate: MidiTime::from_measure(1, 4)
         },
         BlackboxSlicerMode::AutoTrigger {
-            length: MidiTime::from_beats(1), 
-            rate: MidiTime::from_measure(1, 8)
+            length: MidiTime::from_measure(1, 2), 
+            rate: MidiTime::from_measure(1, 4)
         },
     ];
 }
@@ -125,14 +131,14 @@ lazy_static! {
 lazy_static! {
     static ref BANKS: [BlackboxSlicerBank; 5] = [
         BlackboxSlicerBank::Split(2, 3),
-        BlackboxSlicerBank::Single(2),
-        BlackboxSlicerBank::Single(3),
-        BlackboxSlicerBank::Single(4),
-        BlackboxSlicerBank::Single(5)
+        BlackboxSlicerBank::Single(2, 0),
+        BlackboxSlicerBank::Single(2, 8),
+        BlackboxSlicerBank::Single(3, 0),
+        BlackboxSlicerBank::Single(3, 8)
     ];
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum BlackboxSlicerMode {
     Direct,
     AutoTrigger {length: MidiTime, rate: MidiTime}
@@ -140,7 +146,7 @@ pub enum BlackboxSlicerMode {
 
 #[derive(Debug, Copy, Clone)]
 pub enum BlackboxSlicerBank {
-    Single(u8),
+    Single(u8, u32),
     Split(u8, u8)
 }
 

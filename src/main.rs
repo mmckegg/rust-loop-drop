@@ -4,6 +4,8 @@ use rand::Rng;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::process::Command;
+use std::process;
 
 mod midi_connection;
 mod loop_grid_launchpad;
@@ -31,6 +33,7 @@ const APP_NAME: &str = "Loop Drop";
 
 fn main() {
 
+    Command::new("renice").args(&["-n", "-20", &format!("{}", process::id())]).output();
     let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
     let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
 
@@ -57,7 +60,7 @@ fn main() {
     channel_repeat.insert(2, ChannelRepeat::Global);
     channel_repeat.insert(3, ChannelRepeat::Global);
 
-    let scale = Scale::new(rand::thread_rng().gen_range(64, 75), rand::thread_rng().gen_range(0, 6));
+    let scale = Scale::new(64, 5);
 
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
@@ -91,7 +94,7 @@ fn main() {
 
     let mut clock = ClockSource::new(main_io_name, vec![
         main_output_port.clone(),
-        // blofeld_output_port.clone(),
+        zoia_output_port.clone(),
         vt4_output_port.clone(),
         midi_connection::get_shared_output(launchpad_io_name)
     ]);
