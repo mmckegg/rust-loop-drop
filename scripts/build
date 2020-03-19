@@ -1,0 +1,7 @@
+#!/bin/bash
+docker build -t rust-ld-crosscompiler-arm ./scripts/rust-crosscompiler-arm && \
+  docker run -it --rm \
+	-v $(pwd):/source \
+	-v ~/.cargo/git:/root/.cargo/git \
+	-v ~/.cargo/registry:/root/.cargo/registry \
+	rust-ld-crosscompiler-arm "$@"
