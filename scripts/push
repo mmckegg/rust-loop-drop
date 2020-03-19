@@ -2,4 +2,4 @@
 scripts/build && \
     ssh pi@raspberrypi.local "sudo systemctl stop loop-drop" && \
     scp target/arm-unknown-linux-gnueabihf/release/loop-drop pi@raspberrypi.local:loop-drop && \
-    ssh pi@raspberrypi.local -t "RUST_BACKTRACE=1 sudo ./loop-drop"
+    ssh pi@raspberrypi.local -t "RUST_BACKTRACE=1 sudo --preserve-env ./loop-drop"

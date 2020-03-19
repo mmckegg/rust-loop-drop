@@ -156,7 +156,8 @@ pub fn get_outputs (output: &MidiOutput) -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..output.port_count() {
-        result.push(output.port_name(i).unwrap());
+        // for some reason, sometimes the port doesn't exist -- use empty string
+        result.push(output.port_name(i).unwrap_or(String::from("")));
     }
 
     normalize_port_names(&result)
@@ -166,7 +167,8 @@ pub fn get_inputs (input: &MidiInput) -> Vec<String> {
     let mut result = Vec::new();
 
     for i in 0..input.port_count() {
-        result.push(input.port_name(i).unwrap());
+        // for some reason, sometimes the port doesn't exist -- use empty string
+        result.push(input.port_name(i).unwrap_or(String::from("")));
     }
 
     normalize_port_names(&result)
