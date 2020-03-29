@@ -217,12 +217,13 @@ impl Light {
 }
 
 pub struct LoopGridLaunchpad {
+    pub remote_tx: mpsc::Sender<LoopGridRemoteEvent>,
     _input: midi_connection::ThreadReference,
-    pub remote_tx: mpsc::Sender<LoopGridRemoteEvent>
+    tx: mpsc::Sender<LoopGridMessage>
 }
 
 impl LoopGridLaunchpad {
-    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock, sample_midi_port: midi_connection::SharedMidiOutputConnection, sample_channel: u8, sample_note_offset: u8) -> Self {
+    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, sample_midi_port: midi_connection::SharedMidiOutputConnection, sample_channel: u8, sample_note_offset: u8) -> Self {
         let (tx, rx) = mpsc::channel();
         let (remote_tx, remote_rx) = mpsc::channel();
 
@@ -288,24 +289,24 @@ impl LoopGridLaunchpad {
             }
         });
 
-        let clock_sender = clock.sender.clone();
+        // let clock_sender = clock.sender.clone();
 
         // receive updates from clock
-        thread::spawn(move || {
-            for msg in clock.receiver {
-                match msg {
-                    FromClock::Schedule {pos, length} => {
-                        tx_clock.send(LoopGridMessage::Schedule(pos, length)).unwrap();
-                    },
-                    FromClock::Tempo(value) => {
-                        tx_clock.send(LoopGridMessage::TempoChanged(value)).unwrap();
-                    },
-                    FromClock::Jump => {
-                        tx_clock.send(LoopGridMessage::InitialLoop).unwrap();
-                    }
-                }
-            }
-        });
+        // thread::spawn(move || {
+        //     for msg in clock.receiver {
+        //         match msg {
+        //             FromClock::Schedule {pos, length} => {
+        //                 tx_clock.send(LoopGridMessage::Schedule(pos, length)).unwrap();
+        //             },
+        //             FromClock::Tempo(value) => {
+        //                 tx_clock.send(LoopGridMessage::TempoChanged(value)).unwrap();
+        //             },
+        //             FromClock::Jump => {
+        //                 tx_clock.send(LoopGridMessage::InitialLoop).unwrap();
+        //             }
+        //         }
+        //     }
+        // });
 
         // receive messages from foot pedal
         thread::spawn(move || {
@@ -1073,7 +1074,7 @@ impl LoopGridLaunchpad {
                     LoopGridMessage::LoopButton(pressed) => {
                         if selecting_scale && selecting {
                             if pressed {
-                                clock_sender.send(ToClock::TapTempo).unwrap();
+                                // clock_sender.send(ToClock::TapTempo).unwrap();
                             }
                         } else {
                             if pressed {
@@ -1249,7 +1250,7 @@ impl LoopGridLaunchpad {
                         if pressed {
                             if selecting && selecting_scale_held {
                                 // nudge clock backwards (modify timing of existing loop)
-                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
+                                // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
                             } else if selecting {
                                 loop_length = get_half_loop_length(loop_length).max(MidiTime::from_measure(1, 4));
                                 tx_feedback.send(LoopGridMessage::RefreshLoopLength).unwrap();
@@ -1271,7 +1272,7 @@ impl LoopGridLaunchpad {
                         if pressed {
                             if selecting && selecting_scale_held {
                                 // nudge clock forwards
-                                clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
+                                // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
                             } else if selecting { 
                                 tx_feedback.send(LoopGridMessage::DoubleLoopLength).unwrap();
                             } else if selection.len() > 0 {
@@ -1492,8 +1493,13 @@ impl LoopGridLaunchpad {
 
         LoopGridLaunchpad {
             _input: input,
+            tx,
             remote_tx
         }
+    }
+
+    pub fn schedule (&self, pos: MidiTime, length: MidiTime) {
+        self.tx.send(LoopGridMessage::Schedule(pos, length)).unwrap();
     }
 }
 

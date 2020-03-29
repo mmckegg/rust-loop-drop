@@ -5,35 +5,36 @@ use std::sync::{Arc, Mutex};
 use ::scale::{Scale};
 
 pub struct VT4Key {
+    midi_output: midi_connection::SharedMidiOutputConnection,
+    channel: u8,
+    scale: Arc<Mutex<Scale>>
 }
 
 impl VT4Key {
-    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, clock: RemoteClock) -> Self {
-        thread::spawn(move || {
-            for msg in clock.receiver {
-                match msg {
-                    FromClock::Schedule {..} => {
-                        let key;
-                        let scale = scale.lock().unwrap();
+    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>) -> Self {
+        VT4Key {
+            midi_output,
+            channel,
+            scale
+        }
+    }
 
-                        { // immutable borrow
-                            let from_c = scale.root - 60;
-                            let base_key = modulo(from_c, 12);
-                            let offset = get_mode_offset(modulo(scale.scale, 7));
-                            key = modulo(base_key - offset, 12) as u8;
-                        }
+    pub fn schedule (from: MidiTime, length: MidiTime) {
+        let key;
+        let scale = scale.lock().unwrap();
 
-                        if Some(key) != self.last_key {
-                            self.midi_keys.midi_output.send(&[176, 48, key]).unwrap();
-                            self.last_key = Some(key);
-                            println!("Set Key {}", key);
-                        }
-                    }
-                }
-            }
-        });
+        { // immutable borrow
+            let from_c = scale.root - 60;
+            let base_key = modulo(from_c, 12);
+            let offset = get_mode_offset(modulo(scale.scale, 7));
+            key = modulo(base_key - offset, 12) as u8;
+        }
 
-        VT4Key {}
+        if Some(key) != self.last_key {
+            self.midi_keys.midi_output.send(&[176, 48, key]).unwrap();
+            self.last_key = Some(key);
+            println!("Set Key {}", key);
+        }
     }
 }
 

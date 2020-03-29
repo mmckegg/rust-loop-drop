@@ -13,13 +13,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 pub struct Twister {
-    _midi_input: midi_connection::ThreadReference
+    _midi_input: midi_connection::ThreadReference,
+    tx: mpsc::Sender<TwisterMessage>
 }
 
 impl Twister {
-    pub fn new (port_name: &str, pulse_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>, clock: RemoteClock) -> Self {
+    pub fn new (port_name: &str, pulse_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
-        let clock_sender = clock.sender.clone();
+        // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
 
         let drums_channel = 1;
@@ -35,15 +36,9 @@ impl Twister {
         let channel_offsets = [10, 20, 30, 40];
 
         let tx_input = tx.clone();
-        let tx_clock = tx.clone();
         let tx_feedback = tx.clone();
+        let tx_clock = tx.clone();
 
-        // pipe clock in
-        thread::spawn(move || {
-            for msg in clock.receiver {
-                tx_clock.send(TwisterMessage::Clock(msg)).unwrap();
-            }
-        });
 
         let mut output = midi_connection::get_shared_output(port_name);
 
@@ -273,7 +268,7 @@ impl Twister {
                             },
 
                             Control::Tempo => {
-                                clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
+                                // clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
                             },
                             Control::DelayDivision => {
                                 let value = midi_to_float(value);
@@ -524,93 +519,82 @@ impl Twister {
                         }
                     },
 
-                    TwisterMessage::Clock(msg) => {
-                        match msg {
-                            FromClock::Schedule { pos, length } => {
-                                let mut params = params.lock().unwrap();
-                                if params.reset_automation {
-                                    // HACK: ack reset message from clear all
-                                    params.reset_automation = false;
-                                    loops.clear();
+                    TwisterMessage::Schedule { pos, length } => {
+                        let mut params = params.lock().unwrap();
+                        if params.reset_automation {
+                            // HACK: ack reset message from clear all
+                            params.reset_automation = false;
+                            loops.clear();
 
-                                    for control in control_ids.keys() {
-                                        tx.send(TwisterMessage::Refresh(*control)).unwrap();
-                                    }
-                                }
-
-                                if current_bank != params.bank {
-                                    output.send(&[179, params.bank, 127]).unwrap();
-                                    current_bank = params.bank;
-                                }
-
-                                // emit beat tick for tap delay tempo
-                                if pos % MidiTime::from_beats(1) == MidiTime::zero() {
-                                    let value = if pos % MidiTime::from_beats(2) == MidiTime::zero() {
-                                        127 // rise
-                                    } else {
-                                        0 // fall
-                                    };
-                                    throttled_zoia_output.send(&[176 - 1 + zoia_channel, 1, value])
-                                }
-
-                                if params.frozen != frozen {
-                                    frozen = params.frozen;
-
-                                    if frozen {
-                                        frozen_values = Some(last_values.clone());
-                                        frozen_loops = Some(loops.clone());
-                                    } else {
-                                        if let Some(frozen_loops) = frozen_loops.take() {
-                                            loops = frozen_loops;
-                                        }
-                                        if let Some(frozen_values) = frozen_values.take() {
-                                            for (control, _) in &control_ids {
-                                                if !loops.contains_key(control) && frozen_values.get(control) != last_values.get(control) {
-                                                    // queue a value send for changed values on next message loop
-                                                    tx.send(TwisterMessage::Send(*control)).unwrap();
-                                                }
-                                                tx.send(TwisterMessage::Refresh(*control)).unwrap();
-                                            }
-
-                                            last_values = frozen_values;
-                                        }
-                                    }
-                                }
-
-                                let mut scheduled = HashSet::new();
-                                for (control, value) in &loops {
-                                    let offset = value.offset % value.length;
-                                    let playback_pos = value.offset + ((pos - offset) % value.length);
-
-                                    if let Some(id) = control_ids.get(control) {
-                                        if let Some(range) = recorder.get_range_for(id.clone(), playback_pos, playback_pos + length) {
-                                            for event in range {
-                                                tx_feedback.send(TwisterMessage::Event(event.clone())).unwrap();
-                                                scheduled.insert(control);
-                                            }
-                                        }
-                                    }
-                                }
-                                for (control, value) in &lfo_amounts {
-                                    if value != &0.0 {
-                                        tx_feedback.send(TwisterMessage::Send(*control)).unwrap();
-                                    }
-                                }
-                                last_pos = pos;
-
-                                throttled_pulse_output.flush();
-                                throttled_blofeld_output.flush();
-                                throttled_blackbox_output.flush();
-                                throttled_zoia_output.flush();
-
-                            },
-                            FromClock::Tempo(value) => {
-                                tx_feedback.send(TwisterMessage::Refresh(Control::Tempo)).unwrap();
-                            },
-                            FromClock::Jump => {
-
+                            for control in control_ids.keys() {
+                                tx.send(TwisterMessage::Refresh(*control)).unwrap();
                             }
                         }
+
+                        if current_bank != params.bank {
+                            output.send(&[179, params.bank, 127]).unwrap();
+                            current_bank = params.bank;
+                        }
+
+                        // emit beat tick for tap delay tempo
+                        if pos % MidiTime::from_beats(1) == MidiTime::zero() {
+                            let value = if pos % MidiTime::from_beats(2) == MidiTime::zero() {
+                                127 // rise
+                            } else {
+                                0 // fall
+                            };
+                            throttled_zoia_output.send(&[176 - 1 + zoia_channel, 1, value])
+                        }
+
+                        if params.frozen != frozen {
+                            frozen = params.frozen;
+
+                            if frozen {
+                                frozen_values = Some(last_values.clone());
+                                frozen_loops = Some(loops.clone());
+                            } else {
+                                if let Some(frozen_loops) = frozen_loops.take() {
+                                    loops = frozen_loops;
+                                }
+                                if let Some(frozen_values) = frozen_values.take() {
+                                    for (control, _) in &control_ids {
+                                        if !loops.contains_key(control) && frozen_values.get(control) != last_values.get(control) {
+                                            // queue a value send for changed values on next message loop
+                                            tx.send(TwisterMessage::Send(*control)).unwrap();
+                                        }
+                                        tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                                    }
+
+                                    last_values = frozen_values;
+                                }
+                            }
+                        }
+
+                        let mut scheduled = HashSet::new();
+                        for (control, value) in &loops {
+                            let offset = value.offset % value.length;
+                            let playback_pos = value.offset + ((pos - offset) % value.length);
+
+                            if let Some(id) = control_ids.get(control) {
+                                if let Some(range) = recorder.get_range_for(id.clone(), playback_pos, playback_pos + length) {
+                                    for event in range {
+                                        tx_feedback.send(TwisterMessage::Event(event.clone())).unwrap();
+                                        scheduled.insert(control);
+                                    }
+                                }
+                            }
+                        }
+                        for (control, value) in &lfo_amounts {
+                            if value != &0.0 {
+                                tx_feedback.send(TwisterMessage::Send(*control)).unwrap();
+                            }
+                        }
+                        last_pos = pos;
+
+                        throttled_pulse_output.flush();
+                        throttled_blofeld_output.flush();
+                        throttled_blackbox_output.flush();
+                        throttled_zoia_output.flush();
                     },
 
                     TwisterMessage::SendSynthEnvelope(param) => {
@@ -651,8 +635,13 @@ impl Twister {
         });
 
         Twister {
-            _midi_input: input
+            _midi_input: input,
+            tx: tx_clock
         }
+    }
+
+    pub fn schedule (&self, pos: MidiTime, length: MidiTime) {
+        self.tx.send(TwisterMessage::Schedule {pos, length}).unwrap();
     }
 }
 
@@ -666,7 +655,7 @@ enum TwisterMessage {
     SendBassEnvelope(u8),
     Refresh(Control),
     Recording(Control, bool),
-    Clock(FromClock)
+    Schedule { pos: MidiTime, length: MidiTime }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]

@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::process::Command;
 use std::process;
+use std::time::{Duration, Instant};
 
 mod midi_connection;
 mod loop_grid_launchpad;
@@ -21,6 +22,7 @@ mod devices;
 mod scale;
 mod lfo;
 mod throttled_output;
+mod scheduler;
 
 use scale::{Scale, Offset};
 use clock_source::ClockSource;
@@ -28,6 +30,7 @@ use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams, ChannelRepeat};
 use chunk::{Shape, Coords, ChunkMap};
 use std::sync::atomic::AtomicUsize;
 use ::midi_time::MidiTime;
+use scheduler::Scheduler;
 
 const APP_NAME: &str = "Loop Drop";
 
@@ -93,15 +96,16 @@ fn main() {
     let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
     let all_output_port = midi_connection::get_shared_output(all_io_name);
 
-    let mut clock = ClockSource::new(all_io_name, vec![
-        all_output_port.clone(),
-        // zoia_output_port.clone(),
-        vt4_output_port.clone(),
-        midi_connection::get_shared_output(launchpad_io_name)
-    ]);
+
+    // let mut clock = ClockSource::new(all_io_name, vec![
+    //     all_output_port.clone(),
+    //     // zoia_output_port.clone(),
+    //     vt4_output_port.clone(),
+    //     midi_connection::get_shared_output(launchpad_io_name)
+    // ]);
 
     // auto send clock start every 32 beats (for arp sync)
-    clock.sync_clock_start(blofeld_output_port.clone());
+    // clock.sync_clock_start(blofeld_output_port.clone());
 
     let launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
         ChunkMap::new(
@@ -207,23 +211,30 @@ fn main() {
             43, // blue
             Some(3)
         )
-    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), blackbox_output_port.clone(), 10, 36);
+    ], Arc::clone(&scale), Arc::clone(&params), blackbox_output_port.clone(), 10, 36);
 
     let _keyboard = devices::KBoard::new(keyboard_io_name, blofeld_output_port.clone(), 13, scale.clone());
 
-    // let _twister = devices::Twister::new("Midi Fighter Twister",
-    //     pulse_output_port.clone(),
-    //     blofeld_output_port.clone(),
-    //     blackbox_output_port.clone(),
-    //     zoia_output_port.clone(),
-    //     Arc::clone(&params),
-    //     clock.add_rx()
-    // );
+    let twister = devices::Twister::new("Midi Fighter Twister",
+        pulse_output_port.clone(),
+        blofeld_output_port.clone(),
+        blackbox_output_port.clone(),
+        zoia_output_port.clone(),
+        Arc::clone(&params)
+    );
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
 
-    let _vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone(), clock.add_rx());
-
-    clock.start();
+    let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
+    
+    for schedule in Scheduler::start(all_io_name, Duration::from_micros(500)) {
+        if schedule.from.ticks() < schedule.to.ticks() || schedule.from.frac() == 0 {
+            let pos = MidiTime::from_ticks(schedule.to.ticks());
+            let length = MidiTime::tick();
+            launchpad.schedule(pos, length);
+            twister.schedule(pos, length);
+            vt4.schedule(pos, length);
+        }
+    }
 }
 

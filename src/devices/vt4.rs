@@ -187,38 +187,38 @@ impl VT4SysExMessage {
 }
 
 pub struct VT4Key {
+    midi_output: midi_connection::SharedMidiOutputConnection,
+    channel: u8, 
+    scale: Arc<Mutex<Scale>>,
+    last_key: Option<u8>
 }
 
 impl VT4Key {
-    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, clock: RemoteClock) -> Self {
-        thread::spawn(move || {
-            let mut last_key = None;
-            let mut midi_output = midi_output;
-            for msg in clock.receiver {
-                match msg {
-                    FromClock::Schedule {..} => {
-                        let key;
-                        let scale = scale.lock().unwrap();
+    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>) -> Self {
+        VT4Key {
+            midi_output,
+            channel,
+            scale,
+            last_key: None
+        }
+    }
 
-                        { // immutable borrow
-                            let from_c = scale.root - 60;
-                            let base_key = modulo(from_c, 12);
-                            let offset = get_mode_offset(modulo(scale.scale, 7));
-                            key = modulo(base_key - offset, 12) as u8;
-                        }
+    pub fn schedule (&mut self, from: MidiTime, length: MidiTime) {
+        let key;
+        let scale = self.scale.lock().unwrap();
 
-                        if Some(key) != last_key {
-                            midi_output.send(&[176 - 1 + channel, 48, key]).unwrap();
-                            last_key = Some(key);
-                            println!("Set Key {}", key);
-                        }
-                    },
-                    _ => ()
-                }
-            }
-        });
+        { // immutable borrow
+            let from_c = scale.root - 60;
+            let base_key = modulo(from_c, 12);
+            let offset = get_mode_offset(modulo(scale.scale, 7));
+            key = modulo(base_key - offset, 12) as u8;
+        }
 
-        VT4Key {}
+        if Some(key) != self.last_key {
+            self.midi_output.send(&[176 - 1 + self.channel, 48, key]).unwrap();
+            self.last_key = Some(key);
+            println!("Set Key {}", key);
+        }
     }
 }
 

@@ -27,7 +27,7 @@ impl LoopCollection {
 pub struct LoopState {
     undos: Vec<LoopCollection>,
     redos: Vec<LoopCollection>,
-    on_change: Box<FnMut(&LoopCollection, LoopStateChange) + Send>
+    on_change: Box<dyn FnMut(&LoopCollection, LoopStateChange) + Send>
 }
 
 impl LoopState {
