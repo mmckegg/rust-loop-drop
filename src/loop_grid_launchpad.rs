@@ -447,6 +447,7 @@ impl LoopGridLaunchpad {
             // out state
             let mut current_swing: f64 = 0.0;
             let mut out_transforms: HashMap<u32, LoopTransform> = HashMap::new();
+            let mut pending_repeat: HashMap<u32, LoopTransform> = HashMap::new();
             let mut out_values: HashMap<u32, OutputValue> = HashMap::new();
             let mut grid_out: HashMap<u32, LaunchpadLight> = HashMap::new();
             let mut select_out = Light::Off;
@@ -459,6 +460,7 @@ impl LoopGridLaunchpad {
             // display state
             let mut active: HashSet<u32> = HashSet::new();
             let mut recording: HashSet<u32> = HashSet::new();
+            let mut clear_repeats: HashSet<u32> = HashSet::new();
 
             let mut last_beat_light = RIGHT_SIDE_BUTTONS[7];
             let mut last_repeat_light = RIGHT_SIDE_BUTTONS[7];
@@ -502,6 +504,18 @@ impl LoopGridLaunchpad {
                         last_raw_pos = position;
                         last_pos = (position - align_offset).swing(current_swing) + align_offset;
                         last_length = (position - align_offset + length).swing(current_swing) + align_offset - last_pos;
+
+
+                        // clear repeats from last cycle
+                        for id in &clear_repeats {
+                            println!("clearing {}", id);
+                            pending_repeat.remove(id);
+                            if !currently_held_inputs.contains(&(id % 64)) {
+                                tx_feedback.send(LoopGridMessage::RefreshOverride(*id)).unwrap();
+                                tx_feedback.send(LoopGridMessage::RefreshGridButton(*id)).unwrap();
+                            }
+                        }
+                        clear_repeats.clear();
 
                         let mut events = get_events(last_pos, last_length, align_offset, &recorder, &out_transforms);
 
@@ -729,7 +743,7 @@ impl LoopGridLaunchpad {
                         tx_feedback.send(LoopGridMessage::RefreshShouldFlatten).unwrap();
                     },
                     LoopGridMessage::RefreshInput(id) => {
-                        let value = input_values.get(&id).unwrap_or(&OutputValue::Off);
+                        let mut value = input_values.get(&id).unwrap_or(&OutputValue::Off);
                         let transform = match value {
                             &OutputValue::On(velocity) => {
                                 if let Some(mapped) = mapping.get(&Coords::from(id)) {
@@ -755,17 +769,22 @@ impl LoopGridLaunchpad {
                         let changed = match override_values.entry(id) {
                             Occupied(mut entry) => {
                                 let different = entry.get() != &transform;
-                                entry.insert(transform);
+                                entry.insert(transform.clone());
                                 different
                             },
                             Vacant(entry) => {
                                 let different = transform != LoopTransform::None;
-                                entry.insert(transform);
+                                entry.insert(transform.clone());
                                 different
                             }
                         };
 
                         if changed {
+
+                            if let LoopTransform::Repeat {..} = transform {
+                                pending_repeat.insert(id, transform.clone());
+                            }
+
                             if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic {
                                 // refresh all in this chunk if monophonic
                                 for id in get_all_ids_in_this_chunk(id, &chunks, &mapping, &chunk_trigger_ids) {
@@ -797,7 +816,7 @@ impl LoopGridLaunchpad {
                             None
                         };
 
-                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &no_suppress);
+                        let mut transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &pending_repeat, &no_suppress);
 
                         // suppress if there are inputs held and monophonic scheduling
                         if get_schedule_mode(id, &chunks, &mapping) == ScheduleMode::Monophonic && transform.is_active() {
@@ -826,7 +845,7 @@ impl LoopGridLaunchpad {
                             let pos = current_pos(last_pos, last_tick_at, tick_duration);
  
                             // send new value
-                            if let Some(value) = get_value(id, pos, align_offset, &recorder, &out_transforms, true) {
+                            if let Some(value) = get_value(id, pos, align_offset, &recorder, &out_transforms, false) {
                                 tx_feedback.send(LoopGridMessage::Event(LoopEvent {
                                     id, value, pos
                                 })).unwrap();
@@ -1039,9 +1058,14 @@ impl LoopGridLaunchpad {
                                 },
                                 None => ()
                             };
-                        }
+                        
+                            recorder.add(event);
 
-                        recorder.add(event);
+                            // handle clearing of "early repeat" releasing
+                            if new_value.is_on() && pending_repeat.contains_key(&event.id) {
+                                clear_repeats.insert(event.id);
+                            }
+                        }
                     },
                     LoopGridMessage::ClearRecording => {
                         last_changed_triggers.clear();
@@ -1410,7 +1434,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 None
                             };
-                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &no_suppress);
+                            let transform = get_transform(id, &sustained_values, &override_values, &selection, &selection_override, &loop_collection, selection_override_loop_collection, &pending_repeat, &no_suppress);
                             
                             if out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
                                 out_transforms.insert(id, transform);
@@ -1508,7 +1532,7 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>, no_suppress: &HashSet<u32>) -> LoopTransform {
+fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>, pending_repeat: &HashMap<u32, LoopTransform>, no_suppress: &HashSet<u32>) -> LoopTransform {
     let mut result = LoopTransform::None;
 
     let collection = if selection.contains(&id) && override_collection.is_some() {
@@ -1526,6 +1550,7 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
     }
 
     let sustained_value = sustained_values.get(&id);
+    let pending_repeat_value = pending_repeat.get(&id);
 
     // use the sustained value if override value is none
     // what a mess!
@@ -1537,6 +1562,11 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
         }
     } else if let Some(sustained_value) = sustained_value {
         result = sustained_value.apply(&result);
+    }
+
+    // handle triggering of "early repeat"
+    if !result.is_active() && pending_repeat_value.is_some() {
+        result = pending_repeat_value.unwrap().clone()
     }
 
     result
