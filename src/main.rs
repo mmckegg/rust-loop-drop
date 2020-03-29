@@ -40,10 +40,11 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
     
-    // let pulse_io_name = "Pulse2";
-    // let blofeld_io_name = "Blofeld";
-    let main_io_name = "UM-ONE 2";
-    let zoia_io_name = "UM-ONE";
+    let all_io_name = "RK006";
+    let pulse_io_name = "RK006 PORT 4";
+    let blofeld_io_name = "RK006 PORT 5";
+    let blackbox_io_name = "RK006 PORT 2";
+    let zoia_io_name = "RK006 PORT 3";
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
 
@@ -84,23 +85,23 @@ fn main() {
     let bass_offset = Offset::new(-2, -4);
     let vox_offset = Offset::new(-1, -4);
     let keys_offset = Offset::new(-1, -4);
-    let slicer_offset = Arc::new(AtomicUsize::new(0));
 
-    // let pulse_output_port = midi_connection::get_shared_output(pulse_io_name);
-    // let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
-    let main_output_port = midi_connection::get_shared_output(main_io_name);
+    let pulse_output_port = midi_connection::get_shared_output(pulse_io_name);
+    let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
+    let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
     let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
+    let all_output_port = midi_connection::get_shared_output(all_io_name);
 
-    let mut clock = ClockSource::new(main_io_name, vec![
-        main_output_port.clone(),
-        zoia_output_port.clone(),
+    let mut clock = ClockSource::new(all_io_name, vec![
+        all_output_port.clone(),
+        // zoia_output_port.clone(),
         vt4_output_port.clone(),
         midi_connection::get_shared_output(launchpad_io_name)
     ]);
 
     // auto send clock start every 32 beats (for arp sync)
-    clock.sync_clock_start(main_output_port.clone());
+    clock.sync_clock_start(blofeld_output_port.clone());
 
     let launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
         ChunkMap::new(
@@ -136,7 +137,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 8, Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Box::new(devices::MidiKeys::new(vec![vt4_output_port.clone(), blackbox_output_port.clone()], 8, Arc::clone(&scale), Arc::clone(&vox_offset))), 
             Coords::new(2 + 8, 0),
             Shape::new(1, 8),
             125, // gross
@@ -176,7 +177,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxDrums::new(main_output_port.clone(), 10, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::BlackboxDrums::new(blackbox_output_port.clone(), 10, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
             Shape::new(1, 8),
             15, // yellow
@@ -184,7 +185,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxSlicer::new(main_output_port.clone(), Arc::clone(&slicer_mode), Arc::clone(&slicer_bank))), 
+            Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), Arc::clone(&slicer_mode), Arc::clone(&slicer_bank))), 
             Coords::new(1, 0), 
             Shape::new(1, 8),
             9, // orange
@@ -192,7 +193,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(vec![pulse_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
             59, // pink
@@ -200,28 +201,29 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(main_output_port.clone(), 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(vec![blofeld_output_port.clone()], 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
             43, // blue
             Some(3)
         )
-    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), main_output_port.clone(), 10, 36);
+    ], Arc::clone(&scale), Arc::clone(&params), clock.add_rx(), blackbox_output_port.clone(), 10, 36);
 
-    let _keyboard = devices::KBoard::new(keyboard_io_name, main_output_port.clone(), 13, scale.clone());
+    let _keyboard = devices::KBoard::new(keyboard_io_name, blofeld_output_port.clone(), 13, scale.clone());
 
-    let _twister = devices::Twister::new("Midi Fighter Twister",
-        main_output_port.clone(),
-        main_output_port.clone(),
-        main_output_port.clone(),
-        zoia_output_port.clone(),
-        Arc::clone(&params),
-        clock.add_rx()
-    );
+    // let _twister = devices::Twister::new("Midi Fighter Twister",
+    //     pulse_output_port.clone(),
+    //     blofeld_output_port.clone(),
+    //     blackbox_output_port.clone(),
+    //     zoia_output_port.clone(),
+    //     Arc::clone(&params),
+    //     clock.add_rx()
+    // );
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
 
-    let _vt4 = devices::VT4Key::new(main_output_port.clone(), 8, scale.clone(), clock.add_rx());
+    let _vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone(), clock.add_rx());
 
     clock.start();
 }
+

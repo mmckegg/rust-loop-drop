@@ -7,7 +7,7 @@ pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
 
 pub struct MidiKeys {
-    pub midi_output: midi_connection::SharedMidiOutputConnection,
+    pub midi_outputs: Vec<midi_connection::SharedMidiOutputConnection>,
     pub midi_channel: u8,
     output_values: HashMap<u32, (u8, u8)>,
     scale: Arc<Mutex<Scale>>,
@@ -15,9 +15,9 @@ pub struct MidiKeys {
 }
 
 impl MidiKeys {
-    pub fn new (midi_output: midi_connection::SharedMidiOutputConnection, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
+    pub fn new (midi_outputs: Vec<midi_connection::SharedMidiOutputConnection>, channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
         MidiKeys {
-            midi_output,
+            midi_outputs,
             midi_channel: channel,
             output_values: HashMap::new(),
             offset,
@@ -55,13 +55,17 @@ impl Triggerable for MidiKeys {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (note_id, _) = *self.output_values.get(&id).unwrap();
-                    self.midi_output.send_at(&[144 + self.midi_channel - 1, note_id, 0], time).unwrap();
+                    for midi_output in &mut self.midi_outputs {
+                        midi_output.send_at(&[144 + self.midi_channel - 1, note_id, 0], time).unwrap();
+                    }
                     self.output_values.remove(&id);
                 }
             },
             OutputValue::On(velocity) => {
                 let note_id = get_note_id(id, &self.scale, &self.offset);
-                self.midi_output.send_at(&[144 + self.midi_channel - 1, note_id, velocity], time).unwrap();
+                for midi_output in &mut self.midi_outputs {
+                    midi_output.send_at(&[144 + self.midi_channel - 1, note_id, velocity], time).unwrap();
+                }
                 self.output_values.insert(id, (note_id, velocity));
             }
         }
@@ -72,8 +76,10 @@ impl Triggerable for MidiKeys {
         for (id, (note_id, velocity)) in &self.output_values {
             let new_note_id = get_note_id(*id, &self.scale, &self.offset);
             if note_id != &new_note_id {
-                self.midi_output.send(&[144 + self.midi_channel - 1, new_note_id, *velocity]).unwrap();
-                self.midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
+                for midi_output in &mut self.midi_outputs {
+                    midi_output.send(&[144 + self.midi_channel - 1, new_note_id, *velocity]).unwrap();
+                    midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
+                }
                 to_update.insert(id.clone(), (new_note_id, velocity.clone()));
             }
         }
