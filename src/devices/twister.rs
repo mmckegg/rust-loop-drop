@@ -249,6 +249,7 @@ impl Twister {
                             Control::BassSend => {
                                 bass_volume_multiplier = 0.7 + (midi_to_float(value) * 0.3);
                                 throttled_pulse_output.send(&[176 + bass_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + bass_channel - 1, 10, value / 2]);
                                 throttled_pulse_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
                             },
                             Control::SynthSend => {
