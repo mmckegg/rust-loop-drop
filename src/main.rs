@@ -227,13 +227,16 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
+    let mut last_tick = None;
     for schedule in Scheduler::start(all_io_name, Duration::from_micros(500)) {
-        if schedule.from.ticks() < schedule.to.ticks() || schedule.from.frac() == 0 {
+        if Some(schedule.to.ticks()) != last_tick {
             let pos = MidiTime::from_ticks(schedule.to.ticks());
             let length = MidiTime::tick();
+            println!("tick {}", pos.ticks());
             launchpad.schedule(pos, length);
             twister.schedule(pos, length);
             vt4.schedule(pos, length);
+            last_tick = Some(schedule.to.ticks());
         }
     }
 }

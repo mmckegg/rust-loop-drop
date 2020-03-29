@@ -51,9 +51,10 @@ impl Scheduler {
 
                 if last_tick_durations.len() > 0 {
                     state.tick_duration = Duration::from_micros(last_tick_durations.iter().sum::<u64>() / (last_tick_durations.len() as u64));
+                    println!("duration {}", state.tick_duration.as_secs_f64());
                 }
-            } else if message[0] == 250 {
-                // play
+            } else if message[0] == 250 { // play
+                // todo: handle re-quantize!
             }
         });
         
@@ -83,19 +84,21 @@ impl Iterator for Scheduler {
             if let Some(tick) = state.tick {
                 let delta = (now + self.block_duration) - self.last_tick_at;
                 let frac = delta.as_secs_f64() / state.tick_duration.as_secs_f64();
-                let from = self.pos;
-                let to = MidiTime::from_float(tick as f64 + frac);
-
-                // ready for next schedule
-                self.pos = to;
-
+                
                 if state.tick != self.last_tick {
                     self.last_tick_at = now;
                     self.last_tick = state.tick;
                 }
+                
+                if frac < 1.0 {
+                    let from = self.pos;
+                    let to = MidiTime::from_float(tick as f64 + frac);
+                    if to > from {
+                        self.pos = to;
+                        return Some(Schedule { from, to })
+                    }
+                }
 
-                // break the loop
-                return Some(Schedule { from, to })
             }
         }
     }
