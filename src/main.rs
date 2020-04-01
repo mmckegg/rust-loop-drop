@@ -227,22 +227,22 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
-    let mut last_time = Instant::now();
+    let mut blofeld_output_port_s = blofeld_output_port.clone();
 
     for range in Scheduler::start(all_io_name) {
         launchpad.schedule(range);
 
         if range.ticked {
-            // if range.from.ticks() % 24 == 0 {
-            //     let now = Instant::now();
-            //     println!("duration {}", now.duration_since(last_time).as_secs_f32());
-            //     last_time = now;
-            // }
             let pos = MidiTime::from_ticks(range.from.ticks());
             let length = MidiTime::tick();
-            // println!("tick {}", pos.ticks());
             twister.schedule(pos, length);
             vt4.schedule(pos, length);
+
+            if range.from % MidiTime::from_beats(32) == MidiTime::zero() {
+                blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
+            }
+        } else if range.jumped {
+            blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
         }
     }
 }
