@@ -5,13 +5,11 @@ use std::collections::HashSet;
 
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
-    fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime);
+    fn trigger (&mut self, id: u32, value: OutputValue);
     fn on_tick (&mut self, _time: MidiTime) {}
     fn get_active (&self) -> Option<HashSet<u32>> { None }
-    fn get_chokes_for (&self, _id: u32) -> Option<Vec<u32>> { None }
     fn latch_mode (&self) -> LatchMode { LatchMode::None }
     fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
-    fn latency_offset (&self) -> Option<Duration> { None }
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]

@@ -21,7 +21,7 @@ impl OffsetChunk {
 }
 
 impl Triggerable for OffsetChunk {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {
                 self.output_values.remove(&id);

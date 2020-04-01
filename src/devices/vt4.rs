@@ -55,9 +55,9 @@ impl VT4 {
 }
 
 impl Triggerable for VT4 {
-    fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         self.in_robot_mode.store(true, Ordering::Relaxed);
-        self.midi_keys.trigger(id, value, time)
+        self.midi_keys.trigger(id, value)
     }
 
     fn on_tick (&mut self, _: MidiTime) {
@@ -217,7 +217,6 @@ impl VT4Key {
         if Some(key) != self.last_key {
             self.midi_output.send(&[176 - 1 + self.channel, 48, key]).unwrap();
             self.last_key = Some(key);
-            println!("Set Key {}", key);
         }
     }
 }

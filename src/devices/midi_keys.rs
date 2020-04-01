@@ -50,13 +50,13 @@ fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>)
 }
 
 impl Triggerable for MidiKeys {
-    fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
                     let (note_id, _) = *self.output_values.get(&id).unwrap();
                     for midi_output in &mut self.midi_outputs {
-                        midi_output.send_at(&[144 + self.midi_channel - 1, note_id, 0], time).unwrap();
+                        midi_output.send(&[144 + self.midi_channel - 1, note_id, 0]).unwrap();
                     }
                     self.output_values.remove(&id);
                 }
@@ -64,7 +64,7 @@ impl Triggerable for MidiKeys {
             OutputValue::On(velocity) => {
                 let note_id = get_note_id(id, &self.scale, &self.offset);
                 for midi_output in &mut self.midi_outputs {
-                    midi_output.send_at(&[144 + self.midi_channel - 1, note_id, velocity], time).unwrap();
+                    midi_output.send(&[144 + self.midi_channel - 1, note_id, velocity]).unwrap();
                 }
                 self.output_values.insert(id, (note_id, velocity));
             }

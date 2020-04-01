@@ -274,7 +274,6 @@ impl Twister {
                                 let value = midi_to_float(value);
                                 let new_value = (value * 14.0) as u8;
                                 if last_delay_division != Some(new_value) {
-                                    println!("Set division {}", new_value);
                                     throttled_zoia_output.send(&[176 + pedal_channel - 1, 42, new_value]);
                                     last_delay_division = Some(new_value);
                                 }

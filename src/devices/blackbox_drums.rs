@@ -35,7 +35,7 @@ impl Triggerable for BlackboxDrums {
         self.last_pos = time;
     }
 
-    fn trigger (&mut self, id: u32, value: OutputValue, at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
@@ -44,7 +44,7 @@ impl Triggerable for BlackboxDrums {
                     self.output_values.remove(&id);
 
                     if id == 0 {
-                        self.sync_port.send_at(&[128 - 1 + self.sync_channel, 36, 0], at).unwrap();
+                        self.sync_port.send(&[128 - 1 + self.sync_channel, 36, 0]).unwrap();
                     }
                 }
             },
@@ -63,11 +63,11 @@ impl Triggerable for BlackboxDrums {
                 let note_id = DRUMS[id as usize % DRUMS.len()];
 
                 // send note
-                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], at).unwrap();           
+                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();           
                 
                 // send sync if kick
                 if id == 0 {
-                    self.sync_port.send_at(&[144 - 1 + self.sync_channel, 36, velocity], at).unwrap();
+                    self.sync_port.send(&[144 - 1 + self.sync_channel, 36, velocity]).unwrap();
                 }
 
                 self.output_values.insert(id, (channel, note_id, velocity));

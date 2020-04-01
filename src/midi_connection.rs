@@ -3,107 +3,78 @@ extern crate regex;
 
 use self::regex::Regex;
 pub use self::midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection, ConnectError, ConnectErrorKind, PortInfoError, SendError};
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
 use std::thread;
 use std::collections::HashMap;
 use std::time::Duration;
-use std::sync::Arc;
 pub use std::time::SystemTime;
-type Listener = Box<Fn(&mut MidiOutputConnection) + Send + 'static>;
+type Listener = Box<dyn Fn(&mut MidiOutputConnection) + Send + 'static>;
 
 const APP_NAME: &str = "Loop Drop";
 
+struct OutputState {
+    port: Option<MidiOutputConnection>,
+    listeners: Vec<Listener>,
+    current_values: HashMap<(u8, u8), u8>
+}
+
+impl OutputState {
+    fn notify_listeners (&mut self) {
+        if let Some(ref mut port) = self.port {
+            for listener in &self.listeners {
+                listener(port)
+            }
+        }
+    }
+
+    fn resend (&mut self) {
+        if let Some(ref mut port) = self.port {
+            for ((msg, id), value) in self.current_values.clone() {
+                // resend 0 for CCs, but not for anything else
+                if (msg >= 176 && msg < 192) || value > 0 {
+                    port.send(&[msg, id, value]).unwrap();
+                }
+            }
+        }
+    }
+}
+
 pub fn get_shared_output (port_name: &str) -> SharedMidiOutputConnection {
+    let state = Arc::new(Mutex::new(OutputState {
+        port: None,
+        listeners: Vec::new(),
+        current_values: HashMap::new()
+    }));
 
-    let mut current_output: Option<MidiOutputConnection> = None;
-
-    let (tx, rx) = mpsc::channel();
+    let state_l = state.clone();
     let port_name_notify = String::from(port_name);
     let port_name_msg = String::from(port_name);
-    let (queue_tx, queue) = mpsc::channel::<(MidiMessage, SystemTime)>();
-
-    let tx_notify = tx.clone();
-    let tx_listener = tx.clone();
 
     // reconnect loop
     thread::spawn(move || {
-        let mut last_port = None;
+        let mut has_port = false;
         loop {
             let output = MidiOutput::new(APP_NAME).unwrap();
-            let current_port = get_outputs(&output).iter().position(|item| item == &port_name_notify);
-            if last_port.is_some() != current_port.is_some() {
-                tx_notify.send(SharedMidiOutputEvent::Changed).unwrap();
-                last_port = current_port;
+            let current_port_id = get_outputs(&output).iter().position(|item| item == &port_name_notify);
+            if current_port_id.is_some() != has_port {
+                let mut state = state_l.lock().unwrap();
+                state.port = get_output(&port_name_msg);
+                state.notify_listeners();
+                state.resend();
+                has_port = state.port.is_some();
             }
             thread::sleep(Duration::from_secs(1));
         }
     });
 
-    let tx_queue = tx.clone();
-
-    // scheduled send queue
-    thread::spawn(move || {
-        for msg in queue {
-            let now = SystemTime::now();
-            if msg.1 > now {
-                thread::sleep(msg.1.duration_since(now).unwrap());
-            }
-            tx_queue.send(SharedMidiOutputEvent::Send(msg.0)).unwrap();
-        }
-    });
-
-    // event loop
-    thread::spawn(move || {
-        let mut current_values: HashMap<(u8, u8), u8> = HashMap::new();
-        let mut listeners: Vec<Listener> = Vec::new();
-        for msg in rx {
-            match msg {
-                SharedMidiOutputEvent::Send(midi_msg) => match midi_msg {
-                    MidiMessage::One(a) => send_and_save(&mut current_output, &mut current_values, &[a]),
-                    MidiMessage::Two(a, b) => send_and_save(&mut current_output, &mut current_values, &[a, b]),
-                    MidiMessage::Three(a, b, c) => send_and_save(&mut current_output, &mut current_values, &[a, b, c]),
-                    MidiMessage::Sysex(data) => send_and_save(&mut current_output, &mut current_values, data.as_slice()),
-                },
-
-                SharedMidiOutputEvent::SendAt(midi_msg, time) => {
-                    queue_tx.send((midi_msg, time));
-                },
-
-                SharedMidiOutputEvent::Changed => {
-                    if let Some(port) = current_output {
-                        port.close();
-                    }
-                    current_output = get_output(&port_name_msg);
-                    match current_output {
-                        Some(ref mut port) => {
-                            // send current values
-                            let mut listeners = &listeners;
-                            for listener in listeners {
-                                listener(port)
-                            }
-                            for (&(msg, id), value) in &current_values {
-                                // resend 0 for CCs, but not for anything else
-                                if (msg >= 176 && msg < 192) || value > &0 {
-                                    port.send(&[msg, id, *value]).unwrap();
-                                }
-                            }
-                        },
-                        None => ()
-                    }
-                },
-
-                SharedMidiOutputEvent::AddListener(listener) => {
-                    listeners.push(listener)
-                }
-            };
-        }
-    });
-    SharedMidiOutputConnection { tx }
+    SharedMidiOutputConnection { 
+        state
+    }
 }
 
 pub fn get_input<F> (port_name: &str, callback: F) -> ThreadReference
 where F: FnMut(u64, &[u8]) + Send + 'static {
-    let mut current_output: Option<MidiOutputConnection> = None;
     let port_name_notify = String::from(port_name);
     let (tx, rx) = mpsc::channel::<MidiInputMessage>();
 
@@ -210,74 +181,36 @@ fn build_name (base: &str, device_id: u32, port_id: u32) -> String {
     result
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SharedMidiOutputConnection {
-    tx: mpsc::Sender<SharedMidiOutputEvent>
+    state: Arc<Mutex<OutputState>>
 }
 
 impl SharedMidiOutputConnection {
-    pub fn send_at(&mut self, message: &[u8], time: SystemTime) -> Result<(), SendError> {
-        let now = SystemTime::now();
-
-        // send straight away if time is in the past
-        if time.duration_since(now).unwrap_or(Duration::from_millis(0)) < Duration::from_micros(0) {
-            self.send(message)
+    pub fn send(&mut self, message: &[u8]) -> Result<(), SendError> {
+        let mut state = self.state.lock().unwrap();
+        
+        if message.len() == 3 {
+            state.current_values.insert((message[0], message[1]), message[2]);
+        }
+        
+        if let Some(ref mut port) = state.port {
+            port.send(message)
         } else {
-            let msg = try!(format_midi_message(message));
-            if let Err(_) = self.tx.send(SharedMidiOutputEvent::SendAt(msg, time)) {
-                return Err(SendError::Other("could not send message, thread might be dead"));
-            }
-
             Ok(())
         }
     }
 
-    pub fn send(&mut self, message: &[u8]) -> Result<(), SendError> {
-        let msg = try!(format_midi_message(message));
-
-        if let Err(_) = self.tx.send(SharedMidiOutputEvent::Send(msg)) {
-            return Err(SendError::Other("could not send message, thread might be dead"));
-        }
-
-        Ok(())
-    }
-
     pub fn on_connect<F>(&mut self, callback: F) where F: Fn(&mut MidiOutputConnection) + Send + 'static {
-        self.tx.send(SharedMidiOutputEvent::AddListener(Box::new(callback)));
+        let mut state = self.state.lock().unwrap();
+        state.listeners.push(Box::new(callback));
     }
-}
-
-#[derive(Debug, Clone)]
-enum MidiMessage {
-    One(u8),
-    Two(u8, u8),
-    Three(u8, u8, u8),
-    Sysex(Vec<u8>)
-}
-
-enum SharedMidiOutputEvent {
-    Send(MidiMessage),
-    SendAt(MidiMessage, SystemTime),
-    AddListener(Listener),
-    Changed
 }
 
 #[derive(Debug, Clone)]
 struct MidiInputMessage {
     stamp: u64,
     data: Vec<u8>
-}
-
-pub fn send_and_save (output: &mut Option<MidiOutputConnection>, save_dest: &mut HashMap<(u8, u8), u8>, message: &[u8]) {
-    match output {
-        &mut Some(ref mut port) => {
-            port.send(message).unwrap();
-        },
-        &mut None => ()
-    }
-    if message.len() == 3 {
-        save_dest.insert((message[0], message[1]), message[2]);
-    }
 }
 
 pub struct ThreadReference {
@@ -288,32 +221,5 @@ impl Drop for ThreadReference {
     fn drop(&mut self) {
         println!("DROP NOT IMPLEMENTED")
         //self.tx.send(()).unwrap();
-    }
-}
-
-fn format_midi_message(message: &[u8]) -> Result<MidiMessage, SendError> {
-    let nbytes = message.len();
-    if nbytes == 0 {
-        return Err(SendError::InvalidData("message to be sent must not be empty"));
-    }
-
-    if message[0] == 0xF0 { // Sysex message
-        // Allocate buffer for sysex data and copy message
-        Ok(MidiMessage::Sysex(message.to_vec()))
-    } else { // Channel or system message.
-        // Make sure the message size isn't too big.
-        if nbytes > 3 {
-            return Err(SendError::InvalidData("non-sysex message must not be longer than 3 bytes"));
-        } 
-        
-        let msg = if nbytes == 3 {
-            MidiMessage::Three(message[0], message[1], message[2])
-        } else if nbytes == 2 {
-            MidiMessage::Two(message[0], message[1])
-        } else {
-            MidiMessage::One(message[0])
-        };
-
-        Ok(msg)
     }
 }

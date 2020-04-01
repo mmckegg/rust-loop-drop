@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::mpsc;
 
 use ::midi_time::MidiTime;
 pub use ::loop_transform::LoopTransform;
@@ -25,19 +26,22 @@ impl LoopCollection {
 }
 
 pub struct LoopState {
+    pub change_queue: mpsc::Receiver<LoopStateChange>,
+    change_queue_tx: mpsc::Sender<LoopStateChange>,
+
     undos: Vec<LoopCollection>,
-    redos: Vec<LoopCollection>,
-    on_change: Box<dyn FnMut(&LoopCollection, LoopStateChange) + Send>
+    redos: Vec<LoopCollection>
 }
 
 impl LoopState {
-    pub fn new<F> (default_length: MidiTime, on_change: F) -> LoopState
-    where F: FnMut(&LoopCollection, LoopStateChange) + Send + 'static  {
+    pub fn new (default_length: MidiTime) -> LoopState {
         let default_loop = LoopCollection::new(default_length);
+        let (change_queue_tx, change_queue) = mpsc::channel();
         LoopState {
             undos: vec![default_loop],
             redos: Vec::new(),
-            on_change: Box::new(on_change)
+            change_queue_tx,
+            change_queue
         }
     }
 
@@ -75,7 +79,7 @@ impl LoopState {
 
     pub fn set (&mut self, value: LoopCollection) {
         self.undos.push(value);
-        (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Set);
+        self.on_change(LoopStateChange::Set);
     }
 
     pub fn undo (&mut self) {
@@ -83,7 +87,7 @@ impl LoopState {
             match self.undos.pop() {
                 Some(value) => {
                     self.redos.push(value);
-                    (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Undo);
+                    self.on_change(LoopStateChange::Undo);
                 },
                 None => ()
             };
@@ -94,7 +98,7 @@ impl LoopState {
         match self.redos.pop() {
             Some(value) => {
                 self.undos.push(value);
-                (self.on_change)(self.undos.last().unwrap(), LoopStateChange::Redo);
+                self.on_change(LoopStateChange::Redo);
             },
             None => ()
         };
@@ -119,5 +123,9 @@ impl LoopState {
         }
 
         None
+    }
+
+    fn on_change (&self, change: LoopStateChange) {
+        self.change_queue_tx.send(change).unwrap();
     }
 }

@@ -16,7 +16,7 @@ impl RootSelect {
 }
 
 impl Triggerable for RootSelect {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {},
             OutputValue::On(velocity) => {

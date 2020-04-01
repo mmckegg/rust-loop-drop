@@ -17,7 +17,7 @@ impl VelocityMap {
 }
 
 impl Triggerable for VelocityMap {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         let mut current = self.values.lock().unwrap();
         match value {
             OutputValue::Off => {

@@ -29,7 +29,7 @@ impl BlackboxSlicer {
 }
 
 impl Triggerable for BlackboxSlicer {
-    fn trigger (&mut self, id: u32, value: OutputValue, time: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
 
         let mode = self.mode.lock().unwrap();
 
@@ -54,19 +54,19 @@ impl Triggerable for BlackboxSlicer {
         match value {
             OutputValue::Off => {
                 if *mode == BlackboxSlicerMode::Direct {
-                    self.midi_port.send_at(&[144 - 1 + channel, note_id, 0], time).unwrap();
+                    self.midi_port.send(&[144 - 1 + channel, note_id, 0]).unwrap();
                 }
             },
             OutputValue::On(_) => {
                 let velocity = 120;
                 // choke last value
                 if let Some((channel, note_id, _)) = self.last_value.get(&slicer_id) {
-                    self.midi_port.send_at(&[144 - 1 + channel, *note_id, 0], time).unwrap();
+                    self.midi_port.send(&[144 - 1 + channel, *note_id, 0]).unwrap();
                 }
                 self.last_value.insert(slicer_id, (channel, note_id, velocity));
                 self.trigger_at.insert(slicer_id, self.last_pos);
 
-                self.midi_port.send_at(&[144 - 1 + channel, note_id, velocity], time).unwrap();
+                self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
             }
         }
     }
@@ -99,10 +99,6 @@ impl Triggerable for BlackboxSlicer {
 
     fn schedule_mode (&self) -> ScheduleMode {
         ScheduleMode::Percussion
-    }
-
-    fn latency_offset (&self) -> Option<Duration> {
-        Some(Duration::from_millis(5))
     }
 }
 
@@ -163,7 +159,7 @@ impl BlackboxSlicerModeChooser {
 }
 
 impl Triggerable for BlackboxSlicerModeChooser {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {},
             OutputValue::On(velocity) => {
@@ -190,7 +186,7 @@ impl BlackboxSlicerBankChooser {
 }
 
 impl Triggerable for BlackboxSlicerBankChooser {
-    fn trigger (&mut self, id: u32, value: OutputValue, _at: SystemTime) {
+    fn trigger (&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {},
             OutputValue::On(velocity) => {
