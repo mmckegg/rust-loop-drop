@@ -158,7 +158,7 @@ impl Sub for MidiTime {
         } else {
             self.ticks - other.ticks
         };
-        MidiTime { ticks, sub_ticks: self.sub_ticks.wrapping_sub(other.sub_ticks) }
+        MidiTime { ticks, sub_ticks: modulo(self.sub_ticks as i32 - other.sub_ticks as i32, SUB_TICKS as i32) as u8}
     }
 }
 
@@ -221,20 +221,20 @@ mod tests {
 
     #[test]
     fn subtract () {
-        let a = MidiTime { ticks: 100, sub_ticks: 100 };
-        let b = MidiTime { ticks: 90, sub_ticks: 90 };
-        let c = MidiTime { ticks: 90, sub_ticks: 110 };
-        assert_eq!(a - b, MidiTime { ticks: 10, sub_ticks: 10 });
-        assert_eq!(a - c, MidiTime { ticks: 9, sub_ticks: 246 });
+        let a = MidiTime { ticks: 100, sub_ticks: 5 };
+        let b = MidiTime { ticks: 90, sub_ticks: 4 };
+        let c = MidiTime { ticks: 90, sub_ticks: 6 };
+        assert_eq!(a - b, MidiTime { ticks: 10, sub_ticks: 1 });
+        assert_eq!(a - c, MidiTime { ticks: 9, sub_ticks: 7 });
     }
 
     #[test]
     fn add () {
-        let a = MidiTime { ticks: 100, sub_ticks: 10 };
-        let b = MidiTime { ticks: 50, sub_ticks: 8 };
-        let c = MidiTime { ticks: 50, sub_ticks: 20 };
-        assert_eq!(a + b, MidiTime { ticks: 150, sub_ticks: 18 });
-        assert_eq!(a + c, MidiTime { ticks: 151, sub_ticks: 6 });
+        let a = MidiTime { ticks: 100, sub_ticks: 4 };
+        let b = MidiTime { ticks: 50, sub_ticks: 3 };
+        let c = MidiTime { ticks: 50, sub_ticks: 6  };
+        assert_eq!(a + b, MidiTime { ticks: 150, sub_ticks: 7  });
+        assert_eq!(a + c, MidiTime { ticks: 151, sub_ticks: 2 });
     }
     
     #[test]
