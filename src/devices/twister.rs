@@ -370,6 +370,10 @@ impl Twister {
                                 throttled_pulse_output.send(&[(176 - 1) + bass_channel, 1, value]);
                             },
 
+                            Control::BassBoom => {
+                                throttled_blackbox_output.send(&[(176 - 1) + bass_channel, 7, value]);
+                            },
+
                             Control::BassPitch => {
                                 // hack around detent on mf twister
                                 let value = if value == 63 {
@@ -514,7 +518,7 @@ impl Twister {
                                 output.send(&[181, id.clone() as u8, 13]).unwrap();
                             } else {
                                 output.send(&[181, id.clone() as u8, 0]).unwrap();
-                            }
+                            } 
                         }
                     },
 
@@ -699,6 +703,7 @@ enum Control {
     BassEnv,
     BassDuty,
     BassVibrato,
+    BassBoom,
     BassPitch,
     BassPitchOffset,
 
@@ -779,7 +784,7 @@ impl Control {
             (2, 2, 3) => Control::BassEnv,
 
             (2, 3, 0) => Control::BassDuty,
-            (2, 3, 1) => Control::BassVibrato,
+            (2, 3, 1) => Control::BassBoom,
             (2, 3, 2) => Control::BassPitch,
             (2, 3, 3) => Control::BassPitchOffset,
 
