@@ -382,6 +382,7 @@ impl Twister {
                                     value
                                 };
                                 throttled_pulse_output.send(&[(224 - 1) + bass_channel, 0, value]);
+                                throttled_blackbox_output.send(&[(224 - 1) + bass_channel, 0, value]);
                             },
 
                             Control::BassPitchOffset => {
