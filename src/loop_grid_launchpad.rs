@@ -296,13 +296,18 @@ impl LoopGridLaunchpad {
                 if let Some(id) = grid_button {
                     let id = *id;
                     let value = if message[2] > 0 {
-                        OutputValue::On(DEFAULT_VELOCITY)
+                        OutputValue::On(message[2])
                     } else {
                         OutputValue::Off
                     };
 
                     input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id, value}).unwrap();
                 } ;
+            } else if message[0] == 160 { // poly aftertouch
+                let grid_button = midi_to_id.get(&message[1]);
+                if let Some(id) = grid_button {
+                    input_queue_tx.send(LaunchpadEvent::GridPressure {id: *id, value: message[2]}).unwrap();
+                }
             } else if message[0] == 176 {
                 let pressed = message[2] > 0;
 

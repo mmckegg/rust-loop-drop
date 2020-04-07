@@ -48,18 +48,17 @@ impl Triggerable for BlackboxDrums {
                     }
                 }
             },
-            OutputValue::On(_) => {
+            OutputValue::On(base_velocity) => {
                 let velocities = self.velocities.lock().unwrap();
-                let base_velocity = 100;
                 let velocity_pos = self.last_pos.ticks() / MidiTime::from_measure(1, 4).ticks() % 8;
                 let pos = self.last_pos % MidiTime::from_measure(1, 4);
-                let mut velocity = if pos.ticks() == 0 {
+                let velocity = if pos.ticks() == 0 {
                     *velocities.get(&(velocity_pos as u32)).unwrap_or(&base_velocity)
                 } else {
                     base_velocity
                 };
 
-                let mut channel = self.midi_channel;
+                let channel = self.midi_channel;
                 let note_id = DRUMS[id as usize % DRUMS.len()];
 
                 // send note

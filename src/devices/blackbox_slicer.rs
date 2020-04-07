@@ -57,8 +57,7 @@ impl Triggerable for BlackboxSlicer {
                     self.midi_port.send(&[144 - 1 + channel, note_id, 0]).unwrap();
                 }
             },
-            OutputValue::On(_) => {
-                let velocity = 120;
+            OutputValue::On(velocity) => {
                 // choke last value
                 if let Some((channel, note_id, _)) = self.last_value.get(&slicer_id) {
                     self.midi_port.send(&[144 - 1 + channel, *note_id, 0]).unwrap();
