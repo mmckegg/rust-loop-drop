@@ -795,7 +795,6 @@ impl LoopGridLaunchpad {
         let current_repeat_light = RIGHT_SIDE_BUTTONS[REPEAT_RATES.iter().position(|v| v == &self.rate).unwrap_or(0)];
 
         let rate_color = if self.repeat_off_beat { Light::RedMed } else { Light::YellowMed };
-        let scale_color = Light::GreenDark;
 
         if current_repeat_light != self.last_repeat_light || self.last_repeat_light_out != rate_color {
             self.launchpad_output.send(&[144, self.last_repeat_light, 0]).unwrap();
@@ -803,7 +802,6 @@ impl LoopGridLaunchpad {
         }
 
         let beat_start = pos.is_whole_beat();
-
         let base_last_beat_light = if current_repeat_light == self.last_beat_light {
             rate_color
         } else {
