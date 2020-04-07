@@ -116,7 +116,7 @@ impl Scheduler {
         let count = state.tick_durations.len() as u32;
         if count > 1 {
             let average = sum.as_secs_f64() / count as f64;
-            let drift_multipler = self.tick_drift_multipler();
+            let drift_multipler = self.tick_drift_multipler().max(0.5);
             Some(Duration::from_secs_f64(average * drift_multipler))
         } else {
             None

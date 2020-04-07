@@ -683,18 +683,23 @@ impl LoopGridLaunchpad {
     }
 
     pub fn schedule (&mut self, range: scheduler::ScheduleRange) {
-        self.drain_input_events();
 
+        
+        // only read swing on 8th notes to prevent back scheduling                          
+        if range.ticked && range.from % MidiTime::from_ticks(12) == MidiTime::zero() {
+            self.update_swing();
+        }
+        
+        self.last_raw_pos = range.from;
+        self.last_pos = (range.from - self.align_offset).swing(self.current_swing) + self.align_offset;
+        self.last_length = (range.to - self.align_offset).swing(self.current_swing) + self.align_offset - self.last_pos;
+        
         if range.jumped {
             self.initial_loop();
         }
 
         if range.ticked {
-            // only read swing on 8th notes to prevent back scheduling                          
-            if range.from % MidiTime::from_ticks(12) == MidiTime::zero() {
-                self.update_swing();
-            }
-
+            
             // clear repeats from last cycle
             for id in &self.clear_repeats.clone() {
                 self.pending_repeat.remove(id);
@@ -704,7 +709,7 @@ impl LoopGridLaunchpad {
                 }
             }
             self.clear_repeats.clear();
-
+            
             // handle revert of loop length button
             if let Some(remain) = self.refresh_loop_length_in {
                 if remain > 0 { 
@@ -714,20 +719,18 @@ impl LoopGridLaunchpad {
                     self.refresh_loop_length();
                 }
             }
-
-            self.chunk_tick();
+            
             self.refresh_side_buttons();
             self.refresh_recording();
-
+            self.chunk_tick();
+            
 
         }
 
-        self.last_raw_pos = range.from;
-        self.last_pos = (range.from - self.align_offset).swing(self.current_swing) + self.align_offset;
-        self.last_length = (range.to - self.align_offset).swing(self.current_swing) + self.align_offset - self.last_pos;
+        // consume launchpad and other controllers
+        self.drain_input_events();
 
         let mut events = self.get_events(self.last_pos, self.last_length);
-
         let mut ranked = HashMap::new();
         for (key, value) in &self.last_triggered {
             for id in value.iter() {
@@ -1266,7 +1269,7 @@ impl LoopGridLaunchpad {
     fn start_loop (&mut self) {
         self.commit_selection_override();   
         self.loop_held = true;
-        self.loop_from = self.last_pos;
+        self.loop_from = self.last_pos.round();
         self.launchpad_output.send(&[176, TOP_BUTTONS[0], Light::Green.value()]).unwrap();
     }
 
