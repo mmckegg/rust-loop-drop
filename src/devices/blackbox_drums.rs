@@ -52,8 +52,8 @@ impl Triggerable for BlackboxDrums {
                 let velocities = self.velocities.lock().unwrap();
                 let velocity_pos = self.last_pos.ticks() / MidiTime::from_measure(1, 4).ticks() % 8;
                 let pos = self.last_pos % MidiTime::from_measure(1, 4);
-                let velocity = if pos.ticks() == 0 {
-                    *velocities.get(&(velocity_pos as u32)).unwrap_or(&base_velocity)
+                let velocity = if pos.ticks() == 0 && velocities.get(&(velocity_pos as u32)).is_some() {
+                    (base_velocity + 50).min(127)
                 } else {
                     base_velocity
                 };
