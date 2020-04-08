@@ -166,7 +166,7 @@ impl Add for MidiTime {
     type Output = MidiTime;
 
     fn add(self, other: MidiTime) -> MidiTime {
-        let ticks = if (self.sub_ticks as u32) + (other.sub_ticks as u32) > SUB_TICKS as u32 {
+        let ticks = if (self.sub_ticks as u32) + (other.sub_ticks as u32) >= SUB_TICKS as u32 {
             self.ticks + other.ticks + 1
         } else {
             self.ticks + other.ticks
@@ -226,6 +226,10 @@ mod tests {
         let c = MidiTime { ticks: 90, sub_ticks: 6 };
         assert_eq!(a - b, MidiTime { ticks: 10, sub_ticks: 1 });
         assert_eq!(a - c, MidiTime { ticks: 9, sub_ticks: 7 });
+        assert_eq!(
+            MidiTime::new(1, 0) - MidiTime::new(0, 1),
+            MidiTime { ticks: 0, sub_ticks: SUB_TICKS - 1 }
+        );
     }
 
     #[test]
@@ -235,6 +239,10 @@ mod tests {
         let c = MidiTime { ticks: 50, sub_ticks: 6  };
         assert_eq!(a + b, MidiTime { ticks: 150, sub_ticks: 7  });
         assert_eq!(a + c, MidiTime { ticks: 151, sub_ticks: 2 });
+        assert_eq!(
+            MidiTime::new(0, SUB_TICKS - 1) + MidiTime::new(0, 1),
+            MidiTime { ticks: 1, sub_ticks: 0 }
+        );
     }
     
     #[test]
