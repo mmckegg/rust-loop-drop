@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# /!\ Same config for gcc
+
+arm-linux-gnueabihf-g++ \
+        -isystem/usr/include/arm-linux-gnueabihf \
+        -isystem/usr/include \
+        -L/usr/lib/arm-linux-gnueabihf \
+        -L/usr/lib \
+        $@
+
