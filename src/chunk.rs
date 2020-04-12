@@ -61,13 +61,14 @@ pub struct ChunkMap {
     pub shape: Shape,
     pub chunk: Box<Triggerable + Send>,
     pub channel: Option<u32>,
-    pub color: u8
+    pub color: u8,
+    pub repeat_mode: RepeatMode
 }
 
 impl ChunkMap {
-    pub fn new (chunk: Box<Triggerable + Send>, coords: Coords, shape: Shape, color: u8, channel: Option<u32>) -> Box<Self> {
+    pub fn new (chunk: Box<Triggerable + Send>, coords: Coords, shape: Shape, color: u8, channel: Option<u32>, repeat_mode: RepeatMode) -> Box<Self> {
         Box::new(ChunkMap {
-            chunk, coords, shape, color, channel
+            chunk, coords, shape, color, channel, repeat_mode
         })
     }
 }
@@ -76,6 +77,11 @@ pub enum TriggerModeChange {
     Selected(u32, bool),
     SelectingScale(bool),
     Active(u32, bool)
+}
+
+pub enum RepeatMode {
+    Global,
+    None
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
