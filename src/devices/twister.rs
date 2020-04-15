@@ -220,15 +220,15 @@ impl Twister {
                             },
 
                             Control::DrumSend => {
-                                throttled_blackbox_output.send(&[176 + drums_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + drums_channel - 1, 10, value]);
                             },
                             
                             Control::SlicerSend => {
-                                throttled_blackbox_output.send(&[176 + slicer_channel - 1, 10, value / 2]);
-                                throttled_blackbox_output.send(&[176 + slicer_channel - 1 + 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + slicer_channel - 1, 10, value]);
+                                throttled_blackbox_output.send(&[176 + slicer_channel - 1 + 1, 10, value]);
                             },
                             Control::SamplerSend => {
-                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 10, value / 2]);
+                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 10, value]);
                             },
                             Control::DrumMod => {
                                 let value = if value == 63 {
@@ -243,17 +243,17 @@ impl Twister {
                             },
                             Control::BassSend => {
                                 bass_volume_multiplier = 0.7 + (midi_to_float(value) * 0.3);
-                                throttled_pulse_output.send(&[176 + bass_channel - 1, 10, value / 2]);
-                                throttled_blackbox_output.send(&[176 + bass_channel - 1, 10, value / 2]);
+                                throttled_pulse_output.send(&[176 + bass_channel - 1, 10, value]);
+                                throttled_blackbox_output.send(&[176 + bass_channel - 1, 10, value]);
                                 throttled_pulse_output.send(&[(176 - 1) + bass_channel, 57, (bass_volume as f64 * bass_volume_multiplier) as u8]);
                             },
                             Control::SynthSend => {
-                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 77, value / 2]);
-                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 88, value / 2]);
+                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 77, value]);
+                                throttled_blofeld_output.send(&[176 + synth_channel - 1, 88, value]);
                             },
                             Control::ExtSend => {
-                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 77, value / 2]);
-                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 88, value / 2]);
+                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 77, value]);
+                                throttled_blofeld_output.send(&[176 + ext_channel - 1, 88, value]);
                             },
                             Control::ExtMod => {
                                 throttled_blofeld_output.send(&[(208 - 1) + ext_channel, value]);
