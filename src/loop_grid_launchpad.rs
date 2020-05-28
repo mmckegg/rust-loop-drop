@@ -1324,9 +1324,10 @@ impl LoopGridLaunchpad {
             self.refresh_selecting_scale();
         }
         
+        let selection = self.selection.clone();
         self.selection.clear();
 
-        for id in self.selection.clone() {
+        for id in selection {
             self.refresh_grid_button(id);
         }
 
