@@ -68,7 +68,7 @@ impl Twister {
             let mut synth_attack = 0.0;
             let mut synth_decay = 0.0;
             let mut synth_sustain = 1.0;
-            let mut last_delay_division = None;
+            // let mut last_delay_division = None;
 
             let mut current_bank = 0;
 
@@ -151,7 +151,7 @@ impl Twister {
             }
 
             // enable nemesis pedal!
-            throttled_zoia_output.send(&[176 + pedal_channel - 1, 38, 127]);
+            // throttled_zoia_output.send(&[176 + pedal_channel - 1, 38, 127]);
 
             for received in rx {
                 match received {
@@ -271,12 +271,13 @@ impl Twister {
                                 // clock_sender.send(ToClock::SetTempo(value as usize + 60)).unwrap();
                             },
                             Control::DelayDivision => {
-                                let value = midi_to_float(value);
-                                let new_value = (value * 14.0) as u8;
-                                if last_delay_division != Some(new_value) {
-                                    throttled_zoia_output.send(&[176 + pedal_channel - 1, 42, new_value]);
-                                    last_delay_division = Some(new_value);
-                                }
+                                // let value = midi_to_float(value);
+                                // let new_value = (value * 14.0) as u8;
+                                // if last_delay_division != Some(new_value) {
+                                //     throttled_zoia_output.send(&[176 + pedal_channel - 1, 42, new_value]);
+                                //     last_delay_division = Some(new_value);
+                                // }
+                                throttled_zoia_output.send(&[176 + pedal_channel - 1, 42, value]);
                             },
                             Control::Swing => {
                                 let mut params = params.lock().unwrap();
