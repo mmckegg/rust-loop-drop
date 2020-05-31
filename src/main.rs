@@ -50,6 +50,7 @@ fn main() {
     let zoia_io_name = "RK006 PORT 3";
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
+    let ju06_io_name = "JU-06A";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro"
@@ -78,15 +79,17 @@ fn main() {
     }
 
     let bass_offset = Offset::new(-2, -4);
-    let vox_offset = Offset::new(-1, -4);
+    let vox_offset = Offset::new(0, -4);
     let keys_offset = Offset::new(-1, -4);
 
     let pulse_output_port = midi_connection::get_shared_output(pulse_io_name);
     let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
     let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
-    let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
     let all_output_port = midi_connection::get_shared_output(all_io_name);
+    
+    let mut vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
+    let mut ju06_output_port = midi_connection::get_shared_output(ju06_io_name);
 
 
     // let mut clock = ClockSource::new(all_io_name, vec![
@@ -100,18 +103,18 @@ fn main() {
     // clock.sync_clock_start(blofeld_output_port.clone());
 
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
-        ChunkMap::new(
-            Box::new(devices::VelocityMap::new(Arc::clone(&drum_velocities))),
-            Coords::new(0 + 8, 0),
-            Shape::new(1, 8),
-            12, // light yellow
-            None,
-            RepeatMode::None
-        ),
+        // ChunkMap::new(
+        //     Box::new(devices::VelocityMap::new(Arc::clone(&drum_velocities))),
+        //     Coords::new(0 + 8, 0),
+        //     Shape::new(1, 8),
+        //     12, // light yellow
+        //     None,
+        //     RepeatMode::None
+        // ),
 
         ChunkMap::new(
             Box::new(devices::BlackboxSlicerModeChooser::new(Arc::clone(&slicer_mode))),
-            Coords::new(1 + 8, 0),
+            Coords::new(0 + 8, 0),
             Shape::new(1, 3),
             126, // light orange
             None,
@@ -120,7 +123,7 @@ fn main() {
 
         ChunkMap::new(
             Box::new(devices::BlackboxSlicerBankChooser::new(Arc::clone(&slicer_bank))),
-            Coords::new(1 + 8, 3),
+            Coords::new(0 + 8, 3),
             Shape::new(1, 5),
             71, // dark grey
             None,
@@ -128,11 +131,20 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![vt4_output_port.clone(), blackbox_output_port.clone()], 8, Arc::clone(&scale), Arc::clone(&vox_offset))), 
-            Coords::new(2 + 8, 0),
+            Box::new(devices::MidiKeys::new(vec![blofeld_output_port.clone(), blackbox_output_port.clone()], 13, Arc::clone(&scale), Arc::clone(&vox_offset))), 
+            Coords::new(1 + 8, 0),
             Shape::new(1, 8),
             125, // gross
             Some(2),
+            RepeatMode::Global
+        ),
+
+        ChunkMap::new(
+            Box::new(devices::OffsetChunk::new(Arc::clone(&vox_offset))),
+            Coords::new(2 + 8, 0), 
+            Shape::new(1, 8),
+            12, // soft yellow
+            None,
             RepeatMode::None
         ),
 
@@ -209,13 +221,14 @@ fn main() {
         )
     ], Arc::clone(&scale), Arc::clone(&params), blackbox_output_port.clone(), 10, 36);
 
-    let _keyboard = devices::KBoard::new(keyboard_io_name, blofeld_output_port.clone(), 13, scale.clone());
+    let _keyboard = devices::KBoard::new(keyboard_io_name, ju06_output_port.clone(), 1, scale.clone());
 
     let twister = devices::Twister::new("Midi Fighter Twister",
         pulse_output_port.clone(),
         blofeld_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
+        ju06_output_port.clone(),
         Arc::clone(&params)
     );
 
@@ -224,6 +237,13 @@ fn main() {
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
     let mut blofeld_output_port_s = blofeld_output_port.clone();
+    let mut ju06_output_port_clock = ju06_output_port.clone();
+
+    let _clock = midi_connection::get_input(all_io_name, move |_stamp, msg| {
+        if msg[0] == 248 {
+            ju06_output_port_clock.send(msg).unwrap();
+        }
+    });
 
     for range in Scheduler::start(all_io_name) {
         launchpad.schedule(range);
@@ -237,6 +257,8 @@ fn main() {
             if range.from % MidiTime::from_beats(32) == MidiTime::zero() {
                 blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
             }
+
+
         } else if range.jumped {
             blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
         }

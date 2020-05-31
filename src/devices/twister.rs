@@ -18,7 +18,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, pulse_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
+    pub fn new (port_name: &str, pulse_output: midi_connection::SharedMidiOutputConnection, blofeld_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, ju06_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
@@ -63,6 +63,7 @@ impl Twister {
             let mut throttled_blofeld_output = ThrottledOutput::new(blofeld_output);
             let mut throttled_blackbox_output = ThrottledOutput::new(blackbox_output);
             let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
+            let mut ju06_output = ju06_output;
 
             let mut synth_env = 0.0;
             let mut synth_attack = 0.0;
@@ -99,7 +100,7 @@ impl Twister {
             last_values.insert(Control::SlicerSend, 0);
             last_values.insert(Control::SamplerSend, 0);
             last_values.insert(Control::BassSend, 0);
-            last_values.insert(Control::SynthSend, 0);
+            last_values.insert(Control::SynthSend, 64);
             last_values.insert(Control::ExtSend, 0);
 
             last_values.insert(Control::LfoShape, 0);
@@ -107,12 +108,13 @@ impl Twister {
 
             last_values.insert(Control::DrumMod, 64);
             last_values.insert(Control::ExtMod, 64);
-            last_values.insert(Control::SlicerMod, 64);
+            last_values.insert(Control::ExtCutoff, 64);
 
             last_values.insert(Control::BassFilterLfoAmount, 64);
             last_values.insert(Control::SynthFilterLfoAmount, 64);
 
             last_values.insert(Control::SynthPitch, 64);
+            last_values.insert(Control::SynthWaveform, 127);
             last_values.insert(Control::SynthVibrato, 40);
             last_values.insert(Control::SynthEnv, 100);
             last_values.insert(Control::SynthPitchOffset, 64);
@@ -240,6 +242,9 @@ impl Twister {
                             },
                             Control::SlicerMod => {
                                 throttled_blackbox_output.send(&[(176 - 1) + slicer_channel, 1, value]);
+                            },
+                            Control::ExtCutoff => {
+                                ju06_output.send(&[176, 74, value]).unwrap();
                             },
                             Control::BassSend => {
                                 bass_volume_multiplier = 0.7 + (midi_to_float(value) * 0.3);
@@ -709,6 +714,7 @@ enum Control {
     BassPitch,
     BassPitchOffset,
 
+    ExtCutoff,
 
     SynthAdsr(u32),
     SynthHighpass,
@@ -764,7 +770,7 @@ impl Control {
             (1, row, 1) => Control::ChannelRedux(row),
 
             (1, 0, 2) => Control::DrumMod,
-            (1, 1, 2) => Control::SlicerMod,
+            (1, 1, 2) => Control::ExtCutoff,
 
             (1, 2, 2) => Control::BassFilterLfoAmount,
             (1, 3, 2) => Control::SynthFilterLfoAmount,
