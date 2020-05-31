@@ -35,6 +35,9 @@ impl KBoard {
         // check for changes to scale and broadcast
         thread::spawn(move || {
             let kboard_input = midi_connection::get_input(&kboard_port_name, move |stamp, message| {
+                // forward messages to midi output
+                midi_output.send(message);
+
                 if message[0] == 144 {
                     tx_output.send(KBoardMessage::Input(message[1] as u32, message[2])).unwrap();
                 } else if message[0] == 128 {
@@ -63,8 +66,6 @@ impl KBoard {
             let mut notes = scale_loop.lock().unwrap().get_notes();
             let mut triggering = HashSet::new();
             let mut trigger_stack: Vec<(u32, u8)> = Vec::new();
-            let mut active = HashSet::new();
-            let mut selected = HashSet::new();
 
             let selecting_scale = true; 
             let mut last_refresh_scale = SystemTime::now();
@@ -86,17 +87,9 @@ impl KBoard {
                             last_refresh_scale = SystemTime::now();
                         }
                     },
-                    KBoardMessage::RefreshActive => {
-                        for id in 0..128 {
-                            kboard_output.send(&[144, id as u8, 0]);
-                        }
-                        for id in &active {
-                            kboard_output.send(&[144, *id as u8, 127]);
-                        }
-                    },
                     KBoardMessage::RefreshNote(id) => {
                         if !selecting_scale {
-                            let value = if triggering.contains(&id) || active.contains(&id) {
+                            let value = if triggering.contains(&id) {
                                 127
                             } else {
                                 0
@@ -104,87 +97,26 @@ impl KBoard {
                             kboard_output.send(&[144, id as u8, value]).unwrap();
                         }
                     },
-                    KBoardMessage::Trigger(id, velocity) => {
+                    KBoardMessage::Input(id, velocity) => {
                         if velocity > 0 {
                             triggering.insert(id);
-                            midi_output.send(&[144 + channel - 1, id as u8, velocity]).unwrap();
                         } else {
                             triggering.remove(&id);
-                            midi_output.send(&[128 + channel - 1, id as u8, 0]).unwrap();
                             tx_feedback.send(KBoardMessage::RefreshScale).unwrap();
                         }
-
                         tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
-                    },
-                    KBoardMessage::Input(id, velocity) => {
-                        let output_value = if velocity > 0 {
-                            OutputValue::On(velocity)
-                        } else {
-                            OutputValue::Off
-                        };
-                        let listeners: MutexGuard<Vec<Box<Fn(u32, OutputValue) + Send + 'static>>> = listeners_loop.lock().unwrap();
-                        if listeners.len() > 0 {
-                            for l in listeners.iter() {
-                                l(id, output_value)
-                            }
-                        } else {
-                            tx_feedback.send(KBoardMessage::Trigger(id, output_value.value())).unwrap();
-                        }
-                    },
-                    KBoardMessage::TriggerMode(state) => {
-                        match state {
-                            TriggerModeChange::SelectingScale(value) => {
-                                // selecting_scale = value;
-                                // tx_feedback.send(KBoardMessage::RefreshScale);
-
-                                // if !selecting_scale {
-                                //     tx_feedback.send(KBoardMessage::RefreshActive);
-                                // }
-                            },
-                            TriggerModeChange::Active(id, value) => {
-
-                                let updated = if value {
-                                    active.insert(id)
-                                } else {
-                                    active.remove(&id)
-                                };
-
-                                if updated {
-                                    tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
-                                }
-                            },
-                            TriggerModeChange::Selected(id, value) => {
-                                let updated = if value {
-                                    selected.insert(id)
-                                } else {
-                                    selected.remove(&id)
-                                };
-
-                                if updated {
-                                    tx_feedback.send(KBoardMessage::RefreshNote(id)).unwrap();
-                                    tx_feedback.send(KBoardMessage::RefreshScale).unwrap();
-                                }
-                            }
-                        }
                     },
                     KBoardMessage::Tick(value) => {
                         let output_value = if value % 2 == 0 { 127 } else { 0 };
-                        let output_value_selected = if value % 8 < 7 { 127 } else { 0 };
-
-                        if selecting_scale {
-                            let output_value_root = if value % 8 < 4 { 127 } else { 0 };
-                            let scale = scale_loop.lock().unwrap();
-                            kboard_output.send(&[144, scale.root as u8, output_value_root]).unwrap();
-                            kboard_output.send(&[144, (scale.root + 12) as u8, output_value_root]).unwrap();
-                        }
+                        let output_value_root = if value % 8 < 4 { 127 } else { 0 };
+                        let scale = scale_loop.lock().unwrap();
+                        kboard_output.send(&[144, scale.root as u8, output_value_root]).unwrap();
+                        kboard_output.send(&[144, (scale.root + 12) as u8, output_value_root]).unwrap();
 
                         for id in &triggering {
                             kboard_output.send(&[144, *id as u8, output_value]).unwrap();
                         }
 
-                        for id in &selected {
-                            kboard_output.send(&[144, *id as u8, output_value_selected]).unwrap();
-                        }
                     }
                 }
             }
@@ -200,10 +132,7 @@ impl KBoard {
 
 enum KBoardMessage {
     RefreshScale,
-    RefreshActive,
     RefreshNote(u32),
-    Trigger(u32, u8),
     Input(u32, u8),
-    TriggerMode(TriggerModeChange),
     Tick(u64)
 }
