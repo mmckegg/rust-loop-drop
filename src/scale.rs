@@ -5,8 +5,7 @@ use std::collections::HashSet;
 pub struct Scale {
     pub root: i32,
     pub scale: i32,
-    pub sample_group_a: u32,
-    pub sample_group_b: u32
+    pub offset: i32
 }
 
 impl Scale {
@@ -15,8 +14,7 @@ impl Scale {
         Arc::new(Mutex::new(Scale { 
             root, 
             scale,
-            sample_group_a: 0,
-            sample_group_b: 0
+            offset: 0
         }))
     }
 
@@ -39,7 +37,7 @@ impl Scale {
         let length = scale_notes.len() as i32;
         let interval = scale_notes[modulo(value, length) as usize];
         let octave = (value as f64 / length as f64).floor() as i32;
-        self.root + (octave * 12) + interval
+        self.root + self.offset + (octave * 12) + interval
     }
 }
 

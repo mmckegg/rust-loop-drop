@@ -43,22 +43,23 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
     
-    let all_io_name = "RK006";
-    let pulse_io_name = "RK006 PORT 4";
-    let blofeld_io_name = "RK006 PORT 5";
-    let blackbox_io_name = "RK006 PORT 2";
-    let zoia_io_name = "RK006 PORT 3";
+    let all_io_name = "RK006"; // All out
+    let blackbox_io_name = "RK006 PORT 2"; // 1
+    let zoia_io_name = "RK006 PORT 3"; // 2
+    let dd_io_name = "RK006 PORT 4"; // 3
+    let sh01a_io_name = "Boutique";
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
     let ju06_io_name = "JU-06A";
+    let geode_io_name = "USB MIDI";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
-        "Launchpad Pro"
+        "Launchpad Pro MK3"
     } else {
-        "Launchpad Pro Live Port"
+        "Launchpad Pro MK3 LPProMK3 MIDI"
     };
 
-    let scale = Scale::new(64, 5);
+    let scale = Scale::new(60, 0);
 
     let params = Arc::new(Mutex::new(LoopGridParams { 
         swing: 0.0,
@@ -79,17 +80,18 @@ fn main() {
     }
 
     let bass_offset = Offset::new(-2, -4);
-    let vox_offset = Offset::new(0, -4);
+    let geode_offset = Offset::new(0, -4);
     let keys_offset = Offset::new(-1, -4);
 
-    let pulse_output_port = midi_connection::get_shared_output(pulse_io_name);
-    let blofeld_output_port = midi_connection::get_shared_output(blofeld_io_name);
+    let dd_output_port = midi_connection::get_shared_output(dd_io_name);
+    let sh01a_output_port = midi_connection::get_shared_output(sh01a_io_name);
     let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
     let all_output_port = midi_connection::get_shared_output(all_io_name);
     
-    let mut vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
-    let mut ju06_output_port = midi_connection::get_shared_output(ju06_io_name);
+    let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
+    let ju06a_output_port = midi_connection::get_shared_output(ju06_io_name);
+    let geode_output_port = midi_connection::get_shared_output(geode_io_name);
 
 
     // let mut clock = ClockSource::new(all_io_name, vec![
@@ -103,45 +105,19 @@ fn main() {
     // clock.sync_clock_start(blofeld_output_port.clone());
 
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
-        // ChunkMap::new(
-        //     Box::new(devices::VelocityMap::new(Arc::clone(&drum_velocities))),
-        //     Coords::new(0 + 8, 0),
-        //     Shape::new(1, 8),
-        //     12, // light yellow
-        //     None,
-        //     RepeatMode::None
-        // ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxSlicerModeChooser::new(Arc::clone(&slicer_mode))),
+            Box::new(devices::MidiKeys::new(vec![geode_output_port.clone(), blackbox_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
             Coords::new(0 + 8, 0),
-            Shape::new(1, 3),
-            126, // light orange
-            None,
-            RepeatMode::None
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::BlackboxSlicerBankChooser::new(Arc::clone(&slicer_bank))),
-            Coords::new(0 + 8, 3),
-            Shape::new(1, 5),
-            71, // dark grey
-            None,
-            RepeatMode::None
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![blofeld_output_port.clone(), blackbox_output_port.clone()], 13, Arc::clone(&scale), Arc::clone(&vox_offset))), 
-            Coords::new(1 + 8, 0),
-            Shape::new(1, 8),
+            Shape::new(3, 8),
             125, // gross
             Some(2),
             RepeatMode::Global
         ),
 
         ChunkMap::new(
-            Box::new(devices::OffsetChunk::new(Arc::clone(&vox_offset))),
-            Coords::new(2 + 8, 0), 
+            Box::new(devices::OffsetChunk::new(Arc::clone(&geode_offset))),
+            Coords::new(3 + 8, 0), 
             Shape::new(1, 8),
             12, // soft yellow
             None,
@@ -150,7 +126,7 @@ fn main() {
 
         ChunkMap::new(
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))),
-            Coords::new(3 + 8, 0), 
+            Coords::new(4 + 8, 0), 
             Shape::new(1, 8),
             55, // pink
             None,
@@ -159,16 +135,25 @@ fn main() {
 
         ChunkMap::new(
             Box::new(devices::OffsetChunk::new(Arc::clone(&keys_offset))), 
-            Coords::new(4 + 8, 0), 
+            Coords::new(5 + 8, 0), 
             Shape::new(1, 8),
             43, // blue
             None,
             RepeatMode::None
         ),
+        
+        ChunkMap::new(
+            Box::new(devices::RootOffsetChunk::new(Arc::clone(&scale))), 
+            Coords::new(6 + 8, 0), 
+            Shape::new(1, 8),
+            35, // green
+            None,
+            RepeatMode::None
+        ),
 
         ChunkMap::new(
-            Box::new(devices::ScaleSelect::new(Arc::clone(&scale))), 
-            Coords::new(5 + 8, 0), 
+            Box::new(devices::ScaleOffsetChunk::new(Arc::clone(&scale))), 
+            Coords::new(7 + 8, 0), 
             Shape::new(1, 8),
             32, // blue
             None,
@@ -176,16 +161,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::RootSelect::new(Arc::clone(&scale))), 
-            Coords::new(6 + 8, 0), 
-            Shape::new(2, 8),
-            35, // green
-            None,
-            RepeatMode::None
-        ),
-
-        ChunkMap::new(
-            Box::new(devices::BlackboxDrums::new(blackbox_output_port.clone(), 10, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::DoubleDrummer::new(dd_output_port.clone(), 1, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
             Shape::new(1, 8),
             15, // yellow
@@ -194,7 +170,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), Arc::clone(&slicer_mode), Arc::clone(&slicer_bank))), 
+            Box::new(devices::BlackboxSample::new(blackbox_output_port.clone(), 10)), 
             Coords::new(1, 0), 
             Shape::new(1, 8),
             9, // orange
@@ -203,7 +179,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![pulse_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(vec![sh01a_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
             59, // pink
@@ -212,7 +188,7 @@ fn main() {
         ),
 
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![blofeld_output_port.clone()], 12, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(vec![ju06a_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
             43, // blue
@@ -221,14 +197,13 @@ fn main() {
         )
     ], Arc::clone(&scale), Arc::clone(&params), blackbox_output_port.clone(), 10, 36);
 
-    let _keyboard = devices::KBoard::new(keyboard_io_name, ju06_output_port.clone(), 1, scale.clone());
+    let _keyboard = devices::KBoard::new(keyboard_io_name, ju06a_output_port.clone(), 1, scale.clone());
 
     let twister = devices::Twister::new("Midi Fighter Twister",
-        pulse_output_port.clone(),
-        blofeld_output_port.clone(),
+        sh01a_output_port.clone(),
+        ju06a_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
-        ju06_output_port.clone(),
         Arc::clone(&params)
     );
 
@@ -236,12 +211,13 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
-    let mut blofeld_output_port_s = blofeld_output_port.clone();
-    let mut ju06_output_port_clock = ju06_output_port.clone();
+    let mut ju06a_output_port_clock = ju06a_output_port.clone();
+    let mut sh01a_output_port_clock = sh01a_output_port.clone();
 
     let _clock = midi_connection::get_input(all_io_name, move |_stamp, msg| {
         if msg[0] == 248 {
-            ju06_output_port_clock.send(msg).unwrap();
+            ju06a_output_port_clock.send(msg).unwrap();
+            sh01a_output_port_clock.send(msg).unwrap();
         }
     });
 
@@ -252,15 +228,7 @@ fn main() {
             let pos = MidiTime::from_ticks(range.from.ticks());
             let length = MidiTime::tick();
             twister.schedule(pos, length);
-            vt4.schedule(pos, length);
-
-            if range.from % MidiTime::from_beats(32) == MidiTime::zero() {
-                blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
-            }
-
-
-        } else if range.jumped {
-            blofeld_output_port_s.send(&[242, 0, 0]).unwrap();
+            vt4.schedule(pos, length)
         }
     }
 }

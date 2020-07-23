@@ -21,12 +21,23 @@ use ::clock_source::{RemoteClock, ToClock, FromClock};
 use ::chunk::{Triggerable, MidiMap, ChunkMap, Coords, LatchMode, ScheduleMode, RepeatMode};
 use ::scale::Scale;
 
+const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
 const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
 const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
-const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
-const BOTTOM_BUTTONS: [u8; 4] = [1, 2, 3, 4];
+const BOTTOM_BUTTONS_A: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
+const BOTTOM_BUTTONS_B: [u8; 4] = [1, 2, 3, 4];
 const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
 const BANK_COLORS: [u8; 4] = [15, 9, 59, 43];
+
+
+const LOOP_BUTTON: u8 = TOP_BUTTONS[0];
+const FLATTEN_BUTTON: u8 = TOP_BUTTONS[1];
+const UNDO_BUTTON: u8 = TOP_BUTTONS[2];
+const REDO_BUTTON: u8 = TOP_BUTTONS[3];
+const HOLD_BUTTON: u8 = TOP_BUTTONS[4];
+const SUPPRESS_BUTTON: u8 = TOP_BUTTONS[5];
+const SESSION_BUTTON: u8 = TOP_BUTTONS[6];
+const SHIFT_BUTTON: u8 = TOP_BUTTONS[7];
 
 const DEFAULT_VELOCITY: u8 = 100;
 
@@ -76,6 +87,21 @@ pub enum LoopGridRemoteEvent {
     DoubleButton(bool),
     LoopButton(bool),
     SustainButton(bool)
+}
+
+#[derive(Debug, Clone)]
+struct RepeatState {
+    phase: RepeatPhase,
+    transform: LoopTransform,
+    to: MidiTime,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum RepeatPhase {
+    None,
+    Pending,
+    Current,
+    Triggered
 }
 
 
@@ -153,7 +179,7 @@ enum LaunchpadEvent {
     HoldButton(bool),
     SuppressButton(bool),
     ScaleButton(bool),
-    SelectButton(bool),
+    ShiftButton(bool),
     None,
     LengthButton {id: usize, pressed: bool},
     RateButton {id: usize, pressed: bool},
@@ -196,7 +222,7 @@ pub struct LoopGridLaunchpad {
     suppressing: bool,
     holding: bool,
     holding_at: MidiTime,
-    selecting: bool,
+    shift_held: bool,
     selection_override_offset: Option<isize>,
     refresh_loop_length_in: Option<i32>,
     id_to_midi: HashMap<u32, u8>,
@@ -231,7 +257,8 @@ pub struct LoopGridLaunchpad {
     // out state
     current_swing: f64,
     out_transforms: HashMap<u32, LoopTransform>,
-    pending_repeat: HashMap<u32, LoopTransform>,
+    repeat_states: HashMap<u32, RepeatState>,
+
     out_values: HashMap<u32, OutputValue>,
     grid_out: HashMap<u32, LaunchpadLight>,
     select_out: Light,
@@ -241,7 +268,6 @@ pub struct LoopGridLaunchpad {
     // display state
     active: HashSet<u32>,
     recording: HashSet<u32>,
-    clear_repeats: HashSet<u32>,
 
     last_beat_light: u8,
     last_repeat_light: u8,
@@ -290,13 +316,13 @@ impl LoopGridLaunchpad {
                         4 => LaunchpadEvent::HoldButton(pressed),
                         5 => LaunchpadEvent::SuppressButton(pressed),
                         6 => LaunchpadEvent::ScaleButton(pressed),
-                        7 => LaunchpadEvent::SelectButton(pressed),
+                        7 => LaunchpadEvent::ShiftButton(pressed),
                         _ => LaunchpadEvent::None
                     }).unwrap();
                 } else if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == message[1]) {
                     // use last 4 bottom buttons as bank switchers
                     input_queue_tx.send(LaunchpadEvent::BankButton {id, pressed}).unwrap();
-                } else if let Some(id) = BOTTOM_BUTTONS.iter().position(|&x| x == message[1]) {
+                } else if let Some(id) = BOTTOM_BUTTONS_B.iter().position(|&x| x == message[1]) {
                     input_queue_tx.send(LaunchpadEvent::SampleButton {id, pressed}).unwrap();
                 }
             }
@@ -309,7 +335,18 @@ impl LoopGridLaunchpad {
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
         launchpad_output.on_connect(move |port| {
             // send sysex message to put launchpad into live mode
-            port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x40, 0x2F, 0x6D, 0x3E, 0x0A, 0xF7]).unwrap();
+            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x40, 0x2F, 0x6D, 0x3E, 0x0A, 0xF7]).unwrap();
+            
+            // 00  F0 00 20 29 02 0E 10 00  F7
+            // 00  F0 00 20 29 02 0E 00 04  00 00 F7
+            // 00  F0 00 20 29 02 0E 18 00  F7
+
+            // 00  F0 00 20 29 02 0E 10 01  F7
+            // 00  F0 00 20 29 02 0E 00 00  00 00 F7
+            port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x0E, 0x01, 0xF7]).unwrap();
+
+            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x10, 0x01, 0xF7]).unwrap();
+            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x00, 0x00, 0x00, 0x00, 0xF7]).unwrap();
         });
 
         let mut instance = LoopGridLaunchpad {
@@ -346,7 +383,7 @@ impl LoopGridLaunchpad {
             suppressing: false,
             holding: false,
             holding_at: MidiTime::zero(),
-            selecting: false,
+            shift_held: false,
             selection_override_offset: None,
             refresh_loop_length_in: None,
 
@@ -380,7 +417,8 @@ impl LoopGridLaunchpad {
             // out state
             current_swing: 0.0,
             out_transforms: HashMap::new(),
-            pending_repeat: HashMap::new(),
+            repeat_states: HashMap::new(),
+
             out_values: HashMap::new(),
             grid_out: HashMap::new(),
             select_out: Light::Off,
@@ -390,7 +428,6 @@ impl LoopGridLaunchpad {
             // display state
             active: HashSet::new(),
             recording: HashSet::new(),
-            clear_repeats: HashSet::new(),
 
             last_beat_light: RIGHT_SIDE_BUTTONS[7],
             last_repeat_light: RIGHT_SIDE_BUTTONS[7],
@@ -443,8 +480,9 @@ impl LoopGridLaunchpad {
         // create base level undo
         instance.loop_state.set(base_loop);
 
-        instance.launchpad_output.send(&[176, TOP_BUTTONS[5], Light::RedLow.value()]).unwrap();
-        instance.launchpad_output.send(&[176, TOP_BUTTONS[6], Light::BlueDark.value()]).unwrap();
+        instance.launchpad_output.send(&[176, HOLD_BUTTON, Light::BlueDark.value()]).unwrap();
+        instance.launchpad_output.send(&[176, SUPPRESS_BUTTON, Light::RedLow.value()]).unwrap();
+        instance.launchpad_output.send(&[176, SESSION_BUTTON, Light::BlueDark.value()]).unwrap();
         instance.refresh_loop_button();
         instance.refresh_undo_redo_lights();
         instance.refresh_selected_bank();
@@ -459,7 +497,7 @@ impl LoopGridLaunchpad {
     fn launchpad_input_event (&mut self, event: LaunchpadEvent) {
         match event {
             LaunchpadEvent::LoopButton(pressed) => {
-                if self.selecting_scale && self.selecting {
+                if self.selecting_scale && self.shift_held {
                     if pressed {
                         self.tap_tempo();
                     }
@@ -479,7 +517,7 @@ impl LoopGridLaunchpad {
                     } else if self.selection.len() > 0 {
                         self.clear_loops(TransformTarget::Selected, true);
                     } else {
-                        if self.selecting {
+                        if self.shift_held {
                             self.clear_loops(TransformTarget::All, false);
                             self.clear_automation()
                         } else {
@@ -495,10 +533,10 @@ impl LoopGridLaunchpad {
             },
             LaunchpadEvent::UndoButton(pressed) => {
                 if pressed {
-                    if self.selecting && self.selecting_scale_held {
+                    if self.shift_held && self.selecting_scale_held {
                         // nudge clock backwards (modify timing of existing loop)
                         // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
-                    } else if self.selecting {
+                    } else if self.shift_held {
                         self.halve_loop_length();
                     } else if self.selection.len() > 0 {
                         self.undo_selection();
@@ -509,10 +547,10 @@ impl LoopGridLaunchpad {
             },
             LaunchpadEvent::RedoButton(pressed) => {
                 if pressed {
-                    if self.selecting && self.selecting_scale_held {
+                    if self.shift_held && self.selecting_scale_held {
                         // nudge clock forwards
                         // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
-                    } else if self.selecting { 
+                    } else if self.shift_held { 
                         self.double_loop_length();
                     } else if self.selection.len() > 0 {
                         self.redo_selection();
@@ -545,8 +583,8 @@ impl LoopGridLaunchpad {
                 self.refresh_selecting_scale();
                 self.refresh_undo_redo_lights();
             }
-            LaunchpadEvent::SelectButton(pressed) => {
-                self.selecting = pressed;
+            LaunchpadEvent::ShiftButton(pressed) => {
+                self.shift_held = pressed;
                 if pressed {
                     self.clear_selection()
                 }
@@ -557,7 +595,7 @@ impl LoopGridLaunchpad {
             },
             LaunchpadEvent::LengthButton {id, pressed} => {
                 if pressed {
-                    if self.selecting {
+                    if self.shift_held {
                         // nudge align offset
                         let nudge_offset = ALIGN_OFFSET_NUDGES[id % ALIGN_OFFSET_NUDGES.len()];
                         self.nudge(nudge_offset);
@@ -578,8 +616,8 @@ impl LoopGridLaunchpad {
                 if self.currently_held_rates.len() > 0 {
                     let id = *self.currently_held_rates.iter().last().unwrap();
                     let rate = REPEAT_RATES[id as usize];
+                    self.repeat_off_beat = self.shift_held;
                     self.set_rate(rate);
-                    self.repeat_off_beat = self.selecting;
                     self.repeating = id > 0 || self.repeat_off_beat;
                 }
             },
@@ -626,12 +664,12 @@ impl LoopGridLaunchpad {
     fn drain_input_events (&mut self) {
         let loop_change_events: Vec<LoopStateChange> = self.loop_state.change_queue.try_iter().collect();
         for event in loop_change_events {
-            self.loop_length = self.loop_state.get().length;
             self.initial_loop();
             self.refresh_active();
             self.refresh_loop_length();
 
             if event == LoopStateChange::Set {
+                self.loop_length = self.loop_state.get().length;
                 self.clear_recording();
             }
         }
@@ -677,14 +715,26 @@ impl LoopGridLaunchpad {
         if range.ticked {
             
             // clear repeats from last cycle
-            for id in &self.clear_repeats.clone() {
-                self.pending_repeat.remove(id);
-                if !self.currently_held_inputs.contains(&(id % 64)) {
-                    self.refresh_override(*id);
-                    self.refresh_grid_button(*id);
+            let mut to_refresh = Vec::new();
+
+            for (id, repeat_state) in &mut self.repeat_states {
+                if repeat_state.phase != RepeatPhase::None && self.last_pos >= repeat_state.to {
+                    if let Some(LoopTransform::Repeat{rate, offset, ..}) = self.override_values.get(&id) {
+                        repeat_state.to = next_repeat(self.last_pos + MidiTime::tick(), *rate, *offset);
+                        repeat_state.phase = RepeatPhase::Current;
+                    } else {
+                        repeat_state.phase = RepeatPhase::None;
+                        if !self.currently_held_inputs.contains(&(id % 64)) {
+                            to_refresh.push(id.clone())
+                        }
+                    }
                 }
             }
-            self.clear_repeats.clear();
+
+            for id in to_refresh {
+                self.refresh_override(id);
+                self.refresh_grid_button(id);
+            }
             
             // handle revert of loop length button
             if let Some(remain) = self.refresh_loop_length_in {
@@ -809,21 +859,21 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_undo_redo_lights (&mut self) {
-        let color = if self.selecting_scale_held && self.selecting {
+        let color = if self.selecting_scale_held && self.shift_held {
             // nudging
             Light::Orange
-        } else if self.selecting {
+        } else if self.shift_held {
             Light::GreenLow
         } else {
             Light::RedLow
         };
 
-        self.launchpad_output.send(&[176, TOP_BUTTONS[2], color.value()]).unwrap();
-        self.launchpad_output.send(&[176, TOP_BUTTONS[3], color.value()]).unwrap();
+        self.launchpad_output.send(&[176, UNDO_BUTTON, color.value()]).unwrap();
+        self.launchpad_output.send(&[176, REDO_BUTTON, color.value()]).unwrap();
     }
 
     fn refresh_loop_button (&mut self) {
-        self.launchpad_output.send(&[176, TOP_BUTTONS[0], Light::YellowMed.value()]).unwrap();
+        self.launchpad_output.send(&[176, LOOP_BUTTON, Light::YellowMed.value()]).unwrap();
     }
 
     fn refresh_loop_length (&mut self) {
@@ -864,7 +914,7 @@ impl LoopGridLaunchpad {
             self.currently_held_inputs.remove(index);
         }
 
-        if self.selecting && value.is_on() {
+        if self.shift_held && value.is_on() {
             if self.selection.contains(&id) {
                 self.selection.remove(&scale_id);
                 self.selection.remove(&id);
@@ -953,9 +1003,14 @@ impl LoopGridLaunchpad {
 
         if changed {
 
-            if let LoopTransform::Repeat {..} = transform {
+            if let LoopTransform::Repeat {rate, offset, ..} = transform {
                 if matches!(transform, LoopTransform::Repeat {..}) && !matches!(original_value, Some(LoopTransform::Repeat {..})) {
-                    self.pending_repeat.insert(id, transform.clone());
+                    // we want to make sure this repeat does full gate cycle, calculate end time from current position
+                    let to = next_repeat(self.last_pos + rate, rate, offset);
+                    self.queue_repeat_trigger(id, transform.clone(), to)
+                } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
+                    // handle changing velocity
+                    repeat_state.transform = transform
                 }
             }
 
@@ -974,9 +1029,18 @@ impl LoopGridLaunchpad {
             }
         }
     }
+
+    fn queue_repeat_trigger (&mut self, id: u32, transform: LoopTransform, to: MidiTime) {
+        self.repeat_states.insert(id, RepeatState {
+            phase: RepeatPhase::Pending,
+            transform,
+            to
+        });
+    }
     
     fn refresh_override (&mut self, id: u32) {
         // use frozen loop if present
+
         let loop_collection = if let Some(frozen_loop) = &self.frozen_loop {
             frozen_loop
         } else {
@@ -991,7 +1055,7 @@ impl LoopGridLaunchpad {
             None
         };
 
-        let mut transform = get_transform(id, &self.sustained_values, &self.override_values, &self.selection, &self.selection_override, &loop_collection, selection_override_loop_collection, &self.pending_repeat, &self.no_suppress);
+        let mut transform = get_transform(id, &self.sustained_values, &self.override_values, &self.selection, &self.selection_override, &loop_collection, selection_override_loop_collection, &self.repeat_states, &self.no_suppress);
 
         // suppress if there are inputs held and monophonic scheduling
         if get_schedule_mode(id, &self.chunks, &self.mapping) == ScheduleMode::Monophonic && transform.is_active() {
@@ -1030,7 +1094,7 @@ impl LoopGridLaunchpad {
         let base_id = id % 64;
 
         let in_scale_view = (self.selecting_scale && (self.selection.len() == 0 || !self.selection.contains(&id))) || 
-            (self.selecting && self.selecting_scale_held) || 
+            (self.shift_held && self.selecting_scale_held) || 
             self.selection.contains(&(base_id + 64));
 
         let (id, background_id) = if in_scale_view {
@@ -1191,7 +1255,7 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_select_state (&mut self) {
-        let new_state = if self.selecting {
+        let new_state = if self.shift_held {
             Light::Green
         } else if self.selection.len() > 0 {
             Light::GreenLow
@@ -1200,7 +1264,7 @@ impl LoopGridLaunchpad {
         };
 
         if self.select_out != new_state {
-            self.launchpad_output.send(&[178, TOP_BUTTONS[7], new_state.value()]).unwrap();
+            self.launchpad_output.send(&[178, SHIFT_BUTTON, new_state.value()]).unwrap();
             self.select_out = new_state;
         }
     }
@@ -1208,6 +1272,10 @@ impl LoopGridLaunchpad {
     fn event (&mut self, event: LoopEvent) {
         if let Some(mapped) = self.mapping.get(&Coords::from(event.id)).copied() {
             let new_value = event.value.clone();
+            // if new_value.is_on() && new_value.value() < 25 {
+            //     // reject less than 10 velocity
+            //     return
+            // }
             match maybe_update(&mut self.out_values, event.id, new_value) {
                 Some(_) => {
                     if let Some(chunk) = self.chunks.get(mapped.chunk_index) {
@@ -1224,15 +1292,25 @@ impl LoopGridLaunchpad {
                     
                     self.refresh_grid_button(event.id);
                     self.trigger_chunk(mapped, new_value);
+
+                    self.handle_repeat_trigger(event.id, new_value);
                 },
                 None => ()
             };
         
             self.recorder.add(event);
 
-            // handle clearing of "early repeat" releasing
-            if new_value.is_on() && self.pending_repeat.contains_key(&event.id) {
-                self.clear_repeats.insert(event.id);
+            // ensuring that repeat state completes a single cycle even if button is released early
+
+        }
+    }
+
+    fn handle_repeat_trigger (&mut self, id: u32, value: OutputValue) {
+        if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
+            if value.is_on() && repeat_state.phase == RepeatPhase::Pending {
+                repeat_state.phase = RepeatPhase::Current;
+            } else if !value.is_on() && repeat_state.phase == RepeatPhase::Current {
+                repeat_state.phase = RepeatPhase::Triggered;
             }
         }
     }
@@ -1250,7 +1328,7 @@ impl LoopGridLaunchpad {
         self.commit_selection_override();   
         self.loop_held = true;
         self.loop_from = self.last_pos.round();
-        self.launchpad_output.send(&[176, TOP_BUTTONS[0], Light::Green.value()]).unwrap();
+        self.launchpad_output.send(&[176, LOOP_BUTTON, Light::Green.value()]).unwrap();
     }
 
     fn end_loop (&mut self) {
@@ -1289,8 +1367,8 @@ impl LoopGridLaunchpad {
         }
 
         for id in 0..128 {
-            // include ids that are recording, or if self.selecting, all active IDs!
-            let selected = self.selecting || self.selection.contains(&id);
+            // include ids that are recording, or if self.shift_held, all active IDs!
+            let selected = self.shift_held || self.selection.contains(&id);
             if recording_ids.contains(&id) || (selected && self.active.contains(&id)) {
 
                 // only include in loop if there are items in the range
@@ -1344,7 +1422,7 @@ impl LoopGridLaunchpad {
             } else {
                 Light::Off
             };
-            self.launchpad_output.send(&[176, TOP_BUTTONS[1], color.value()]).unwrap();
+            self.launchpad_output.send(&[176, FLATTEN_BUTTON, color.value()]).unwrap();
         }
     }
 
@@ -1469,9 +1547,9 @@ impl LoopGridLaunchpad {
 
     fn refresh_selecting_scale (&mut self) {
         if self.selecting_scale {
-            self.launchpad_output.send(&[178, TOP_BUTTONS[6], Light::Yellow.value()]).unwrap();    
+            self.launchpad_output.send(&[178, SESSION_BUTTON, Light::Yellow.value()]).unwrap();    
         } else {
-            self.launchpad_output.send(&[176, TOP_BUTTONS[6], Light::BlueDark.value()]).unwrap();
+            self.launchpad_output.send(&[176, SESSION_BUTTON, Light::BlueDark.value()]).unwrap();
         };
 
 
@@ -1487,13 +1565,16 @@ impl LoopGridLaunchpad {
 
         let mut to_update = HashMap::new();
         for (id, value) in &self.override_values {
-            if let Some(mapped) = self.mapping.get(&Coords::from(*id)) {
+            if let Some(_) = self.mapping.get(&Coords::from(*id)) {
                 if let &LoopTransform::Repeat {rate: _, offset, value} = value {
                     to_update.insert(*id, LoopTransform::Repeat {rate: self.rate, offset, value});
                 }
             }
         }
         for (id, value) in to_update {
+            if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
+                repeat_state.transform = value.clone();
+            }
             self.override_values.insert(id, value);
             self.refresh_override(id);
         }
@@ -1513,7 +1594,7 @@ impl LoopGridLaunchpad {
             } else {
                 None
             };
-            let transform = get_transform(id, &self.sustained_values, &self.override_values, &self.selection, &self.selection_override, &loop_collection, selection_override_loop_collection, &self.pending_repeat, &self.no_suppress);
+            let transform = get_transform(id, &self.sustained_values, &self.override_values, &self.selection, &self.selection_override, &loop_collection, selection_override_loop_collection, &self.repeat_states, &self.no_suppress);
             
             if self.out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
                 self.out_transforms.insert(id, transform);
@@ -1707,7 +1788,7 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     (midi_to_id, id_to_midi)
 }
 
-fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>, pending_repeat: &HashMap<u32, LoopTransform>, no_suppress: &HashSet<u32>) -> LoopTransform {
+fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, override_values: &HashMap<u32, LoopTransform>, selection: &HashSet<u32>, selection_override: &LoopTransform, loop_collection: &LoopCollection, override_collection: Option<&LoopCollection>, repeat_states: &HashMap<u32, RepeatState>, no_suppress: &HashSet<u32>) -> LoopTransform {
     let mut result = LoopTransform::None;
 
     let collection = if selection.contains(&id) && override_collection.is_some() {
@@ -1725,7 +1806,7 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
     }
 
     let sustained_value = sustained_values.get(&id);
-    let pending_repeat_value = pending_repeat.get(&id);
+
 
     // use the sustained value if override value is none
     // what a mess!
@@ -1740,9 +1821,12 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
     }
 
     // handle triggering of "early repeat"
-    if !result.is_active() && pending_repeat_value.is_some() {
-        result = pending_repeat_value.unwrap().clone()
+    if let Some(repeat_state) = repeat_states.get(&id) {
+        if repeat_state.phase != RepeatPhase::None {
+            result = repeat_state.transform.clone()
+        }
     }
+  
 
     result
 }

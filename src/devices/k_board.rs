@@ -45,7 +45,7 @@ impl KBoard {
                 }
             });
 
-            let mut last_scale = Scale {root: 0, scale: 0, sample_group_a: 0, sample_group_b: 0};
+            let mut last_scale = Scale {root: 0, scale: 0, offset: 0};
             let mut tick = 0;
             loop {
                 thread::sleep(Duration::from_millis(50));
