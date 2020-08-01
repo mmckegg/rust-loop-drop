@@ -73,23 +73,23 @@ impl Triggerable for MidiKeys {
     }
 
     fn on_tick (&mut self, _: MidiTime) {
-        // let mut to_update = HashMap::new();
+        let mut to_update = HashMap::new();
 
-        // for (id, (note_id, velocity)) in &self.output_values {
-        //     let new_note_id = get_note_id(*id, &self.scale, &self.offset);
-        //     if note_id != &new_note_id {
-        //         for midi_output in &mut self.midi_outputs {
-        //             midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
-        //         }
-        //         to_update.insert(id.clone(), (new_note_id, velocity.clone()));
-        //     }
-        // }
+        for (id, (note_id, velocity)) in &self.output_values {
+            let new_note_id = get_note_id(*id, &self.scale, &self.offset);
+            if note_id != &new_note_id {
+                for midi_output in &mut self.midi_outputs {
+                    midi_output.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
+                }
+                to_update.insert(id.clone(), (new_note_id, velocity.clone()));
+            }
+        }
 
-        // for (id, item) in to_update {
-        //     for midi_output in &mut self.midi_outputs {
-        //         midi_output.send(&[144 + self.midi_channel - 1, item.0, item.1]).unwrap();
-        //     }
-        //     self.output_values.insert(id, item);
-        // }
+        for (id, item) in to_update {
+            for midi_output in &mut self.midi_outputs {
+                midi_output.send(&[144 + self.midi_channel - 1, item.0, item.1]).unwrap();
+            }
+            self.output_values.insert(id, item);
+        }
     }
 }
