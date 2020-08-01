@@ -221,6 +221,8 @@ fn main() {
         }
     });
 
+    let mut clock_blackbox_output_port = blackbox_output_port.clone();
+
     for range in Scheduler::start(all_io_name) {
         launchpad.schedule(range);
 
@@ -228,7 +230,10 @@ fn main() {
             let pos = MidiTime::from_ticks(range.from.ticks());
             let length = MidiTime::tick();
             twister.schedule(pos, length);
-            vt4.schedule(pos, length)
+            vt4.schedule(pos, length);
+            if pos % MidiTime::from_beats(32) == MidiTime::zero() {
+                clock_blackbox_output_port.send(&[250]);
+            }
         }
     }
 }
