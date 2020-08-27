@@ -1,6 +1,6 @@
 use std::time::{SystemTime, Duration};
 use std::sync::{Arc, Mutex, MutexGuard};
-use ::chunk::{Triggerable, OutputValue, LatchMode};
+use ::chunk::{Triggerable, OutputValue, ScheduleMode, LatchMode};
 use std::collections::HashSet;
 
 pub use ::scale::{Scale, Offset};
@@ -21,7 +21,7 @@ impl Triggerable for RootSelect {
             OutputValue::Off => {},
             OutputValue::On(velocity) => {
                 let mut current_scale = self.scale.lock().unwrap();
-                current_scale.root = 64 + (id as i32);
+                current_scale.root = 52 + (id as i32);
             }
         }
     }
@@ -30,11 +30,14 @@ impl Triggerable for RootSelect {
         let current_scale = self.scale.lock().unwrap();
 
         let mut result = HashSet::new();
-        if current_scale.root >= 64 {
-            result.insert(current_scale.root as u32 - 64);
+        if current_scale.root >= 52 {
+            result.insert(current_scale.root as u32 - 52);
         }
+
+        println!("{:?}", result);
         Some(result)
     }
 
-    fn latch_mode (&self) -> LatchMode { LatchMode::LatchSingle }
+    fn latch_mode (&self) -> LatchMode { LatchMode::NoSuppress }
+    fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::Monophonic }
 }

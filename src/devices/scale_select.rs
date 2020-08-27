@@ -1,6 +1,6 @@
 use std::time::{SystemTime, Duration};
 use std::sync::{Arc, Mutex, MutexGuard};
-use ::chunk::{Triggerable, OutputValue, LatchMode};
+use ::chunk::{Triggerable, OutputValue, ScheduleMode, LatchMode};
 use std::collections::HashSet;
 
 pub use ::scale::{Scale, Offset};
@@ -36,6 +36,6 @@ impl Triggerable for ScaleSelect {
         Some(result)
     }
 
-
-    fn latch_mode (&self) -> LatchMode { LatchMode::LatchSingle }
+    fn latch_mode (&self) -> LatchMode { LatchMode::NoSuppress }
+    fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::Monophonic }
 }

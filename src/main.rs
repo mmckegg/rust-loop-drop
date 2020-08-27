@@ -25,12 +25,12 @@ mod throttled_output;
 mod scheduler;
 
 use scale::{Scale, Offset};
-use clock_source::ClockSource;
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
 use chunk::{Shape, Coords, ChunkMap, RepeatMode};
 use std::sync::atomic::AtomicUsize;
 use ::midi_time::MidiTime;
-use scheduler::Scheduler;
+use scheduler::{Scheduler, ScheduleRange};
+use std::sync::mpsc;
 
 const APP_NAME: &str = "Loop Drop";
 
@@ -44,9 +44,12 @@ fn main() {
     println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
     
     let all_io_name = "RK006"; // All out
+    let rk006_input_2 = "RK006 PORT 3"; // 2
+
     let blackbox_io_name = "RK006 PORT 2"; // 1
     let zoia_io_name = "RK006 PORT 3"; // 2
     let dd_io_name = "RK006 PORT 4"; // 3
+    let rk006_output_4 = "RK006 PORT 5"; // 4
     let sh01a_io_name = "Boutique";
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
@@ -70,8 +73,6 @@ fn main() {
     }));
     
     let drum_velocities = Arc::new(Mutex::new(HashMap::new()));
-    let slicer_mode = devices::BlackboxSlicerModeChooser::default_value();
-    let slicer_bank = devices::BlackboxSlicerBankChooser::default_value();
 
     { // release lock
         let mut v = drum_velocities.lock().unwrap();
@@ -83,31 +84,26 @@ fn main() {
     let geode_offset = Offset::new(0, -4);
     let keys_offset = Offset::new(-1, -4);
 
-    let dd_output_port = midi_connection::get_shared_output(dd_io_name);
+    let mut dd_output_port = midi_connection::get_shared_output(dd_io_name);
     let sh01a_output_port = midi_connection::get_shared_output(sh01a_io_name);
     let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
+    let rk006_output_4_port = midi_connection::get_shared_output(rk006_output_4);
     let all_output_port = midi_connection::get_shared_output(all_io_name);
     
     let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
     let ju06a_output_port = midi_connection::get_shared_output(ju06_io_name);
     let geode_output_port = midi_connection::get_shared_output(geode_io_name);
 
-
-    // let mut clock = ClockSource::new(all_io_name, vec![
-    //     all_output_port.clone(),
-    //     // zoia_output_port.clone(),
-    //     vt4_output_port.clone(),
-    //     midi_connection::get_shared_output(launchpad_io_name)
-    // ]);
-
-    // auto send clock start every 32 beats (for arp sync)
-    // clock.sync_clock_start(blofeld_output_port.clone());
-
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
 
+        // EXT SYNTH
+        // Send this to Geode, Blackbox (channel 1), Blackbox (channel 2 but as slicer rather than pitch), and RK-006 port 4 (TRS)
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![geode_output_port.clone(), blackbox_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+            Box::new(devices::MultiChunk::new(vec![
+                Box::new(devices::MidiKeys::new(vec![geode_output_port.clone(), blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+                Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), 2))
+            ])),
             Coords::new(0 + 8, 0),
             Shape::new(3, 8),
             125, // gross
@@ -115,8 +111,13 @@ fn main() {
             RepeatMode::Global
         ),
 
+        // EXT SYNTH OFFSET 
+        // (also sends pitch mod on channel 2 for slicer)
         ChunkMap::new(
-            Box::new(devices::OffsetChunk::new(Arc::clone(&geode_offset))),
+            Box::new(devices::MultiChunk::new(vec![
+                Box::new(devices::OffsetChunk::new(Arc::clone(&geode_offset))),
+                Box::new(devices::PitchOffsetChunk::new(blackbox_output_port.clone(), 2))
+            ])),
             Coords::new(3 + 8, 0), 
             Shape::new(1, 8),
             12, // soft yellow
@@ -124,6 +125,7 @@ fn main() {
             RepeatMode::None
         ),
 
+        // BASS OFFSET
         ChunkMap::new(
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))),
             Coords::new(4 + 8, 0), 
@@ -133,6 +135,7 @@ fn main() {
             RepeatMode::None
         ),
 
+        // SYNTH OFFSET
         ChunkMap::new(
             Box::new(devices::OffsetChunk::new(Arc::clone(&keys_offset))), 
             Coords::new(5 + 8, 0), 
@@ -142,24 +145,27 @@ fn main() {
             RepeatMode::None
         ),
         
+        // ROOT NOTE SELECTOR
         ChunkMap::new(
-            Box::new(devices::RootOffsetChunk::new(Arc::clone(&scale))), 
+            Box::new(devices::RootSelect::new(Arc::clone(&scale))), 
             Coords::new(6 + 8, 0), 
-            Shape::new(1, 8),
-            35, // green
+            Shape::new(2, 8),
+            35, // soft green
             None,
             RepeatMode::None
         ),
 
+        // SCALE MODE SELECTOR
         ChunkMap::new(
-            Box::new(devices::ScaleOffsetChunk::new(Arc::clone(&scale))), 
-            Coords::new(7 + 8, 0), 
+            Box::new(devices::ScaleSelect::new(Arc::clone(&scale))), 
+            Coords::new(16, 0), 
             Shape::new(1, 8),
-            32, // blue
+            0, // black
             None,
             RepeatMode::None
         ),
 
+        // DRUMS
         ChunkMap::new(
             Box::new(devices::DoubleDrummer::new(dd_output_port.clone(), 1, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
@@ -169,6 +175,7 @@ fn main() {
             RepeatMode::Global
         ),
 
+        // SAMPLER
         ChunkMap::new(
             Box::new(devices::BlackboxSample::new(blackbox_output_port.clone(), 10)), 
             Coords::new(1, 0), 
@@ -178,6 +185,7 @@ fn main() {
             RepeatMode::Global
         ),
 
+        // BASS
         ChunkMap::new(
             Box::new(devices::MidiKeys::new(vec![sh01a_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
@@ -187,6 +195,7 @@ fn main() {
             RepeatMode::Global
         ),
 
+        // SYNTH
         ChunkMap::new(
             Box::new(devices::MidiKeys::new(vec![ju06a_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
@@ -202,6 +211,7 @@ fn main() {
     let twister = devices::Twister::new("Midi Fighter Twister",
         sh01a_output_port.clone(),
         ju06a_output_port.clone(),
+        dd_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
         Arc::clone(&params)
@@ -214,26 +224,38 @@ fn main() {
     let mut ju06a_output_port_clock = ju06a_output_port.clone();
     let mut sh01a_output_port_clock = sh01a_output_port.clone();
 
-    let _clock = midi_connection::get_input(all_io_name, move |_stamp, msg| {
-        if msg[0] == 248 {
-            ju06a_output_port_clock.send(msg).unwrap();
-            sh01a_output_port_clock.send(msg).unwrap();
+    let mut clock_blackbox_output_port = blackbox_output_port.clone();
+    let mut loopback_blackbox_output_port = blackbox_output_port.clone();
+    let mut rk006_output_4_port_clock = rk006_output_4_port.clone();
+
+    let _bbx_loopback = midi_connection::get_input(rk006_input_2, move |_stamp, msg| {
+        // messages on channels 1 - 9 are forwarded back into blackbox
+        if (msg[0] >= 128 && msg[0] < 128 + 9) || (msg[0] >= 144 && msg[0] < 144 + 9) {
+            loopback_blackbox_output_port.send(msg).unwrap();
         }
     });
 
-    let mut clock_blackbox_output_port = blackbox_output_port.clone();
-
-    for range in Scheduler::start(all_io_name) {
-        launchpad.schedule(range);
-
+    for range in Scheduler::start(sh01a_io_name) {
+        // sending clock is the highest priority, so lets do these first
         if range.ticked {
-            let pos = MidiTime::from_ticks(range.from.ticks());
-            let length = MidiTime::tick();
-            twister.schedule(pos, length);
-            vt4.schedule(pos, length);
-            if pos % MidiTime::from_beats(32) == MidiTime::zero() {
-                clock_blackbox_output_port.send(&[250]);
+            if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
+                clock_blackbox_output_port.send(&[250]).unwrap();
+                rk006_output_4_port_clock.send(&[250]).unwrap();
             }
+            ju06a_output_port_clock.send(&[248]).unwrap();
+        }
+        
+        // the schedule the beats
+        launchpad.schedule(range);
+        
+        // now for the lower priority stuff
+        if range.ticked {
+            let length = MidiTime::tick();
+            twister.schedule(range.tick_pos, length);
+            vt4.schedule(range.tick_pos, length);
+
+            // keep the sh01a midi input active (otherwise it stops responding to incoming midi immediately)
+            sh01a_output_port_clock.send(&[254]).unwrap();
         }
     }
 }

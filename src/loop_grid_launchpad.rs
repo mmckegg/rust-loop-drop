@@ -27,7 +27,7 @@ const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
 const BOTTOM_BUTTONS_A: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
 const BOTTOM_BUTTONS_B: [u8; 4] = [1, 2, 3, 4];
 const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
-const BANK_COLORS: [u8; 4] = [15, 9, 59, 43];
+const BANK_COLORS: [u8; 4] = [15, 9, 48, 17];
 
 
 const LOOP_BUTTON: u8 = TOP_BUTTONS[0];
@@ -39,7 +39,8 @@ const SUPPRESS_BUTTON: u8 = TOP_BUTTONS[5];
 const SESSION_BUTTON: u8 = TOP_BUTTONS[6];
 const SHIFT_BUTTON: u8 = TOP_BUTTONS[7];
 
-const DEFAULT_VELOCITY: u8 = 100;
+// THE LAUNCHPAD PRO MK3 IS JUST TOO DAMN SENSITIVE!
+const VELOCITY_THRESHOLD: u8 = 30;
 
 lazy_static! {
     static ref REPEAT_RATES: [MidiTime; 8] = [
@@ -185,8 +186,7 @@ enum LaunchpadEvent {
     RateButton {id: usize, pressed: bool},
     BankButton {id: usize, pressed: bool},
     SampleButton {id: usize, pressed: bool},
-    GridInput {id: u32, value: OutputValue, stamp: u64},
-    GridPressure {id: u32, value: u8}
+    GridInput {id: u32, value: u8, stamp: u64}
 }
 
 pub struct LoopGridLaunchpad {
@@ -261,6 +261,7 @@ pub struct LoopGridLaunchpad {
 
     out_values: HashMap<u32, OutputValue>,
     grid_out: HashMap<u32, LaunchpadLight>,
+    bottom_button_out: HashMap<u32, LaunchpadLight>,
     select_out: Light,
     last_repeat_light_out: Light,
     last_triggered: HashMap<usize, CircularQueue<u32>>,
@@ -286,19 +287,12 @@ impl LoopGridLaunchpad {
             if message[0] == 144 || message[0] == 128 {
                 let grid_button = midi_to_id.get(&message[1]);
                 if let Some(id) = grid_button {
-                    let id = *id;
-                    let value = if message[2] > 0 {
-                        OutputValue::On(message[2])
-                    } else {
-                        OutputValue::Off
-                    };
-
-                    input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id, value}).unwrap();
+                    input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id: *id, value: message[2]}).unwrap();
                 } ;
             } else if message[0] == 160 { // poly aftertouch
                 let grid_button = midi_to_id.get(&message[1]);
                 if let Some(id) = grid_button {
-                    input_queue_tx.send(LaunchpadEvent::GridPressure {id: *id, value: message[2]}).unwrap();
+                    input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id: *id, value: message[2]}).unwrap();
                 }
             } else if message[0] == 176 {
                 let pressed = message[2] > 0;
@@ -322,6 +316,9 @@ impl LoopGridLaunchpad {
                 } else if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == message[1]) {
                     // use last 4 bottom buttons as bank switchers
                     input_queue_tx.send(LaunchpadEvent::BankButton {id, pressed}).unwrap();
+                } else if let Some(index) = BOTTOM_BUTTONS_A.iter().position(|&x| x == message[1]) {
+                    let id = 128 + index as u32;
+                    input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id, value: message[2]}).unwrap();
                 } else if let Some(id) = BOTTOM_BUTTONS_B.iter().position(|&x| x == message[1]) {
                     input_queue_tx.send(LaunchpadEvent::SampleButton {id, pressed}).unwrap();
                 }
@@ -421,6 +418,7 @@ impl LoopGridLaunchpad {
 
             out_values: HashMap::new(),
             grid_out: HashMap::new(),
+            bottom_button_out: HashMap::new(),
             select_out: Light::Off,
             last_repeat_light_out: Light::Off,
             last_triggered: HashMap::new(),
@@ -480,14 +478,14 @@ impl LoopGridLaunchpad {
         // create base level undo
         instance.loop_state.set(base_loop);
 
-        instance.launchpad_output.send(&[176, HOLD_BUTTON, Light::BlueDark.value()]).unwrap();
-        instance.launchpad_output.send(&[176, SUPPRESS_BUTTON, Light::RedLow.value()]).unwrap();
-        instance.launchpad_output.send(&[176, SESSION_BUTTON, Light::BlueDark.value()]).unwrap();
+        instance.launchpad_output.send(&[176, HOLD_BUTTON, 32]).unwrap();
+        instance.launchpad_output.send(&[176, SUPPRESS_BUTTON, 57]).unwrap();
+        instance.launchpad_output.send(&[176, SESSION_BUTTON, 45]).unwrap();
         instance.refresh_loop_button();
         instance.refresh_undo_redo_lights();
         instance.refresh_selected_bank();
 
-        for id in 0..128 {
+        for id in 0..136 {
             instance.refresh_grid_button(id);
         }
 
@@ -630,11 +628,10 @@ impl LoopGridLaunchpad {
                 }
             },
             LaunchpadEvent::GridInput {id, value, stamp: _} => {
-                self.grid_input(id, value);
-            },
-            LaunchpadEvent::GridPressure {id, value} => {
-                if value > 0 && self.input_values.get(&id).unwrap_or(&OutputValue::Off).is_on() {
+                if value > VELOCITY_THRESHOLD {
                     self.grid_input(id, OutputValue::On(value));
+                } else {
+                    self.grid_input(id, OutputValue::Off);
                 }
             },
             LaunchpadEvent::None => ()
@@ -697,45 +694,20 @@ impl LoopGridLaunchpad {
     }
 
     pub fn schedule (&mut self, range: scheduler::ScheduleRange) {
-
-        
         // only read swing on 8th notes to prevent back scheduling                          
-        if range.ticked && range.from % MidiTime::from_ticks(12) == MidiTime::zero() {
+        if range.ticked && range.to.floor() % MidiTime::from_ticks(12) == MidiTime::zero() {
             self.update_swing();
         }
         
         self.last_raw_pos = range.from;
         self.last_pos = (range.from - self.align_offset).swing(self.current_swing) + self.align_offset;
         self.last_length = (range.to - self.align_offset).swing(self.current_swing) + self.align_offset - self.last_pos;
-        
+
         if range.jumped {
             self.initial_loop();
         }
 
-        if range.ticked {
-            
-            // clear repeats from last cycle
-            let mut to_refresh = Vec::new();
-
-            for (id, repeat_state) in &mut self.repeat_states {
-                if repeat_state.phase != RepeatPhase::None && self.last_pos >= repeat_state.to {
-                    if let Some(LoopTransform::Repeat{rate, offset, ..}) = self.override_values.get(&id) {
-                        repeat_state.to = next_repeat(self.last_pos + MidiTime::tick(), *rate, *offset);
-                        repeat_state.phase = RepeatPhase::Current;
-                    } else {
-                        repeat_state.phase = RepeatPhase::None;
-                        if !self.currently_held_inputs.contains(&(id % 64)) {
-                            to_refresh.push(id.clone())
-                        }
-                    }
-                }
-            }
-
-            for id in to_refresh {
-                self.refresh_override(id);
-                self.refresh_grid_button(id);
-            }
-            
+        if range.ticked {            
             // handle revert of loop length button
             if let Some(remain) = self.refresh_loop_length_in {
                 if remain > 0 { 
@@ -749,12 +721,32 @@ impl LoopGridLaunchpad {
             self.refresh_side_buttons();
             self.refresh_recording();
             self.chunk_tick();
-            
-
         }
 
         // consume launchpad and other controllers
         self.drain_input_events();
+            
+        // clear repeats from last cycle
+        let mut to_refresh = Vec::new();
+
+        for (id, repeat_state) in &mut self.repeat_states {
+            if repeat_state.phase != RepeatPhase::None && self.last_pos >= repeat_state.to {
+                if let Some(LoopTransform::Repeat{rate, offset, ..}) = self.override_values.get(&id) {
+                    repeat_state.to = next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset, self.align_offset);
+                    repeat_state.phase = RepeatPhase::Current;
+                } else {
+                    repeat_state.phase = RepeatPhase::None;
+                    if !self.currently_held_inputs.contains(&(id % 64)) {
+                        to_refresh.push(id.clone())
+                    }
+                }
+            }
+        }
+
+        for id in to_refresh {
+            self.refresh_override(id);
+            self.refresh_grid_button(id);
+        }
 
         let mut events = self.get_events(self.last_pos, self.last_length);
         let mut ranked = HashMap::new();
@@ -804,7 +796,7 @@ impl LoopGridLaunchpad {
     fn refresh_selected_bank (&mut self) {
         for (index, id) in BANK_BUTTONS.iter().enumerate() {
             if self.current_bank == index as u8 {
-                self.launchpad_output.send(&[176, *id as u8, Light::White.value()]).unwrap();
+                self.launchpad_output.send(&[178, *id as u8, Light::White.value()]).unwrap();
             } else {
                 self.launchpad_output.send(&[176, *id as u8, BANK_COLORS[index]]).unwrap();
             }
@@ -905,50 +897,55 @@ impl LoopGridLaunchpad {
     fn grid_input (&mut self, id: u32, value: OutputValue) {
         let current_index = self.currently_held_inputs.iter().position(|v| v == &id);
         let scale_id = id + 64;
-        
+        let mut fresh_trigger = false;
+
         if value.is_on() {
             if current_index == None {
                 self.currently_held_inputs.push(id);
+                fresh_trigger = true;
             }
         } else if let Some(index) = current_index {
             self.currently_held_inputs.remove(index);
         }
 
+        // use fresh_trigger detection to filter out aftertouch changes
         if self.shift_held && value.is_on() {
-            if self.selection.contains(&id) {
-                self.selection.remove(&scale_id);
-                self.selection.remove(&id);
-            } else {
-                if self.selecting_scale { // hack to avoid including drums/vox
-                    self.selection.insert(scale_id);
+            if fresh_trigger {
+                if self.selection.contains(&id) {
+                    self.selection.remove(&scale_id);
+                    self.selection.remove(&id);
                 } else {
-                    self.selection.insert(id);
-                }
-            }
-
-            // range selection
-            if self.currently_held_inputs.len() == 2 {
-                let from = Coords::from(self.currently_held_inputs[0]);
-                let to = Coords::from(self.currently_held_inputs[1]);
-
-                let from_row = u32::min(from.row, to.row);
-                let to_row = u32::max(from.row, to.row) + 1;
-                let from_col = u32::min(from.col, to.col);
-                let to_col = u32::max(from.col, to.col) + 1;
-
-                for row in from_row..to_row {
-                    for col in from_col..to_col {
-                        let row_offset = if self.selecting_scale { 8 } else { 0 };
-                        let id = Coords::id_from(row + row_offset, col);
+                    if self.selecting_scale { // hack to avoid including drums/vox
+                        self.selection.insert(scale_id);
+                    } else {
                         self.selection.insert(id);
-                        self.refresh_grid_button(id);
                     }
                 }
+    
+                // range selection
+                if self.currently_held_inputs.len() == 2 {
+                    let from = Coords::from(self.currently_held_inputs[0]);
+                    let to = Coords::from(self.currently_held_inputs[1]);
+    
+                    let from_row = u32::min(from.row, to.row);
+                    let to_row = u32::max(from.row, to.row) + 1;
+                    let from_col = u32::min(from.col, to.col);
+                    let to_col = u32::max(from.col, to.col) + 1;
+    
+                    for row in from_row..to_row {
+                        for col in from_col..to_col {
+                            let row_offset = if self.selecting_scale { 8 } else { 0 };
+                            let id = Coords::id_from(row + row_offset, col);
+                            self.selection.insert(id);
+                            self.refresh_grid_button(id);
+                        }
+                    }
+                }
+    
+                self.refresh_grid_button(id);
             }
-
-            self.refresh_grid_button(id);
         } else {
-            let in_scale_view = (self.selecting_scale && (self.selection.len() == 0 || !self.selection.contains(&id))) || self.selection.contains(&scale_id);
+            let in_scale_view = id < 128 && (self.selecting_scale && (self.selection.len() == 0 || !self.selection.contains(&id))) || self.selection.contains(&scale_id);
 
             if in_scale_view  {
                 self.input_values.insert(scale_id, value);
@@ -1003,14 +1000,23 @@ impl LoopGridLaunchpad {
 
         if changed {
 
-            if let LoopTransform::Repeat {rate, offset, ..} = transform {
+            if let LoopTransform::Repeat {rate, offset, value} = transform {
                 if matches!(transform, LoopTransform::Repeat {..}) && !matches!(original_value, Some(LoopTransform::Repeat {..})) {
                     // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                    let to = next_repeat(self.last_pos + rate, rate, offset);
+                    let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
                     self.queue_repeat_trigger(id, transform.clone(), to)
                 } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                     // handle changing velocity
-                    repeat_state.transform = transform
+                    if repeat_state.phase == RepeatPhase::Pending && matches!(repeat_state.transform, LoopTransform::Repeat {..}) {
+                        // wow, this is not good rust code :'(
+                        if let LoopTransform::Repeat {value: current_value, ..} = repeat_state.transform {
+                            if value > current_value {
+                                repeat_state.transform = transform
+                            }
+                        }
+                    } else {
+                        repeat_state.transform = transform
+                    }
                 }
             }
 
@@ -1090,7 +1096,60 @@ impl LoopGridLaunchpad {
         }
     }
 
+    fn refresh_bottom_button (&mut self, base_id: u32) {
+        let id = base_id + 128;
+
+        let mapped = self.mapping.get(&Coords::from(id));
+
+        let triggering = if self.out_values.get(&id).unwrap_or(&OutputValue::Off).is_on() {
+            true
+        } else if mapped.is_some() && self.trigger_latch_for.contains_key(&mapped.unwrap().chunk_index) {
+            self.trigger_latch_for.get(&mapped.unwrap().chunk_index).unwrap() == &id
+        } else {
+            false
+        };
+
+        let old_value = self.bottom_button_out.remove(&base_id).unwrap_or(LaunchpadLight::Constant(Light::Off));
+
+        let color = if let Some(mapped) = mapped {
+            self.chunk_colors[mapped.chunk_index]
+        } else {
+            Light::Off
+        };
+
+        let selection_color = Light::Green;
+
+        let new_value = if triggering && self.selection.contains(&id) {
+            LaunchpadLight::Pulsing(Light::White)
+        } else if triggering {
+            LaunchpadLight::Constant(Light::White)
+        } else if self.selection.contains(&id) {
+            LaunchpadLight::Pulsing(selection_color)
+        } else if self.recording.contains(&id) {
+            LaunchpadLight::Pulsing(Light::RedLow)
+        } else if self.active.contains(&id) {
+            LaunchpadLight::Pulsing(color)
+        } else {
+            LaunchpadLight::Constant(color)
+        };
+
+        if new_value != old_value {
+            let midi_id = BOTTOM_BUTTONS_A.get(base_id as usize);
+            let message = match new_value {
+                LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
+                LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value.value()]
+            };
+            self.launchpad_output.send(&message).unwrap();
+        }
+
+        self.bottom_button_out.insert(base_id, new_value);
+    }
+
     fn refresh_grid_button (&mut self, id: u32) {
+        if id >= 128 {
+            return self.refresh_bottom_button(id - 128);
+        }
+
         let base_id = id % 64;
 
         let in_scale_view = (self.selecting_scale && (self.selection.len() == 0 || !self.selection.contains(&id))) || 
@@ -1179,7 +1238,7 @@ impl LoopGridLaunchpad {
             LoopTransform::None
         };
 
-        for id in 0..128 {
+        for id in 0..136 {
             self.refresh_override(id);
         }
     }
@@ -1366,7 +1425,7 @@ impl LoopGridLaunchpad {
             recording_ids.insert(*id);
         }
 
-        for id in 0..128 {
+        for id in 0..136 {
             // include ids that are recording, or if self.shift_held, all active IDs!
             let selected = self.shift_held || self.selection.contains(&id);
             if recording_ids.contains(&id) || (selected && self.active.contains(&id)) {
@@ -1429,7 +1488,7 @@ impl LoopGridLaunchpad {
     fn flatten (&mut self) {
         let mut new_loop = self.loop_state.get().clone();
 
-        for id in 0..128 {
+        for id in 0..136 {
             let mut transform = self.out_transforms.get(&id).unwrap_or(&LoopTransform::None).clone();
             
             // check if there are actually events available for this range
@@ -1453,9 +1512,9 @@ impl LoopGridLaunchpad {
         let mut new_loop = self.loop_state.get().clone();
 
         let ids: Vec<u32> = match target {
-            TransformTarget::All => (0..128).collect(),
-            TransformTarget::Main => (0..128).collect(),
-            TransformTarget::Scale => (0..128).collect(),
+            TransformTarget::All => (0..136).collect(),
+            TransformTarget::Main => (0..64).collect(),
+            TransformTarget::Scale => (64..136).collect(),
             TransformTarget::Selected => self.selection.iter().cloned().collect()
         };
         
@@ -1535,7 +1594,7 @@ impl LoopGridLaunchpad {
             self.sustained_values.clear();
         }
 
-        for id in 0..128 {
+        for id in 0..136 {
             self.refresh_override(id);
         }
 
@@ -1549,7 +1608,7 @@ impl LoopGridLaunchpad {
         if self.selecting_scale {
             self.launchpad_output.send(&[178, SESSION_BUTTON, Light::Yellow.value()]).unwrap();    
         } else {
-            self.launchpad_output.send(&[176, SESSION_BUTTON, Light::BlueDark.value()]).unwrap();
+            self.launchpad_output.send(&[176, SESSION_BUTTON, 45]).unwrap();
         };
 
 
@@ -1582,7 +1641,7 @@ impl LoopGridLaunchpad {
     }
 
     fn initial_loop (&mut self) {
-        for id in 0..128 {
+        for id in 0..136 {
             let loop_collection = if let Some(frozen_loop) = &self.frozen_loop {
                 frozen_loop
             } else {
@@ -1649,6 +1708,7 @@ impl LoopGridLaunchpad {
             self.selection_override_offset = None;
         }
     }
+    
 
     fn get_events (&self, position: MidiTime, length: MidiTime) -> Vec<LoopEvent> {
         let mut result = Vec::new();
@@ -1677,8 +1737,8 @@ impl LoopGridLaunchpad {
                         }
                     },
                     &LoopTransform::Repeat {rate: repeat_rate, offset: repeat_offset, value} => {
-                        let next_on = next_repeat(position - self.align_offset, repeat_rate, repeat_offset) + self.align_offset;
-                        let next_off = next_repeat(position - self.align_offset, repeat_rate, repeat_offset + repeat_rate.half()) + self.align_offset;
+                        let next_on = next_repeat(position, repeat_rate, repeat_offset, self.align_offset);
+                        let next_off = next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half(), self.align_offset);
                         let to = position + length;
 
 
@@ -1759,7 +1819,8 @@ fn maybe_update (hash_map: &mut HashMap<u32, OutputValue>, key: u32, new_value: 
         Entry::Occupied(mut entry) => {
             let old_value = entry.insert(new_value);
 
-            if old_value != new_value {
+            // only notify if the value has changed on state (not the specific value) to avoid double triggers with aftertouch
+            if old_value.is_on() != new_value.is_on() {
                 Some(new_value)
             } else {
                 None
@@ -1783,7 +1844,7 @@ fn get_grid_map () -> (HashMap<u8, u32>, HashMap<u32, u8>) {
             midi_to_id.insert(midi, id);
             id_to_midi.insert(id, midi);
         }
-    } 
+    }
 
     (midi_to_id, id_to_midi)
 }
@@ -1874,13 +1935,16 @@ fn launchpad_text (text: &str) -> Vec<u8> {
     result
 }
 
-fn next_repeat (pos: MidiTime, rate: MidiTime, offset: MidiTime) -> MidiTime {
-    let root = pos.quantize(rate) + (offset % rate);
-    if root < pos {
+fn next_repeat (pos: MidiTime, rate: MidiTime, offset: MidiTime, align_offset: MidiTime) -> MidiTime {
+    let pos_with_align_offset = pos - align_offset;
+    let root = pos_with_align_offset.quantize(rate) + (offset % rate);
+    let result = if root < pos_with_align_offset {
         root + rate
     } else {
         root
-    }
+    };
+
+    result + align_offset
 }
 
 fn get_half_loop_length (time: MidiTime) -> MidiTime {

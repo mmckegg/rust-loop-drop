@@ -42,7 +42,7 @@ impl Triggerable for BlackboxDrums {
                     let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
                     self.midi_port.send(&[144 - 1 + channel, note_id, 0]).unwrap();
                     self.output_values.remove(&id);
-
+                    
                     if id == 0 {
                         self.sync_port.send(&[128 - 1 + self.sync_channel, 36, 0]).unwrap();
                     }
@@ -57,10 +57,10 @@ impl Triggerable for BlackboxDrums {
                 } else {
                     base_velocity
                 };
-
+                
                 let channel = self.midi_channel;
                 let note_id = DRUMS[id as usize % DRUMS.len()];
-
+                
                 // send note
                 self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();           
                 

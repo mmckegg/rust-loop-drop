@@ -10,7 +10,11 @@ pub struct MidiTime {
 
 impl MidiTime {
     pub fn new (ticks: i32, sub_ticks: u8) -> MidiTime {
-        MidiTime { ticks, sub_ticks }
+        if sub_ticks >= SUB_TICKS {
+            MidiTime { ticks, sub_ticks: 0 } + MidiTime::from_sub_ticks(sub_ticks)
+        } else {
+            MidiTime { ticks, sub_ticks }
+        }
     }
     pub fn from_ticks (ticks: i32) -> MidiTime {
         MidiTime { ticks, sub_ticks: 0 }

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
-const DRUMS: [u8; 8] = [36, 37, 38, 41, 42, 43, 44, 45];
+const DRUMS: [u8; 8] = [36, 37, 41, 48, 42, 43, 44, 45];
 
 pub struct DoubleDrummer {
     midi_port: midi_connection::SharedMidiOutputConnection,
@@ -63,7 +63,7 @@ impl Triggerable for DoubleDrummer {
 
                 // send note
                 self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();           
-                
+
                 // send sync if kick
                 if id == 0 {
                     self.sync_port.send(&[144 - 1 + self.sync_channel, 36, velocity]).unwrap();

@@ -3,7 +3,7 @@ use ::midi_connection;
 
 use std::collections::HashMap;
 
-const DRUMS: [u8; 8] = [36, 37, 38, 39, 40, 41, 42, 43];
+const TRIGGERS: [u8; 8] = [48, 49, 50, 51, 44, 45, 46, 47];
 
 pub struct BlackboxSample {
     midi_port: midi_connection::SharedMidiOutputConnection,
@@ -35,7 +35,7 @@ impl Triggerable for BlackboxSample {
                 let velocity = base_velocity;
 
                 let channel = self.midi_channel;
-                let note_id = DRUMS[id as usize % DRUMS.len()];
+                let note_id = TRIGGERS[id as usize % TRIGGERS.len()];
 
                 // send note
                 self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();
