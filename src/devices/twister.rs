@@ -29,6 +29,21 @@ impl Twister {
         let bass_channel = 11;
         let zoia_channel = 14;
         let digit_channel = 15;
+        let dividers = vec![
+            // 25.0,
+            150.0,
+            // 200.0
+            300.0,
+            // 400.0,
+            450.0,
+            600.0,
+            // 800.0,
+            900.0,
+            1200.0,
+            1600.0,
+            1800.0,
+            2400.0
+        ];
 
         let channel_offsets = [10, 20, 30, 40];
 
@@ -112,7 +127,7 @@ impl Twister {
                 Control::Delay1Feedback,
                 Control::Delay1Filter,
                 Control::Delay1Reverb,
-                Control::Delay2Mod,
+                Control::Delay2Divider,
                 Control::Delay2Feedback,
                 Control::Delay2Pitch,
                 Control::Delay2Reverb
@@ -155,7 +170,7 @@ impl Twister {
             last_values.insert(Control::Delay1Filter, 64);
             last_values.insert(Control::Delay1Reverb, 30);
 
-            last_values.insert(Control::Delay2Mod, 30);
+            last_values.insert(Control::Delay2Divider, 115);
             last_values.insert(Control::Delay2Feedback, 64);
             last_values.insert(Control::Delay2Pitch, 64);
             last_values.insert(Control::Delay2Reverb, 10);
@@ -285,7 +300,14 @@ impl Twister {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 63, value]);
                             },
 
-                            Control::Delay2Mod => {
+                            Control::Delay2Divider => {
+                                let index = (midi_to_float(value) * (dividers.len() - 1) as f64 ) as usize;
+                                let divider = dividers[index];
+                                let value = if divider > 0.0 {
+                                    float_to_midi(divider / 2400.0)
+                                } else {
+                                    0
+                                };
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 70, value]);
                             },
 
@@ -586,7 +608,7 @@ enum Control {
     Delay1Filter,
     Delay1Reverb,
 
-    Delay2Mod,
+    Delay2Divider,
     Delay2Feedback,
     Delay2Pitch,
     Delay2Reverb,
@@ -676,7 +698,7 @@ impl Control {
             (3, 1, 1) => Control::Delay1Filter,
             (3, 1, 2) => Control::Delay1Reverb,
 
-            (3, 2, 1) => Control::Delay2Mod,
+            (3, 2, 1) => Control::Delay2Divider,
             (3, 2, 2) => Control::Delay2Feedback,
             (3, 3, 1) => Control::Delay2Pitch,
             (3, 3, 2) => Control::Delay2Reverb,

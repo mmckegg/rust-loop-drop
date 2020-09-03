@@ -48,7 +48,7 @@ fn main() {
 
     let blackbox_io_name = "RK006 PORT 2"; // 1
     let zoia_io_name = "RK006 PORT 3"; // 2
-    let dd_io_name = "RK006 PORT 4"; // 3
+    let cycles_io_name = "Elektron Model:Cycles"; // 3
     let rk006_output_4 = "RK006 PORT 5"; // 4
     let sh01a_io_name = "Boutique";
     let vt4_io_name = "VT-4";
@@ -81,10 +81,10 @@ fn main() {
     }
 
     let bass_offset = Offset::new(-2, -4);
-    let geode_offset = Offset::new(0, -4);
+    let geode_offset = Offset::new(-1, -4);
     let keys_offset = Offset::new(-1, -4);
 
-    let mut dd_output_port = midi_connection::get_shared_output(dd_io_name);
+    let mut cycles_output_port = midi_connection::get_shared_output(cycles_io_name);
     let sh01a_output_port = midi_connection::get_shared_output(sh01a_io_name);
     let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
@@ -101,7 +101,8 @@ fn main() {
         // Send this to Geode, Blackbox (channel 1), Blackbox (channel 2 but as slicer rather than pitch), and RK-006 port 4 (TRS)
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
-                Box::new(devices::MidiKeys::new(vec![geode_output_port.clone(), blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+                Box::new(devices::MidiKeys::new(vec![cycles_output_port.clone(), blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&geode_offset))), 
                 Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), 2))
             ])),
             Coords::new(0 + 8, 0),
@@ -167,9 +168,9 @@ fn main() {
 
         // DRUMS
         ChunkMap::new(
-            Box::new(devices::DoubleDrummer::new(dd_output_port.clone(), 1, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::CyclesDrums::new(cycles_output_port.clone(), 1, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
-            Shape::new(1, 8),
+            Shape::new(1, 6),
             15, // yellow
             Some(0),
             RepeatMode::Global
@@ -211,7 +212,7 @@ fn main() {
     let twister = devices::Twister::new("Midi Fighter Twister",
         sh01a_output_port.clone(),
         ju06a_output_port.clone(),
-        dd_output_port.clone(),
+        cycles_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
         Arc::clone(&params)
@@ -226,7 +227,7 @@ fn main() {
 
     let mut clock_blackbox_output_port = blackbox_output_port.clone();
     let mut loopback_blackbox_output_port = blackbox_output_port.clone();
-    let mut rk006_output_4_port_clock = rk006_output_4_port.clone();
+    let mut cycles_port_clock = rk006_output_4_port.clone();
 
     let _bbx_loopback = midi_connection::get_input(rk006_input_2, move |_stamp, msg| {
         // messages on channels 1 - 9 are forwarded back into blackbox
@@ -240,7 +241,7 @@ fn main() {
         if range.ticked {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
                 clock_blackbox_output_port.send(&[250]).unwrap();
-                rk006_output_4_port_clock.send(&[250]).unwrap();
+                cycles_port_clock.send(&[250]).unwrap();
             }
             ju06a_output_port_clock.send(&[248]).unwrap();
         }

@@ -1,5 +1,6 @@
 // mod k_mix;
 mod blackbox_drums;
+mod cycles_drums;
 mod double_drummer;
 mod blackbox_sample;
 mod keyboard;
@@ -20,6 +21,7 @@ mod multi;
 mod velocity_map;
 
 pub use self::blackbox_drums::BlackboxDrums;
+pub use self::cycles_drums::CyclesDrums;
 pub use self::blackbox_sample::BlackboxSample;
 pub use self::blackbox_slicer::BlackboxSlicer;
 pub use self::multi::MultiChunk;
