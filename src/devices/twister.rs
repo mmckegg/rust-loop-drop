@@ -123,14 +123,14 @@ impl Twister {
             let mut lfo = Lfo::new();
 
             let mut resend_params: Vec<Control> = vec![
-                Control::Delay1Time,
-                Control::Delay1Feedback,
-                Control::Delay1Filter,
-                Control::Delay1Reverb,
-                Control::Delay2Divider,
-                Control::Delay2Feedback,
-                Control::Delay2Pitch,
-                Control::Delay2Reverb
+                Control::ReverbPre,
+                Control::ReverbFeedback,
+                Control::ReverbLow,
+                Control::ReverbHigh,
+                Control::DelayDivider,
+                Control::DelayFeedback,
+                Control::DelayLow,
+                Control::DelayHigh
             ];
 
             for channel in 0..4 {
@@ -165,15 +165,15 @@ impl Twister {
             last_values.insert(Control::SynthVibrato, 0);
             last_values.insert(Control::SynthFilter, 60);
 
-            last_values.insert(Control::Delay1Time, 30);
-            last_values.insert(Control::Delay1Feedback, 64);
-            last_values.insert(Control::Delay1Filter, 64);
-            last_values.insert(Control::Delay1Reverb, 30);
+            last_values.insert(Control::ReverbPre, 0);
+            last_values.insert(Control::ReverbFeedback, 0);
+            last_values.insert(Control::ReverbLow, 30);
+            last_values.insert(Control::ReverbHigh, 50);
 
-            last_values.insert(Control::Delay2Divider, 115);
-            last_values.insert(Control::Delay2Feedback, 64);
-            last_values.insert(Control::Delay2Pitch, 64);
-            last_values.insert(Control::Delay2Reverb, 10);
+            last_values.insert(Control::DelayDivider, 115);
+            last_values.insert(Control::DelayFeedback, 64);
+            last_values.insert(Control::DelayLow, 50);
+            last_values.insert(Control::DelayHigh, 30);
 
             
             last_values.insert(Control::SynthFilter, 60);
@@ -273,34 +273,34 @@ impl Twister {
 
                             Control::ChannelReverb(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 0;
-                                throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, value]);
+                                throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, midi_ease_out(value)]);
                             },
                             Control::ChannelDelay(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 1;
-                                throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, value]);
+                                throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, midi_ease_out(value)]);
                             },
                             Control::ChannelFilter(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 2;
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, value]);
                             },
 
-                            Control::Delay1Time => {
+                            Control::ReverbPre => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 60, value]);
                             },
 
-                            Control::Delay1Feedback => {
+                            Control::ReverbFeedback => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 61, value]);
                             },
 
-                            Control::Delay1Filter=> {
+                            Control::ReverbLow=> {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 62, value]);
                             },
 
-                            Control::Delay1Reverb => {
+                            Control::ReverbHigh => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 63, value]);
                             },
 
-                            Control::Delay2Divider => {
+                            Control::DelayDivider => {
                                 let index = (midi_to_float(value) * (dividers.len() - 1) as f64 ) as usize;
                                 let divider = dividers[index];
                                 let value = if divider > 0.0 {
@@ -311,11 +311,11 @@ impl Twister {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 70, value]);
                             },
 
-                            Control::Delay2Feedback => {
+                            Control::DelayFeedback => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 71, value]);
                             },
 
-                            Control::Delay2Pitch=> {
+                            Control::DelayLow=> {
                                 let value = if value == 63 {
                                     64
                                 } else {
@@ -324,7 +324,7 @@ impl Twister {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 72, value]);
                             },
 
-                            Control::Delay2Reverb => {
+                            Control::DelayHigh => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 73, value]);
                             },
 
@@ -603,15 +603,15 @@ enum Control {
 
     DuckRelease,
 
-    Delay1Time,
-    Delay1Feedback,
-    Delay1Filter,
-    Delay1Reverb,
+    ReverbPre,
+    ReverbFeedback,
+    ReverbLow,
+    ReverbHigh,
 
-    Delay2Divider,
-    Delay2Feedback,
-    Delay2Pitch,
-    Delay2Reverb,
+    DelayDivider,
+    DelayFeedback,
+    DelayLow,
+    DelayHigh,
 
     DrumMod,
 
@@ -693,15 +693,15 @@ impl Control {
             // Bank D
             (3, row, 0) => Control::ChannelDuck(row),
 
-            (3, 0, 1) => Control::Delay1Time,
-            (3, 0, 2) => Control::Delay1Feedback,
-            (3, 1, 1) => Control::Delay1Filter,
-            (3, 1, 2) => Control::Delay1Reverb,
+            (3, 0, 1) => Control::ReverbPre,
+            (3, 0, 2) => Control::ReverbFeedback,
+            (3, 1, 1) => Control::ReverbLow,
+            (3, 1, 2) => Control::ReverbHigh,
 
-            (3, 2, 1) => Control::Delay2Divider,
-            (3, 2, 2) => Control::Delay2Feedback,
-            (3, 3, 1) => Control::Delay2Pitch,
-            (3, 3, 2) => Control::Delay2Reverb,
+            (3, 2, 1) => Control::DelayDivider,
+            (3, 2, 2) => Control::DelayFeedback,
+            (3, 3, 1) => Control::DelayLow,
+            (3, 3, 2) => Control::DelayHigh,
 
             (3, 0, 3) => Control::Swing,
             (3, 1, 3) => Control::DuckRelease,
@@ -744,4 +744,9 @@ fn float_to_midi (value: f64) -> u8 {
 
 fn random_range (from: u8, to: u8) -> u8 {
     rand::thread_rng().gen_range(from, to)
+}
+
+fn midi_ease_out (value: u8) -> u8 {
+    let f = midi_to_float(value);
+    float_to_midi(f * (2.0 - f))
 }

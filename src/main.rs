@@ -227,7 +227,7 @@ fn main() {
 
     let mut clock_blackbox_output_port = blackbox_output_port.clone();
     let mut loopback_blackbox_output_port = blackbox_output_port.clone();
-    let mut cycles_port_clock = rk006_output_4_port.clone();
+    let mut cycles_port_clock = cycles_output_port.clone();
 
     let _bbx_loopback = midi_connection::get_input(rk006_input_2, move |_stamp, msg| {
         // messages on channels 1 - 9 are forwarded back into blackbox
@@ -243,6 +243,7 @@ fn main() {
                 clock_blackbox_output_port.send(&[250]).unwrap();
                 cycles_port_clock.send(&[250]).unwrap();
             }
+            cycles_port_clock.send(&[248]).unwrap();
             ju06a_output_port_clock.send(&[248]).unwrap();
         }
         
