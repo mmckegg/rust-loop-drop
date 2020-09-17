@@ -945,17 +945,20 @@ impl LoopGridLaunchpad {
                 self.refresh_grid_button(id);
             }
         } else {
+            // HACK: filter out aftertouch if that key wasn't already pressed (e.g. after releasing shift while still holding keys)
             let in_scale_view = id < 128 && (self.selecting_scale && (self.selection.len() == 0 || !self.selection.contains(&id))) || self.selection.contains(&scale_id);
-
-            if in_scale_view  {
-                self.input_values.insert(scale_id, value);
-                self.input_values.remove(&id);
+            let (target_id, other_id) = if in_scale_view {
+                (scale_id, id)
             } else {
-                self.input_values.insert(id, value);
-                self.input_values.remove(&(scale_id));
+                (id, scale_id)
+            };
+
+            if !value.is_on() || fresh_trigger || self.input_values.get(&target_id).unwrap_or(&OutputValue::Off).is_on() {
+                self.input_values.insert(target_id, value);
+                self.input_values.remove(&other_id);
+                self.refresh_input(target_id);
+                self.refresh_input(other_id);
             }
-            self.refresh_input(id);
-            self.refresh_input(scale_id);
         }
         self.refresh_should_flatten();
     }

@@ -176,6 +176,16 @@ fn main() {
             RepeatMode::Global
         ),
 
+        // EXTRA PERC (to fill in for only 6 triggers on cycles)
+        ChunkMap::new(
+            Box::new(devices::BlackboxPerc::new(blackbox_output_port.clone(), 10, Arc::clone(&drum_velocities))), 
+            Coords::new(0, 6), 
+            Shape::new(1, 2),
+            9, // orange
+            Some(1),
+            RepeatMode::Global
+        ),
+
         // SAMPLER
         ChunkMap::new(
             Box::new(devices::BlackboxSample::new(blackbox_output_port.clone(), 10)), 
