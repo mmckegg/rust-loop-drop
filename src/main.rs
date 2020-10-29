@@ -53,7 +53,7 @@ fn main() {
     let sh01a_io_name = "Boutique";
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
-    let ju06_io_name = "JU-06A";
+    let streichfett_io_name = "Streichfett";
     let geode_io_name = "USB MIDI";
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
@@ -82,7 +82,7 @@ fn main() {
 
     let bass_offset = Offset::new(-2, -4);
     let geode_offset = Offset::new(-1, -4);
-    let keys_offset = Offset::new(-1, -4);
+    let keys_offset = Offset::new(0, -4);
 
     let mut cycles_output_port = midi_connection::get_shared_output(cycles_io_name);
     let sh01a_output_port = midi_connection::get_shared_output(sh01a_io_name);
@@ -92,7 +92,7 @@ fn main() {
     let all_output_port = midi_connection::get_shared_output(all_io_name);
     
     let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
-    let ju06a_output_port = midi_connection::get_shared_output(ju06_io_name);
+    let streichfett_output_port = midi_connection::get_shared_output(streichfett_io_name);
     let geode_output_port = midi_connection::get_shared_output(geode_io_name);
 
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
@@ -208,7 +208,7 @@ fn main() {
 
         // SYNTH
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![ju06a_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(vec![streichfett_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
             43, // blue
@@ -217,11 +217,11 @@ fn main() {
         )
     ], Arc::clone(&scale), Arc::clone(&params), blackbox_output_port.clone(), 10, 36);
 
-    let _keyboard = devices::KBoard::new(keyboard_io_name, ju06a_output_port.clone(), 1, scale.clone());
+    let _keyboard = devices::KBoard::new(keyboard_io_name, streichfett_output_port.clone(), 1, scale.clone());
 
     let twister = devices::Twister::new("Midi Fighter Twister",
         sh01a_output_port.clone(),
-        ju06a_output_port.clone(),
+        streichfett_output_port.clone(),
         cycles_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
@@ -232,7 +232,7 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
-    let mut ju06a_output_port_clock = ju06a_output_port.clone();
+    let mut streichfett_output_port_clock = streichfett_output_port.clone();
     let mut sh01a_output_port_clock = sh01a_output_port.clone();
 
     let mut clock_blackbox_output_port = blackbox_output_port.clone();
@@ -254,7 +254,7 @@ fn main() {
                 cycles_port_clock.send(&[250]).unwrap();
             }
             cycles_port_clock.send(&[248]).unwrap();
-            ju06a_output_port_clock.send(&[248]).unwrap();
+            streichfett_output_port_clock.send(&[248]).unwrap();
         }
         
         // the schedule the beats

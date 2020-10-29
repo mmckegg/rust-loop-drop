@@ -666,7 +666,6 @@ impl LoopGridLaunchpad {
             self.refresh_loop_length();
 
             if event == LoopStateChange::Set {
-                self.loop_length = self.loop_state.get().length;
                 self.clear_recording();
             }
         }

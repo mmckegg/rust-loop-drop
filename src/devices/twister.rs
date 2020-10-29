@@ -20,7 +20,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, sh01a_output: midi_connection::SharedMidiOutputConnection, ju06_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
+    pub fn new (port_name: &str, sh01a_output: midi_connection::SharedMidiOutputConnection, streichfett_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
@@ -110,7 +110,7 @@ impl Twister {
             let mut throttled_blackbox_output = ThrottledOutput::new(blackbox_output);
             let mut throttled_drum_output = ThrottledOutput::new(drum_output);
             let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
-            let mut ju06_output = ju06_output;
+            let mut streichfett_output = streichfett_output;
 
             let mut current_bank = 0;
 
@@ -411,21 +411,21 @@ impl Twister {
 
 
                             Control::SynthFilter => {
-                                ju06_output.send(&[176, 74, value]);
+                                // streichfett_output.send(&[176, 74, value]);
                             },
 
                             Control::SynthRes => {
-                                ju06_output.send(&[176, 71, value]);
+                                // streichfett_output.send(&[176, 71, value]);
                             },
 
 
                             Control::SynthNoise => {
-                                ju06_output.send(&[176, 19, value]);
+                                // streichfett_output.send(&[176, 19, value]);
                             },
 
 
                             Control::SynthVibrato => {
-                                ju06_output.send(&[176, 13, value]);
+                                // streichfett_output.send(&[176, 13, value]);
                             },
 
                             Control::SynthPitch => {
@@ -435,7 +435,7 @@ impl Twister {
                                 } else {
                                     value
                                 };
-                                ju06_output.send(&[224, 0, value]);
+                                streichfett_output.send(&[224, 0, value]);
                             },
 
                             Control::None => ()
