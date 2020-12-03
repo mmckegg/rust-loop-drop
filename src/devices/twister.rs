@@ -20,7 +20,7 @@ pub struct Twister {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, sh01a_output: midi_connection::SharedMidiOutputConnection, streichfett_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
+    pub fn new (port_name: &str, sh01a_output: midi_connection::SharedMidiOutputConnection, streichfett_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, dfam_pwm_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
@@ -111,6 +111,7 @@ impl Twister {
             let mut throttled_drum_output = ThrottledOutput::new(drum_output);
             let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
             let mut streichfett_output = streichfett_output;
+            let mut dfam_pwm_output = dfam_pwm_output;
 
             let mut current_bank = 0;
 
@@ -182,7 +183,7 @@ impl Twister {
             last_values.insert(Control::BassCutoff, 40);
 
             // a wee bit of swing
-            last_values.insert(Control::Swing, 70);
+            last_values.insert(Control::Swing, 64);
 
             // update display and send all of the start values on load
             for control in control_ids.keys() {
@@ -335,6 +336,7 @@ impl Twister {
                                     value
                                 };
                                 throttled_blackbox_output.send(&[176 + sampler_channel - 1, 1, value]);
+                                dfam_pwm_output.send(&[176, 1, value]);
                             },
                             
                             Control::SamplerMod => {

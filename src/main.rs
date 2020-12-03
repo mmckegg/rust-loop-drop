@@ -28,7 +28,7 @@ use scale::{Scale, Offset};
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
 use chunk::{Shape, Coords, ChunkMap, RepeatMode};
 use std::sync::atomic::AtomicUsize;
-use ::midi_time::MidiTime;
+use ::midi_time::{MidiTime, SUB_TICKS};
 use scheduler::{Scheduler, ScheduleRange};
 use std::sync::mpsc;
 
@@ -48,9 +48,10 @@ fn main() {
 
     let blackbox_io_name = "RK006 PORT 2"; // 1
     let zoia_io_name = "RK006 PORT 3"; // 2
-    let cycles_io_name = "Elektron Model:Cycles"; // 3
+    let typhon_io_name = "RK006 PORT 4"; // 3
+    let tr06s_io_name = "TR-6S";
     let rk006_output_4 = "RK006 PORT 5"; // 4
-    let sh01a_io_name = "Boutique";
+    let dfam_pwm_name = "RK006 PORT 7"; // 6
     let vt4_io_name = "VT-4";
     let keyboard_io_name = "K-Board";
     let streichfett_io_name = "Streichfett";
@@ -84,11 +85,12 @@ fn main() {
     let geode_offset = Offset::new(-1, -4);
     let keys_offset = Offset::new(0, -4);
 
-    let mut cycles_output_port = midi_connection::get_shared_output(cycles_io_name);
-    let sh01a_output_port = midi_connection::get_shared_output(sh01a_io_name);
+    let tr6s_output_port = midi_connection::get_shared_output(tr06s_io_name);
+    let typhon_output_port = midi_connection::get_shared_output(typhon_io_name);
     let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
     let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
     let rk006_output_4_port = midi_connection::get_shared_output(rk006_output_4);
+    let dfam_pwm_name = midi_connection::get_shared_output(dfam_pwm_name);
     let all_output_port = midi_connection::get_shared_output(all_io_name);
     
     let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
@@ -102,7 +104,7 @@ fn main() {
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
                 Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
-                Box::new(devices::MidiKeys::new(vec![cycles_output_port.clone(), blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&geode_offset))), 
                 Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), 2))
             ])),
             Coords::new(0 + 8, 0),
@@ -168,7 +170,7 @@ fn main() {
 
         // DRUMS
         ChunkMap::new(
-            Box::new(devices::CyclesDrums::new(cycles_output_port.clone(), 1, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::TR6s::new(tr6s_output_port.clone(), 10, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
             Shape::new(1, 6),
             15, // yellow
@@ -198,7 +200,7 @@ fn main() {
 
         // BASS
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![sh01a_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(vec![typhon_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
             59, // pink
@@ -220,11 +222,12 @@ fn main() {
     let _keyboard = devices::KBoard::new(keyboard_io_name, streichfett_output_port.clone(), 1, scale.clone());
 
     let twister = devices::Twister::new("Midi Fighter Twister",
-        sh01a_output_port.clone(),
+        typhon_output_port.clone(),
         streichfett_output_port.clone(),
-        cycles_output_port.clone(),
+        tr6s_output_port.clone(),
         blackbox_output_port.clone(),
         zoia_output_port.clone(),
+        dfam_pwm_name.clone(),
         Arc::clone(&params)
     );
 
@@ -232,12 +235,9 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
-    let mut streichfett_output_port_clock = streichfett_output_port.clone();
-    let mut sh01a_output_port_clock = sh01a_output_port.clone();
-
     let mut clock_blackbox_output_port = blackbox_output_port.clone();
     let mut loopback_blackbox_output_port = blackbox_output_port.clone();
-    let mut cycles_port_clock = cycles_output_port.clone();
+    let mut tr6s_clock_output_port = tr6s_output_port.clone();
 
     let _bbx_loopback = midi_connection::get_input(rk006_input_2, move |_stamp, msg| {
         // messages on channels 1 - 9 are forwarded back into blackbox
@@ -246,19 +246,27 @@ fn main() {
         }
     });
 
-    for range in Scheduler::start(sh01a_io_name) {
+    for range in Scheduler::start(tr06s_io_name) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
                 clock_blackbox_output_port.send(&[250]).unwrap();
-                cycles_port_clock.send(&[250]).unwrap();
             }
-            cycles_port_clock.send(&[248]).unwrap();
-            streichfett_output_port_clock.send(&[248]).unwrap();
         }
         
-        // the schedule the beats
-        launchpad.schedule(range);
+        if range.ticked && range.from.ticks() != range.to.ticks() {
+            // HACK: straighten out missing sub ticks into separate schedules
+            let mut a = range.clone();
+            a.to = MidiTime::new(a.to.ticks(), 0);
+            a.tick_pos = MidiTime::new(a.from.ticks(), 0);
+            a.ticked = false;
+            let mut b = range.clone();
+            b.from = MidiTime::new(b.to.ticks(), 0);
+            launchpad.schedule(a);
+            launchpad.schedule(b);
+        } else {
+            launchpad.schedule(range);
+        }
         
         // now for the lower priority stuff
         if range.ticked {
@@ -266,8 +274,8 @@ fn main() {
             twister.schedule(range.tick_pos, length);
             vt4.schedule(range.tick_pos, length);
 
-            // keep the sh01a midi input active (otherwise it stops responding to incoming midi immediately)
-            sh01a_output_port_clock.send(&[254]).unwrap();
+            // keep the tr6s midi input active (otherwise it stops responding to incoming midi immediately)
+            tr6s_clock_output_port.send(&[254]).unwrap();
         }
     }
 }

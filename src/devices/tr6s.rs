@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
-const DRUMS: [u8; 6] = [0, 1, 2, 3, 4, 5];
+const DRUMS: [u8; 6] = [36, 38, 43, 39, 42, 46];
 
-pub struct CyclesDrums {
+pub struct TR6s {
     midi_port: midi_connection::SharedMidiOutputConnection,
     midi_channel: u8,
     sync_port: midi_connection::SharedMidiOutputConnection,
@@ -16,9 +16,9 @@ pub struct CyclesDrums {
     output_values: HashMap<u32, (u8, u8, u8)>
 }
 
-impl CyclesDrums {
+impl TR6s {
     pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sync_port: midi_connection::SharedMidiOutputConnection, sync_channel: u8, velocities: Arc<Mutex<HashMap<u32, u8>>>) -> Self {
-        CyclesDrums {
+        TR6s {
             midi_port,
             sync_port,
             last_pos: MidiTime::zero(),
@@ -30,7 +30,7 @@ impl CyclesDrums {
     }
 }
 
-impl Triggerable for CyclesDrums {
+impl Triggerable for TR6s {
     fn on_tick (&mut self, time: MidiTime) {
         self.last_pos = time;
     }
