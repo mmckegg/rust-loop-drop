@@ -145,7 +145,7 @@ impl Scheduler {
                     }
                 },
                 ScheduleTick::SubTick(duration) => {
-                    if from.sub_ticks() < SUB_TICKS && self.last_tick_at.elapsed() > (duration / 2) {
+                    if from.sub_ticks() < (SUB_TICKS - 1) && self.last_tick_at.elapsed() > (duration / 2) {
                         self.sub_ticks += 1;
                         self.next_pos = MidiTime::new(self.ticks, self.sub_ticks);
                         // println!("SUB TICK {}: {} - {}", (self.next_pos - from).as_float(), from.as_float(), self.next_pos.as_float());
