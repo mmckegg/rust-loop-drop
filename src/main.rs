@@ -82,8 +82,8 @@ fn main() {
     }
 
     let bass_offset = Offset::new(-2, -4);
-    let geode_offset = Offset::new(-1, -4);
     let keys_offset = Offset::new(0, -4);
+    let ext_offset = Offset::new(-1, -4);
 
     let tr6s_output_port = midi_connection::get_shared_output(tr06s_io_name);
     let typhon_output_port = midi_connection::get_shared_output(typhon_io_name);
@@ -103,8 +103,8 @@ fn main() {
         // Send this to Geode, Blackbox (channel 1), Blackbox (channel 2 but as slicer rather than pitch), and RK-006 port 4 (TRS)
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
-                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&geode_offset))), 
-                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&geode_offset))), 
+                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&ext_offset))), 
+                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&ext_offset))), 
                 Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), 2))
             ])),
             Coords::new(0 + 8, 0),
@@ -118,7 +118,7 @@ fn main() {
         // (also sends pitch mod on channel 2 for slicer)
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
-                Box::new(devices::OffsetChunk::new(Arc::clone(&geode_offset))),
+                Box::new(devices::OffsetChunk::new(Arc::clone(&ext_offset))),
                 Box::new(devices::PitchOffsetChunk::new(blackbox_output_port.clone(), 2))
             ])),
             Coords::new(3 + 8, 0), 

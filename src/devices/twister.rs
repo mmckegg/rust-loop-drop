@@ -40,7 +40,7 @@ impl Twister {
             // 800.0,
             900.0,
             1200.0,
-            1600.0,
+            // 1600.0,
             1800.0,
             2400.0
         ];
@@ -144,7 +144,7 @@ impl Twister {
                 resend_params.push(Control::ChannelDelay(channel));
                 resend_params.push(Control::ChannelFilter(channel));
 
-                last_values.insert(Control::ChannelFilterFollower(channel), 64);
+                last_values.insert(Control::ChannelFilter(channel), 64);
                 last_values.insert(Control::ChannelCrush(channel), 0);
                 last_values.insert(Control::ChannelRedux(channel), 0);
                 last_values.insert(Control::ChannelDrive(channel), 0);
@@ -173,11 +173,12 @@ impl Twister {
 
             last_values.insert(Control::DelayDivider, 115);
             last_values.insert(Control::DelayFeedback, 64);
-            last_values.insert(Control::DelayLow, 50);
-            last_values.insert(Control::DelayHigh, 30);
+            last_values.insert(Control::DelayLow, 64);
+            last_values.insert(Control::DelayHigh, 64);
 
             
             last_values.insert(Control::SynthFilter, 60);
+            last_values.insert(Control::ChannelFilterFollower(3), 64);
 
             last_values.insert(Control::BassPitch, 64);
             last_values.insert(Control::BassCutoff, 40);
@@ -250,7 +251,7 @@ impl Twister {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 0;
                                 throttled_zoia_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
                             },
-                            Control::ChannelFilterFollower(channel) => {
+                            Control::ChannelFilter(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 1;
                                 throttled_zoia_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
                             },
@@ -272,6 +273,11 @@ impl Twister {
                                 throttled_zoia_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
                             },
 
+                            Control::ChannelFilterFollower(channel) => {
+                                let cc = channel_offsets[channel as usize % channel_offsets.len()] + 6;
+                                throttled_zoia_output.send(&[176 + zoia_channel - 1, cc as u8, value]);
+                            },
+
                             Control::ChannelReverb(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 0;
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, midi_ease_out(value)]);
@@ -280,11 +286,7 @@ impl Twister {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 1;
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, midi_ease_out(value)]);
                             },
-                            Control::ChannelFilter(channel) => {
-                                let cc = channel_offsets[channel as usize % channel_offsets.len()] + 2;
-                                throttled_zoia_output.send(&[176 + digit_channel - 1, cc as u8, value]);
-                            },
-
+  
                             Control::ReverbPre => {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 60, value]);
                             },
@@ -304,10 +306,10 @@ impl Twister {
                             Control::DelayDivider => {
                                 let index = (midi_to_float(value) * (dividers.len() - 1) as f64 ) as usize;
                                 let divider = dividers[index];
-                                let value = if divider > 0.0 {
+                                let value = if value > 20 {
                                     float_to_midi(divider / 2400.0)
                                 } else {
-                                    0
+                                    value
                                 };
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 70, value]);
                             },
@@ -432,12 +434,8 @@ impl Twister {
 
                             Control::SynthPitch => {
                                 // hack around detent on mf twister
-                                let value = if value == 63 {
-                                    64
-                                } else {
-                                    value
-                                };
-                                streichfett_output.send(&[224, 0, value]);
+                                let value = float_to_msb_lsb(midi_to_polar(value));
+                                streichfett_output.send(&[224, value.0, value.1]).unwrap();
                             },
 
                             Control::None => ()
@@ -661,13 +659,13 @@ impl Control {
             (0, row, 0) => Control::ChannelVolume(row),
             (0, row, 1) => Control::ChannelReverb(row),
             (0, row, 2) => Control::ChannelDelay(row),
-            (1, row, 3) => Control::ChannelFilter(row),
+            (0, row, 3) => Control::ChannelFilter(row),
 
             // Bank B
             (1, row, 0) => Control::ChannelCrush(row),
             (1, row, 1) => Control::ChannelRedux(row),
             (1, row, 2) => Control::ChannelDrive(row),
-            (0, row, 3) => Control::ChannelFilterFollower(row),
+            (1, row, 3) => Control::ChannelFilterFollower(row),
 
             // Bank C
             (2, 0, 0) => Control::BassCutoff,
@@ -724,6 +722,22 @@ fn get_control_ids () -> HashMap<Control, u32> {
         }
     }
     result
+}
+
+pub fn float_to_msb_lsb(input: f64) -> (u8, u8) {
+    let max = (2.0f64).powf(14.0) / 2.0;
+    let input_14bit = (input.max(-1.0).min(0.99999999999) * max + max) as u16;
+
+    let lsb = mask7(input_14bit as u8);
+    let msb = mask7((input_14bit >> 7) as u8);
+
+    (lsb, msb)
+}
+
+/// 7 bit mask
+#[inline(always)]
+pub fn mask7(input: u8) -> u8 {
+    input & 0b01111111
 }
 
 fn midi_to_polar (value: u8) -> f64 {

@@ -24,8 +24,8 @@ use ::scale::Scale;
 const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
 const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
 const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
-const BOTTOM_BUTTONS_A: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
-const BOTTOM_BUTTONS_B: [u8; 4] = [1, 2, 3, 4];
+const BOTTOM_BUTTONS: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
+const TRIGGER_MODE_BUTTONS: [u8; 4] = [1, 2, 3, 4];
 const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
 const BANK_COLORS: [u8; 4] = [15, 9, 48, 17];
 
@@ -83,6 +83,30 @@ pub struct LoopGridParams {
     pub reset_automation: bool
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum TriggerMode {
+    Immediate = 0,
+    Quantized = 1,
+    Repeat = 2,
+    Cycle = 3
+}
+
+impl TriggerMode {
+    fn from_id (id: usize) -> TriggerMode {
+        match id {
+            1 => TriggerMode::Quantized,
+            2 => TriggerMode::Repeat,
+            3 => TriggerMode::Cycle,
+            _ => TriggerMode::Immediate
+        }
+    }
+
+    fn to_id (&self) -> usize {
+        *self as usize
+    }
+}
+
+
 #[derive(Debug, Copy, Clone)]
 pub enum LoopGridRemoteEvent {
     DoubleButton(bool),
@@ -101,6 +125,8 @@ struct RepeatState {
 enum RepeatPhase {
     None,
     Pending,
+    QuantizePending,
+    QuantizeCurrent,
     Current,
     Triggered
 }
@@ -184,9 +210,18 @@ enum LaunchpadEvent {
     None,
     LengthButton {id: usize, pressed: bool},
     RateButton {id: usize, pressed: bool},
+    TriggerModeButton {id: usize, pressed: bool},
     BankButton {id: usize, pressed: bool},
     SampleButton {id: usize, pressed: bool},
     GridInput {id: u32, value: u8, stamp: u64}
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+struct CycleStep {
+    id: u32, 
+    value: OutputValue, 
+    rate: MidiTime, 
+    offset: MidiTime
 }
 
 pub struct LoopGridLaunchpad {
@@ -266,6 +301,12 @@ pub struct LoopGridLaunchpad {
     last_repeat_light_out: Light,
     last_triggered: HashMap<usize, CircularQueue<u32>>,
 
+    trigger_mode: TriggerMode,
+    chunk_cycle_step: HashMap<usize, CycleStep>,
+    chunk_cycle_next_pos: HashMap<usize, MidiTime>,
+    cycle_off_next_pos: HashMap<u32, MidiTime>,
+    cycle_groups: HashMap<usize, Vec<CycleStep>>,
+
     // display state
     active: HashSet<u32>,
     recording: HashSet<u32>,
@@ -316,11 +357,11 @@ impl LoopGridLaunchpad {
                 } else if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == message[1]) {
                     // use last 4 bottom buttons as bank switchers
                     input_queue_tx.send(LaunchpadEvent::BankButton {id, pressed}).unwrap();
-                } else if let Some(index) = BOTTOM_BUTTONS_A.iter().position(|&x| x == message[1]) {
+                } else if let Some(index) = BOTTOM_BUTTONS.iter().position(|&x| x == message[1]) {
                     let id = 128 + index as u32;
                     input_queue_tx.send(LaunchpadEvent::GridInput {stamp, id, value: message[2]}).unwrap();
-                } else if let Some(id) = BOTTOM_BUTTONS_B.iter().position(|&x| x == message[1]) {
-                    input_queue_tx.send(LaunchpadEvent::SampleButton {id, pressed}).unwrap();
+                } else if let Some(id) = TRIGGER_MODE_BUTTONS.iter().position(|&x| x == message[1]) {
+                    input_queue_tx.send(LaunchpadEvent::TriggerModeButton {id, pressed}).unwrap();
                 }
             }
         });
@@ -354,6 +395,12 @@ impl LoopGridLaunchpad {
             sample_channel,
             sample_note_offset,
             id_to_midi,
+
+            trigger_mode: TriggerMode::Immediate,
+            chunk_cycle_step: HashMap::new(),
+            chunk_cycle_next_pos: HashMap::new(),
+            cycle_off_next_pos: HashMap::new(),
+            cycle_groups: HashMap::new(),
 
             // channels
             input_queue,
@@ -484,6 +531,7 @@ impl LoopGridLaunchpad {
         instance.refresh_loop_button();
         instance.refresh_undo_redo_lights();
         instance.refresh_selected_bank();
+        instance.refresh_selected_trigger_mode();
 
         for id in 0..136 {
             instance.refresh_grid_button(id);
@@ -616,11 +664,15 @@ impl LoopGridLaunchpad {
                     let rate = REPEAT_RATES[id as usize];
                     self.repeat_off_beat = self.shift_held;
                     self.set_rate(rate);
-                    self.repeating = id > 0 || self.repeat_off_beat;
                 }
             },
             LaunchpadEvent::SampleButton {id, pressed} => {
                 self.play_sample(id as u8, pressed);
+            },
+            LaunchpadEvent::TriggerModeButton {id, pressed} => {
+                if pressed {
+                    self.set_trigger_mode(TriggerMode::from_id(id));
+                }
             },
             LaunchpadEvent::BankButton {id, pressed} => {
                 if pressed {
@@ -733,6 +785,16 @@ impl LoopGridLaunchpad {
                 if let Some(LoopTransform::Repeat{rate, offset, ..}) = self.override_values.get(&id) {
                     repeat_state.to = next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset, self.align_offset);
                     repeat_state.phase = RepeatPhase::Current;
+                } else if let Some(LoopTransform::Cycle{rate, offset, ..}) = self.override_values.get(&id) {
+                    repeat_state.to = next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset, self.align_offset);
+                    repeat_state.phase = RepeatPhase::Current;
+                } else if repeat_state.phase == RepeatPhase::QuantizeCurrent {
+                    repeat_state.phase = RepeatPhase::None;
+                    to_refresh.push(id.clone());
+                } else if let LoopTransform::Value{..} = repeat_state.transform {
+                    repeat_state.to = self.last_pos + (self.rate / 2);
+                    repeat_state.phase = RepeatPhase::QuantizeCurrent;
+                    to_refresh.push(id.clone());
                 } else {
                     repeat_state.phase = RepeatPhase::None;
                     if !self.currently_held_inputs.contains(&(id % 64)) {
@@ -747,7 +809,7 @@ impl LoopGridLaunchpad {
             self.refresh_grid_button(id);
         }
 
-        let mut events = self.get_events(self.last_pos, self.last_length);
+        let mut events = self.get_events();
         let mut ranked = HashMap::new();
         for (key, value) in &self.last_triggered {
             for id in value.iter() {
@@ -781,7 +843,10 @@ impl LoopGridLaunchpad {
                 self.event(event);
             }
         }
+
+        self.update_cycle_steps();
     }
+
 
     fn play_sample (&mut self, id: u8, pressed: bool) {
         let velocity = if pressed {
@@ -798,6 +863,16 @@ impl LoopGridLaunchpad {
                 self.launchpad_output.send(&[178, *id as u8, Light::White.value()]).unwrap();
             } else {
                 self.launchpad_output.send(&[176, *id as u8, BANK_COLORS[index]]).unwrap();
+            }
+        }
+    }
+
+    fn refresh_selected_trigger_mode (&mut self) {
+        for (index, id) in TRIGGER_MODE_BUTTONS.iter().enumerate() {
+            if self.trigger_mode.to_id() == index {
+                self.launchpad_output.send(&[178, *id as u8, Light::White.value()]).unwrap();
+            } else {
+                self.launchpad_output.send(&[176, *id as u8, Light::RedLow.value()]).unwrap();
             }
         }
     }
@@ -968,18 +1043,17 @@ impl LoopGridLaunchpad {
         let transform = match value {
             &OutputValue::On(velocity) => {
                 if let Some(mapped) = self.mapping.get(&Coords::from(id)) {
+                    let offset = if self.repeat_off_beat { self.rate / 2 } else { MidiTime::zero() };
                     match self.chunk_repeat_mode.get(&mapped.chunk_index).unwrap_or(&RepeatMode::Global) {
                         RepeatMode::None => LoopTransform::Value(OutputValue::On(velocity)),
                         RepeatMode::Global => {
-                            if self.repeating {
-                                let offset = if self.repeat_off_beat { self.rate / 2 } else { MidiTime::zero() };
-                                LoopTransform::Repeat {rate: self.rate, offset, value: OutputValue::On(velocity)}
-                            } else {
-                                LoopTransform::Value(OutputValue::On(velocity))
+                            match self.trigger_mode {
+                                TriggerMode::Repeat => LoopTransform::Repeat {rate: self.rate, offset, value: OutputValue::On(velocity)},
+                                TriggerMode::Cycle => LoopTransform::Cycle {rate: self.rate, offset, value: OutputValue::On(velocity)},
+                                _ => LoopTransform::Value(OutputValue::On(velocity))
                             }
                         }
                     }
-
                 } else {
                     LoopTransform::None
                 }
@@ -1001,25 +1075,56 @@ impl LoopGridLaunchpad {
         };
 
         if changed {
-
-            if let LoopTransform::Repeat {rate, offset, value} = transform {
-                if matches!(transform, LoopTransform::Repeat {..}) && !matches!(original_value, Some(LoopTransform::Repeat {..})) {
-                    // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                    let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
-                    self.queue_repeat_trigger(id, transform.clone(), to)
-                } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
-                    // handle changing velocity
-                    if repeat_state.phase == RepeatPhase::Pending && matches!(repeat_state.transform, LoopTransform::Repeat {..}) {
-                        // wow, this is not good rust code :'(
-                        if let LoopTransform::Repeat {value: current_value, ..} = repeat_state.transform {
-                            if value > current_value {
-                                repeat_state.transform = transform
+            match transform {
+                LoopTransform::Repeat {rate, offset, value, ..} => {
+                    if !matches!(original_value, Some(LoopTransform::Repeat {..})) {
+                        // we want to make sure this repeat does full gate cycle, calculate end time from current position
+                        let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
+                        self.queue_repeat_trigger(id, transform.clone(), to)
+                    } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
+                        // handle changing velocity
+                        if repeat_state.phase == RepeatPhase::Pending && matches!(repeat_state.transform, LoopTransform::Repeat {..}) {
+                            // wow, this is not good rust code :'(
+                            if let LoopTransform::Repeat {value: current_value, ..} = repeat_state.transform {
+                                if value > current_value {
+                                    repeat_state.transform = transform
+                                }
                             }
+                        } else {
+                            repeat_state.transform = transform
                         }
-                    } else {
-                        repeat_state.transform = transform
                     }
-                }
+                },
+                LoopTransform::Cycle {rate, offset, value, ..} => {
+                    if !matches!(original_value, Some(LoopTransform::Cycle {..})) {
+                        // we want to make sure this repeat does full gate cycle, calculate end time from current position
+                        let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
+                        self.queue_repeat_trigger(id, transform.clone(), to)
+                    } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
+                        // handle changing velocity
+                        if repeat_state.phase == RepeatPhase::Pending && matches!(repeat_state.transform, LoopTransform::Cycle {..}) {
+                            // wow, this is not good rust code :'(
+                            if let LoopTransform::Cycle {value: current_value, ..} = repeat_state.transform {
+                                if value > current_value {
+                                    repeat_state.transform = transform
+                                }
+                            }
+                        } else {
+                            repeat_state.transform = transform
+                        }
+                    }
+                },
+                LoopTransform::Value {..} => {
+                    if self.trigger_mode == TriggerMode::Quantized {
+                        if !matches!(original_value, Some(LoopTransform::Value {..})) {
+                            // we want to make sure this repeat does full gate cycle, calculate end time from current position
+                            let offset = if self.repeat_off_beat { self.rate / 2 } else { MidiTime::zero() };
+                            let to = next_repeat(self.last_pos, self.rate, offset, self.align_offset);
+                            self.queue_quantized_trigger(id, transform.clone(), to);
+                        }
+                    }
+                },
+                _ => ()
             }
 
             if get_schedule_mode(id, &self.chunks, &self.mapping) == ScheduleMode::Monophonic {
@@ -1041,6 +1146,15 @@ impl LoopGridLaunchpad {
     fn queue_repeat_trigger (&mut self, id: u32, transform: LoopTransform, to: MidiTime) {
         self.repeat_states.insert(id, RepeatState {
             phase: RepeatPhase::Pending,
+            transform,
+            to
+        });
+    }
+
+
+    fn queue_quantized_trigger (&mut self, id: u32, transform: LoopTransform, to: MidiTime) {
+        self.repeat_states.insert(id, RepeatState {
+            phase: RepeatPhase::QuantizePending,
             transform,
             to
         });
@@ -1086,14 +1200,33 @@ impl LoopGridLaunchpad {
 
         if self.out_transforms.get(&id).unwrap_or(&LoopTransform::None).unwrap_or(&LoopTransform::Value(OutputValue::Off)) != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
             let last_transform = self.out_transforms.get(&id).cloned();
-            self.out_transforms.insert(id, transform);
+
+            // mark all cycles as changed if one changes
+            if matches!(transform, LoopTransform::Cycle {..}) || matches!(last_transform, Some(LoopTransform::Cycle {..})) {
+                self.mark_cycle_group_changed(id);
+            }
+            
+            
             self.last_changed_triggers.insert(id, self.last_pos);
+            self.out_transforms.insert(id, transform);
             
             // send new value
             if let Some(value) = self.get_value(id, self.last_pos, last_transform) {
                 self.event(LoopEvent {
                     id, value, pos: self.last_pos
                 });
+            }
+
+            self.refresh_cycle_group_for(id);
+        }
+    }
+
+    fn mark_cycle_group_changed (&mut self, id: u32) {
+        if let Some(chunk_index) = self.chunk_index_for_id(id) {
+            if let Some(steps) = self.cycle_groups.get(&chunk_index) {
+                for step in steps {
+                    self.last_changed_triggers.insert(step.id, self.last_pos);
+                }
             }
         }
     }
@@ -1136,7 +1269,7 @@ impl LoopGridLaunchpad {
         };
 
         if new_value != old_value {
-            let midi_id = BOTTOM_BUTTONS_A.get(base_id as usize);
+            let midi_id = BOTTOM_BUTTONS.get(base_id as usize);
             let message = match new_value {
                 LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
                 LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value.value()]
@@ -1623,23 +1756,53 @@ impl LoopGridLaunchpad {
         self.rate = value;
         self.refresh_side_buttons();
         self.refresh_selection_override();
+        self.refresh_override_repeat();
+    }
 
+    fn set_trigger_mode (&mut self, value: TriggerMode) {
+        self.trigger_mode = value;
+        self.refresh_override_repeat();
+        self.refresh_selected_trigger_mode();
+    }
+
+    fn refresh_override_repeat (&mut self) {
         let mut to_update = HashMap::new();
+        let mut to_refresh = HashSet::new();
+
         for (id, value) in &self.override_values {
             if let Some(_) = self.mapping.get(&Coords::from(*id)) {
-                if let &LoopTransform::Repeat {rate: _, offset, value} = value {
+                if let &LoopTransform::Repeat {offset, value, ..} = value {
                     to_update.insert(*id, LoopTransform::Repeat {rate: self.rate, offset, value});
+                } else if let &LoopTransform::Cycle {offset, value, ..} = value {
+                    to_update.insert(*id, LoopTransform::Cycle {rate: self.rate, offset, value});
                 }
             }
         }
+
         for (id, value) in to_update {
             if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                 repeat_state.transform = value.clone();
             }
             self.override_values.insert(id, value);
+            to_refresh.insert(id);
+        }
+
+        let mut to_update_sustained = HashMap::new();
+
+        for (id, transform) in &self.sustained_values {
+            if let &LoopTransform::Cycle {offset, value, ..} = transform {
+                to_update_sustained.insert(*id, LoopTransform::Cycle {rate: self.rate, offset, value});
+            }
+        }
+
+        for (id, value) in to_update_sustained {
+            self.sustained_values.insert(id, value); 
+            to_refresh.insert(id);
+        }
+
+        for id in to_refresh {
             self.refresh_override(id);
         }
-        
     }
 
     fn initial_loop (&mut self) {
@@ -1710,10 +1873,90 @@ impl LoopGridLaunchpad {
             self.selection_override_offset = None;
         }
     }
-    
 
-    fn get_events (&self, position: MidiTime, length: MidiTime) -> Vec<LoopEvent> {
+    fn chunk_index_for_id (&self, id: u32) -> Option<usize> {
+        let map = self.mapping.get(&Coords::from(id));
+        if let Some(MidiMap {chunk_index, ..}) = map {
+            Some(*chunk_index)
+        } else {
+            None
+        }
+    }
+
+    fn refresh_cycle_group_for (&mut self, id: u32) {
+        if let Some(chunk_index) = self.chunk_index_for_id(id) {
+            let transform = self.out_transforms.get(&id);
+            let list: &mut Vec<CycleStep> = self.cycle_groups.entry(chunk_index).or_insert(Vec::new());
+    
+            if let Some(LoopTransform::Cycle {rate, offset, value}) = transform.cloned() {
+                // make sure it is in cycle group
+                let step = CycleStep {id, rate, offset, value};
+                // insert step in ID order
+                match list.binary_search_by(|v| v.id.cmp(&step.id)) {
+                    // ID already exists, replace with new step
+                    Ok(index) => {
+                        list.push(step);
+                        list.swap_remove(index); 
+                    },
+
+                    // insert step in order
+                    Err(index) => list.insert(index, step)
+                };
+            } else {
+                // remove it
+                if let Ok(index) = list.binary_search_by(|v| v.id.cmp(&id)) {
+                    list.remove(index);
+
+                    if list.len() > 0 {
+                        // replace current step with new item
+                        if let Entry::Occupied(mut current_step) = self.chunk_cycle_step.entry(chunk_index) {
+                            if current_step.get().id == id {
+                                let replacement = list.get(index).unwrap_or(list.get(0).unwrap());
+                                current_step.insert(*replacement);
+                            }
+                        }
+                    }
+                }
+
+                // reset if no more in group
+                if list.len() == 0 {
+                    self.chunk_cycle_step.remove(&chunk_index);
+                    self.chunk_cycle_next_pos.remove(&chunk_index);
+                } 
+            }
+        }
+    }
+
+    fn update_cycle_steps (&mut self) {
+        // increment next step and init
+        for (chunk_id, steps) in &self.cycle_groups {
+            if let Some(first_step) = steps.get(0) {
+                if let Some(next_pos) = self.chunk_cycle_next_pos.get_mut(&chunk_id) {
+                    if &self.last_pos > next_pos {
+                        // bump time and increment step
+                        let current_step = self.chunk_cycle_step.get(chunk_id).unwrap_or(first_step).clone();                    
+                        let current_pos = steps.iter().position(|x| x.id == current_step.id).unwrap_or(steps.len() - 1);
+                        let next_step = steps.get(current_pos + 1).unwrap_or(first_step).clone();
+
+                        self.chunk_cycle_step.insert(*chunk_id, next_step);
+                        let pos = next_repeat(self.last_pos, next_step.rate, next_step.offset, self.align_offset);
+                        *next_pos = pos;
+                    }
+                } else {
+                    // init time and clear step
+                    let last_step = steps.get(steps.len() - 1).unwrap();
+                    let next_pos = next_repeat(self.last_pos, first_step.rate, first_step.offset, self.align_offset);
+                    self.chunk_cycle_step.insert(*chunk_id, *last_step);
+                    self.chunk_cycle_next_pos.insert(*chunk_id, next_pos);
+                }
+            }
+        }
+    }
+
+    fn get_events (&self) -> Vec<LoopEvent> {
         let mut result = Vec::new();
+        let position = self.last_pos;
+        let length = self.last_length;
 
         if length > MidiTime::zero() {        
             for (id, transform) in &self.out_transforms {
@@ -1743,7 +1986,6 @@ impl LoopGridLaunchpad {
                         let next_off = next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half(), self.align_offset);
                         let to = position + length;
 
-
                         if next_on >= position && next_on < to {
                             LoopEvent {
                                 value,
@@ -1758,6 +2000,34 @@ impl LoopGridLaunchpad {
                                 pos: next_off,
                                 id: id.clone()
                             }.insert_into(&mut result);
+                        }
+                    },
+                    &LoopTransform::Cycle {rate: repeat_rate, offset: repeat_offset, value} => {
+                        let next_on = next_repeat(position, repeat_rate, repeat_offset, self.align_offset);
+                        let next_off = next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half(), self.align_offset);
+                        let to = position + length;
+
+                        if next_off >= position && next_off < to {
+                            LoopEvent {
+                                value: OutputValue::Off,
+                                pos: next_off,
+                                id: id.clone()
+                            }.insert_into(&mut result);
+                        }
+
+                        if next_on >= position && next_on < to {
+                            // only append if is the current trigger for chunk
+                            if let Some(chunk_id) = self.chunk_index_for_id(*id) {
+                                if let Some(step) = self.chunk_cycle_step.get(&chunk_id) {
+                                    if step.id == *id {
+                                        LoopEvent {
+                                            value,
+                                            pos: next_on,
+                                            id: id.clone()
+                                        }.insert_into(&mut result);
+                                    }
+                                }
+                            }
                         }
                     },
                     _ => ()
@@ -1799,8 +2069,18 @@ impl LoopGridLaunchpad {
                     _ => Some(OutputValue::Off)
                 }
             },
-            &LoopTransform::Repeat { rate, offset, value: _ } => {
-                if let Some(LoopTransform::Repeat {rate: r_rate, value: _, offset: r_offset}) = compare_value {
+            &LoopTransform::Repeat { rate, offset, .. } => {
+                if let Some(LoopTransform::Repeat {rate: r_rate, offset: r_offset, ..}) = compare_value {
+                    if r_rate == rate && r_offset == offset {
+                        // don't override value if rate and offset are still the same -- it's due to pressure/aftertouch
+                        return None
+                    }
+                }
+                
+                Some(OutputValue::Off)
+            },
+            &LoopTransform::Cycle { rate, offset, .. } => {
+                if let Some(LoopTransform::Cycle {rate: r_rate, offset: r_offset, ..}) = compare_value {
                     if r_rate == rate && r_offset == offset {
                         // don't override value if rate and offset are still the same -- it's due to pressure/aftertouch
                         return None
@@ -1885,7 +2165,9 @@ fn get_transform (id: u32, sustained_values: &HashMap<u32, LoopTransform>, overr
 
     // handle triggering of "early repeat"
     if let Some(repeat_state) = repeat_states.get(&id) {
-        if repeat_state.phase != RepeatPhase::None {
+        if repeat_state.phase == RepeatPhase::QuantizePending {
+            result = LoopTransform::None
+        } else if repeat_state.phase != RepeatPhase::None {
             result = repeat_state.transform.clone()
         }
     }

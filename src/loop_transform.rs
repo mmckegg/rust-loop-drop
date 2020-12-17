@@ -1,10 +1,12 @@
 use ::output_value::OutputValue;
 use ::midi_time::MidiTime;
 
+
 #[derive(PartialEq, Debug, Clone)]
 pub enum LoopTransform {
     Value(OutputValue),
     Repeat { rate: MidiTime, offset: MidiTime, value: OutputValue },
+    Cycle { rate: MidiTime, offset: MidiTime, value: OutputValue },
     Range { pos: MidiTime, length: MidiTime },
     None
 }
@@ -16,6 +18,11 @@ impl LoopTransform {
                 match previous {
                     &LoopTransform::Repeat {rate, offset, value} => {
                         LoopTransform::Repeat {
+                            rate: rate.min(length), offset, value
+                        }
+                    },
+                    &LoopTransform::Cycle {rate, offset, value} => {
+                        LoopTransform::Cycle {
                             rate: rate.min(length), offset, value
                         }
                     },

@@ -34,7 +34,6 @@ impl Triggerable for RootSelect {
             result.insert(current_scale.root as u32 - 52);
         }
 
-        println!("{:?}", result);
         Some(result)
     }
 
