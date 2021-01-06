@@ -1,6 +1,6 @@
 #[macro_use] extern crate lazy_static;
 extern crate rand;
-use rand::Rng;
+extern crate indexmap;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -15,7 +15,6 @@ mod loop_event;
 mod loop_state;
 mod loop_transform;
 mod midi_time;
-mod clock_source;
 mod output_value;
 mod chunk;
 mod devices;
@@ -42,26 +41,10 @@ fn main() {
 
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
-    
-    let all_io_name = "RK006"; // All out
-    let rk006_input_2 = "RK006 PORT 3"; // 2
 
-    let blackbox_io_name = "RK006 PORT 2"; // 1
-    let zoia_io_name = "RK006 PORT 3"; // 2
-    let typhon_io_name = "RK006 PORT 4"; // 3
-    let tr06s_io_name = "TR-6S";
-    let rk006_output_4 = "RK006 PORT 5"; // 4
-    let dfam_pwm_name = "RK006 PORT 7"; // 6
-    let vt4_io_name = "VT-4";
-    let keyboard_io_name = "K-Board";
-    let streichfett_io_name = "Streichfett";
-    let geode_io_name = "USB MIDI";
-
-    let launchpad_io_name = if cfg!(target_os = "linux") {
-        "Launchpad Pro MK3"
-    } else {
-        "Launchpad Pro MK3 LPProMK3 MIDI"
-    };
+    // NAME OF CLOCK INPUT MIDI PORT *****
+    let clock_input_name = "TR-6S";
+    // ***********************************
 
     let scale = Scale::new(60, 0);
 
@@ -85,17 +68,28 @@ fn main() {
     let keys_offset = Offset::new(0, -4);
     let ext_offset = Offset::new(-1, -4);
 
-    let tr6s_output_port = midi_connection::get_shared_output(tr06s_io_name);
-    let typhon_output_port = midi_connection::get_shared_output(typhon_io_name);
-    let blackbox_output_port = midi_connection::get_shared_output(blackbox_io_name);
-    let zoia_output_port = midi_connection::get_shared_output(zoia_io_name);
-    let rk006_output_4_port = midi_connection::get_shared_output(rk006_output_4);
-    let dfam_pwm_name = midi_connection::get_shared_output(dfam_pwm_name);
-    let all_output_port = midi_connection::get_shared_output(all_io_name);
+    let tr6s_output_port = midi_connection::get_shared_output("TR-6S");
     
-    let vt4_output_port = midi_connection::get_shared_output(vt4_io_name);
-    let streichfett_output_port = midi_connection::get_shared_output(streichfett_io_name);
-    let geode_output_port = midi_connection::get_shared_output(geode_io_name);
+    let rk006_out_1_port = midi_connection::get_shared_output("RK006 PORT 2");
+    let rk006_out_2_port = midi_connection::get_shared_output("RK006 PORT 3");
+    let rk006_out_3_port = midi_connection::get_shared_output("RK006 PORT 4");
+    let rk006_out_4_port = midi_connection::get_shared_output("RK006 PORT 5");
+    let rk006_out_5_port = midi_connection::get_shared_output("RK006 PORT 6");
+
+    // PWM CV voltages
+    let cv1_port = midi_connection::get_shared_output("RK006 PORT 7");
+    let cv2_port = midi_connection::get_shared_output("RK006 PORT 8");
+    
+    let vt4_output_port = midi_connection::get_shared_output("VT-4");
+    let streichfett_output_port = midi_connection::get_shared_output("Streichfett");
+    let nts1_output_port = midi_connection::get_shared_output("NTS-1 digital kit");
+
+    let launchpad_io_name = if cfg!(target_os = "linux") {
+        "Launchpad Pro MK3"
+    } else {
+        "Launchpad Pro MK3 LPProMK3 MIDI"
+    };
+
 
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
 
@@ -103,9 +97,8 @@ fn main() {
         // Send this to Geode, Blackbox (channel 1), Blackbox (channel 2 but as slicer rather than pitch), and RK-006 port 4 (TRS)
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
-                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&ext_offset))), 
-                Box::new(devices::MidiKeys::new(vec![blackbox_output_port.clone(), rk006_output_4_port.clone()], 2, Arc::clone(&scale), Arc::clone(&ext_offset))), 
-                Box::new(devices::BlackboxSlicer::new(blackbox_output_port.clone(), 2))
+                Box::new(devices::MidiKeys::new(vec![rk006_out_1_port.clone(), rk006_out_5_port.clone(), nts1_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&ext_offset))), 
+                Box::new(devices::BlackboxSlicer::new(rk006_out_1_port.clone(), 2))
             ])),
             Coords::new(0 + 8, 0),
             Shape::new(3, 8),
@@ -119,13 +112,13 @@ fn main() {
         ChunkMap::new(
             Box::new(devices::MultiChunk::new(vec![
                 Box::new(devices::OffsetChunk::new(Arc::clone(&ext_offset))),
-                Box::new(devices::PitchOffsetChunk::new(blackbox_output_port.clone(), 2))
+                Box::new(devices::PitchOffsetChunk::new(rk006_out_1_port.clone(), 2))
             ])),
             Coords::new(3 + 8, 0), 
             Shape::new(1, 8),
             12, // soft yellow
             None,
-            RepeatMode::None
+            RepeatMode::OnlyQuant
         ),
 
         // BASS OFFSET
@@ -133,9 +126,9 @@ fn main() {
             Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))),
             Coords::new(4 + 8, 0), 
             Shape::new(1, 8),
-            55, // pink
+            43, // blue
             None,
-            RepeatMode::None
+            RepeatMode::OnlyQuant
         ),
 
         // SYNTH OFFSET
@@ -143,9 +136,9 @@ fn main() {
             Box::new(devices::OffsetChunk::new(Arc::clone(&keys_offset))), 
             Coords::new(5 + 8, 0), 
             Shape::new(1, 8),
-            43, // blue
+            55, // pink
             None,
-            RepeatMode::None
+            RepeatMode::OnlyQuant
         ),
         
         // ROOT NOTE SELECTOR
@@ -155,7 +148,7 @@ fn main() {
             Shape::new(2, 8),
             35, // soft green
             None,
-            RepeatMode::None
+            RepeatMode::OnlyQuant
         ),
 
         // SCALE MODE SELECTOR
@@ -165,69 +158,71 @@ fn main() {
             Shape::new(1, 8),
             0, // black
             None,
-            RepeatMode::None
+            RepeatMode::OnlyQuant
         ),
 
         // DRUMS
         ChunkMap::new(
-            Box::new(devices::TR6s::new(tr6s_output_port.clone(), 10, zoia_output_port.clone(), 16, Arc::clone(&drum_velocities))), 
+            Box::new(devices::TR6s::new(tr6s_output_port.clone(), 10, rk006_out_2_port.clone(), 16, Arc::clone(&drum_velocities))), 
             Coords::new(0, 0), 
             Shape::new(1, 6),
             15, // yellow
             Some(0),
-            RepeatMode::Global
+            RepeatMode::NoCycle
         ),
 
         // EXTRA PERC (to fill in for only 6 triggers on cycles)
         ChunkMap::new(
-            Box::new(devices::BlackboxPerc::new(blackbox_output_port.clone(), 10, Arc::clone(&drum_velocities))), 
+            Box::new(devices::BlackboxPerc::new(rk006_out_1_port.clone(), 10, Arc::clone(&drum_velocities))), 
             Coords::new(0, 6), 
             Shape::new(1, 2),
             9, // orange
             Some(1),
-            RepeatMode::Global
+            RepeatMode::NoCycle
         ),
 
         // SAMPLER
         ChunkMap::new(
-            Box::new(devices::BlackboxSample::new(blackbox_output_port.clone(), 10)), 
+            Box::new(devices::BlackboxSample::new(rk006_out_1_port.clone(), 10)), 
             Coords::new(1, 0), 
             Shape::new(1, 8),
             9, // orange
             Some(1),
-            RepeatMode::Global
+            RepeatMode::NoCycle
         ),
 
         // BASS
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![typhon_output_port.clone(), blackbox_output_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
+            Box::new(devices::MidiKeys::new(vec![rk006_out_3_port.clone(), rk006_out_1_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
             Coords::new(2, 0), 
             Shape::new(3, 8),
-            59, // pink
+            43, // blue
             Some(2),
             RepeatMode::Global
         ),
 
         // SYNTH
         ChunkMap::new(
-            Box::new(devices::MidiKeys::new(vec![streichfett_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
+            Box::new(devices::MidiKeys::new(vec![streichfett_output_port.clone(), rk006_out_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
             Coords::new(5, 0), 
             Shape::new(3, 8),
-            43, // blue
+            59, // pink
             Some(3),
             RepeatMode::Global
         )
-    ], Arc::clone(&scale), Arc::clone(&params), blackbox_output_port.clone(), 10, 36);
+    ], Arc::clone(&scale), Arc::clone(&params), rk006_out_1_port.clone(), 10, 36);
 
-    let _keyboard = devices::KBoard::new(keyboard_io_name, streichfett_output_port.clone(), 1, scale.clone());
+    let _keyboard = devices::KBoard::new("K-Board", streichfett_output_port.clone(), 1, scale.clone());
 
     let twister = devices::Twister::new("Midi Fighter Twister",
-        typhon_output_port.clone(),
+        rk006_out_3_port.clone(),
         streichfett_output_port.clone(),
         tr6s_output_port.clone(),
-        blackbox_output_port.clone(),
-        zoia_output_port.clone(),
-        dfam_pwm_name.clone(),
+        rk006_out_1_port.clone(),
+        nts1_output_port.clone(),
+        rk006_out_2_port.clone(),
+        cv1_port.clone(),
+        cv2_port.clone(),
         Arc::clone(&params)
     );
 
@@ -235,24 +230,19 @@ fn main() {
 
     let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
     
-    let mut clock_blackbox_output_port = blackbox_output_port.clone();
-    let mut loopback_blackbox_output_port = blackbox_output_port.clone();
+    let mut clock_blackbox_output_port = rk006_out_1_port.clone();
     let mut tr6s_clock_output_port = tr6s_output_port.clone();
+    let mut nts1_clock_output_port = nts1_output_port.clone();
 
-    let _bbx_loopback = midi_connection::get_input(rk006_input_2, move |_stamp, msg| {
-        // messages on channels 1 - 9 are forwarded back into blackbox
-        if (msg[0] >= 128 && msg[0] < 128 + 9) || (msg[0] >= 144 && msg[0] < 144 + 9) {
-            loopback_blackbox_output_port.send(msg).unwrap();
-        }
-    });
 
-    for range in Scheduler::start(tr06s_io_name) {
+    for range in Scheduler::start(clock_input_name) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
                 clock_blackbox_output_port.send(&[250]).unwrap();
             }
         }
+        nts1_clock_output_port.send(&[248]).unwrap();
         
         if range.ticked && range.from.ticks() != range.to.ticks() {
             // HACK: straighten out missing sub ticks into separate schedules
@@ -277,6 +267,8 @@ fn main() {
             // keep the tr6s midi input active (otherwise it stops responding to incoming midi immediately)
             tr6s_clock_output_port.send(&[254]).unwrap();
         }
+
+
     }
 }
 

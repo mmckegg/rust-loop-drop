@@ -9,9 +9,9 @@ publish = false
 debug = true
 
 [dependencies]
+indexmap = "1.6.1"
 midir = "0.5.0"
 lazy_static = "1.0"
 regex = "0.2.5"
-bus = "1.4"
 circular-queue = "0.2.0"
 rand = "0.6"

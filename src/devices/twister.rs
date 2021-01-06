@@ -1,7 +1,7 @@
 use ::midi_connection;
+use ::MidiTime;
 use std::sync::mpsc;
 use ::loop_recorder::{LoopRecorder, LoopEvent};
-use ::clock_source::{RemoteClock, FromClock, ToClock, MidiTime};
 use ::output_value::OutputValue;
 use ::loop_grid_launchpad::LoopGridParams;
 use ::throttled_output::ThrottledOutput;
@@ -14,18 +14,30 @@ use std::sync::{Arc, Mutex};
 
 pub struct Twister {
     _midi_input: midi_connection::ThreadReference,
-    _midi_input_ju06a: midi_connection::ThreadReference,
-    _midi_input_sh01a: midi_connection::ThreadReference,
+    _midi_input_streichfett: midi_connection::ThreadReference,
+    _midi_input_tr6s: midi_connection::ThreadReference,
+    _midi_input_nts1: midi_connection::ThreadReference,
     tx: mpsc::Sender<TwisterMessage>
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum EventSource {
+    Internal,
+    External
+}
+
 impl Twister {
-    pub fn new (port_name: &str, sh01a_output: midi_connection::SharedMidiOutputConnection, streichfett_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, dfam_pwm_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
+    pub fn new (port_name: &str, typhon_output: midi_connection::SharedMidiOutputConnection, streichfett_output: midi_connection::SharedMidiOutputConnection, drum_output: midi_connection::SharedMidiOutputConnection, blackbox_output: midi_connection::SharedMidiOutputConnection, nts1_output: midi_connection::SharedMidiOutputConnection, zoia_output: midi_connection::SharedMidiOutputConnection, cv1_output: midi_connection::SharedMidiOutputConnection, cv2_output: midi_connection::SharedMidiOutputConnection, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
 
+        let drum_channel = 10;
         let sampler_channel = 10;
+
+        // no triggers on this channel, only modulation
+        let sampler_mod_channel = 3;
+        
         let bass_channel = 11;
         let zoia_channel = 14;
         let digit_channel = 15;
@@ -56,7 +68,7 @@ impl Twister {
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
             let control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
-                tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]))).unwrap();
+                tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]), EventSource::Internal)).unwrap();
             } else if message[0] == 177 {
                 tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
             } else if message[0] == 179 && message[1] < 4 && message[2] == 127 {
@@ -68,34 +80,35 @@ impl Twister {
             }
         });
 
-        let tx_ju06a = tx.clone();
-        let ju06a_input = midi_connection::get_input("JU-06A", move |_stamp, message| {
+        let tx_sf = tx.clone();
+        let streichfett_input = midi_connection::get_input("Streichfett", move |_stamp, message| {
             if message[0] == 176 {
-                if message[1] == 74 { 
-                    tx_ju06a.send(TwisterMessage::ControlChange(Control::SynthFilter, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 71 {
-                    tx_ju06a.send(TwisterMessage::ControlChange(Control::SynthRes, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 13 {
-                    tx_ju06a.send(TwisterMessage::ControlChange(Control::SynthVibrato, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 19 {
-                    tx_ju06a.send(TwisterMessage::ControlChange(Control::SynthNoise, OutputValue::On(message[2]))).unwrap();
+                if message[1] == 76 { 
+                    tx_sf.send(TwisterMessage::ControlChange(Control::SynthTone, OutputValue::On(message[2]), EventSource::External)).unwrap();
+                } else if message[1] == 70 { 
+                    tx_sf.send(TwisterMessage::ControlChange(Control::SynthRegistration, OutputValue::On(message[2]), EventSource::External)).unwrap();
+                } else if message[1] == 1 { 
+                    tx_sf.send(TwisterMessage::ControlChange(Control::SynthMod, OutputValue::On(message[2]), EventSource::External)).unwrap();
                 }
             }
         });
 
-        let tx_sh01a = tx.clone();
-        let sh01a_input = midi_connection::get_input("Boutique", move |_stamp, message| {
-            if message[0] == 186 {
-                if message[1] == 74 { 
-                    tx_sh01a.send(TwisterMessage::ControlChange(Control::BassCutoff, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 71 {
-                    tx_sh01a.send(TwisterMessage::ControlChange(Control::BassRes, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 5 {
-                    tx_sh01a.send(TwisterMessage::ControlChange(Control::BassPorta, OutputValue::On(message[2]))).unwrap();
+        let tx_tr6s = tx.clone();
+        let tr6s_input = midi_connection::get_input("TR-6S", move |_stamp, message| {
+            if message[0] == 176 - 1 + drum_channel {
+                if message[1] == 20 { 
+                    tx_tr6s.send(TwisterMessage::ControlChange(Control::KickPitch, OutputValue::On(message[2]), EventSource::External)).unwrap();
                 } else if message[1] == 23 {
-                    tx_sh01a.send(TwisterMessage::ControlChange(Control::BassNoise, OutputValue::On(message[2]))).unwrap();
-                } else if message[1] == 76 {
-                    tx_sh01a.send(TwisterMessage::ControlChange(Control::BassPitch, OutputValue::On(message[2]))).unwrap();
+                    tx_tr6s.send(TwisterMessage::ControlChange(Control::KickDecay, OutputValue::On(message[2]), EventSource::External)).unwrap();
+                }
+            }
+        });
+
+        let tx_nts1 = tx.clone();
+        let nts1_input = midi_connection::get_input("NTS-1 digital kit", move |_stamp, message| {
+            if message[0] == 176 {
+                if message[1] == 43 { 
+                    tx_nts1.send(TwisterMessage::ControlChange(Control::ExtFilter, OutputValue::On(message[2]), EventSource::External)).unwrap();
                 }
             }
         });
@@ -106,12 +119,14 @@ impl Twister {
             let mut last_values: HashMap<Control, u8> = HashMap::new();
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
-            let mut sh01a_output = sh01a_output;
+            let mut typhon_output = typhon_output;
+            let mut drum_output = drum_output;
+            let mut nts1_output = nts1_output;
             let mut throttled_blackbox_output = ThrottledOutput::new(blackbox_output);
-            let mut throttled_drum_output = ThrottledOutput::new(drum_output);
             let mut throttled_zoia_output = ThrottledOutput::new(zoia_output);
             let mut streichfett_output = streichfett_output;
-            let mut dfam_pwm_output = dfam_pwm_output;
+            let mut cv1_output = cv1_output;
+            let mut cv2_output = cv2_output;
 
             let mut current_bank = 0;
 
@@ -139,6 +154,7 @@ impl Twister {
                 last_values.insert(Control::ChannelReverb(channel), 0);
                 last_values.insert(Control::ChannelDelay(channel), 0);
                 last_values.insert(Control::ChannelFilter(channel), 0);
+                last_values.insert(Control::ChannelFilterLfoAmount(channel), 64);
 
                 resend_params.push(Control::ChannelReverb(channel));
                 resend_params.push(Control::ChannelDelay(channel));
@@ -157,14 +173,16 @@ impl Twister {
             last_values.insert(Control::LfoOffset, 64);
             last_values.insert(Control::DuckRelease, 64);
 
-            last_values.insert(Control::SamplerMod, 64);
+            last_values.insert(Control::SamplerPitch, 64);
 
+            last_values.insert(Control::Cv1, 64);
+            last_values.insert(Control::Cv2, 0);
             last_values.insert(Control::BassFilterLfoAmount, 64);
-            last_values.insert(Control::SynthFilterLfoAmount, 64);
+            last_values.insert(Control::ExtFilterLfoAmount, 64);
+            last_values.insert(Control::Cv2LfoAmount, 64);
 
             last_values.insert(Control::SynthPitch, 64);
-            last_values.insert(Control::SynthVibrato, 0);
-            last_values.insert(Control::SynthFilter, 60);
+            last_values.insert(Control::SynthTone, 60);
 
             last_values.insert(Control::ReverbPre, 0);
             last_values.insert(Control::ReverbFeedback, 0);
@@ -177,11 +195,15 @@ impl Twister {
             last_values.insert(Control::DelayHigh, 64);
 
             
-            last_values.insert(Control::SynthFilter, 60);
             last_values.insert(Control::ChannelFilterFollower(3), 64);
 
+            last_values.insert(Control::KickPitch, 64);
+            last_values.insert(Control::KickDecay, 64);
             last_values.insert(Control::BassPitch, 64);
             last_values.insert(Control::BassCutoff, 40);
+            
+            last_values.insert(Control::ExtPitch, 64);
+            last_values.insert(Control::ExtFilter, 60);
 
             // a wee bit of swing
             last_values.insert(Control::Swing, 64);
@@ -190,6 +212,9 @@ impl Twister {
             for control in control_ids.keys() {
                 tx.send(TwisterMessage::Send(*control)).unwrap();
                 tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                if let Some(control_id) = control_ids.get(control) {
+                    recorder.allocate(*control_id, 50000);
+                }
             }
 
             // enable nemesis pedal!
@@ -209,7 +234,7 @@ impl Twister {
                         let mut params = params.lock().unwrap();
                         params.bank = bank;
                     },
-                    TwisterMessage::ControlChange(control, value) => {
+                    TwisterMessage::ControlChange(control, value, source) => {
                         if let Some(id) = control_ids.get(&control) {
                             let allow = if loops.contains_key(&control) {
                                 let item = loops.get(&control).unwrap();
@@ -220,11 +245,13 @@ impl Twister {
 
                             if allow {
                                 loops.remove(&control);
-                                tx_feedback.send(TwisterMessage::Event(LoopEvent { 
+                                let event = LoopEvent { 
                                     id: id.clone(), 
                                     value,
                                     pos: last_pos
-                                })).unwrap();
+                                };
+         
+                                tx_feedback.send(TwisterMessage::Event(event, source)).unwrap();
                             }
                         }
                     },
@@ -331,31 +358,26 @@ impl Twister {
                                 throttled_zoia_output.send(&[176 + digit_channel - 1, 73, value]);
                             },
 
-                            Control::DrumMod => {
+                            Control::KickPitch => {
                                 let value = if value == 63 {
                                     64
                                 } else {
                                     value
                                 };
-                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 1, value]);
-                                dfam_pwm_output.send(&[176, 1, value]);
+                                drum_output.send(&[176 + drum_channel - 1, 20, value]).unwrap();
+                            },
+
+                            Control::KickDecay => {
+                                drum_output.send(&[176 + drum_channel - 1, 23, value]).unwrap();
                             },
                             
-                            Control::SamplerMod => {
-                                let value = if value == 63 {
-                                    64
-                                } else {
-                                    value
-                                };
-                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 0, value]);
+                            Control::SamplerPitch => {
+                                let value = float_to_msb_lsb(midi_to_polar(value));
+                                throttled_blackbox_output.send(&[(224 - 1) + sampler_mod_channel, value.0, value.1]);
                             },
 
-                            Control::BassFilterLfoAmount => {
-                                lfo_amounts.insert(Control::BassCutoff, midi_to_polar(value));
-                            },
-
-                            Control::SynthFilterLfoAmount => {
-                                lfo_amounts.insert(Control::SynthFilter, midi_to_polar(value));
+                            Control::SamplerMod => {    
+                                throttled_blackbox_output.send(&[176 + sampler_channel - 1, 1, value]);
                             },
 
                             Control::Swing => {
@@ -386,69 +408,93 @@ impl Twister {
                                 throttled_zoia_output.send(&[(176 - 1) + zoia_channel, 2, value]);
                             },
 
-                            Control::BassPorta => {
-                                sh01a_output.send(&[(176 - 1) + bass_channel, 5, value]).unwrap();
-                            },
-
-                            Control::BassCutoff => {
-                                sh01a_output.send(&[(176 - 1) + bass_channel, 74, value]).unwrap();
-                            },
-
-                            Control::BassRes => {
-                                sh01a_output.send(&[(176 - 1) + bass_channel, 71, value]).unwrap();
-                            },
-
-                            Control::BassNoise => {
-                                sh01a_output.send(&[(176 - 1) + bass_channel, 23, value]).unwrap();
-                            },
-
-                            Control::BassPitch => {
-                                // hack around detent on mf twister
+                            Control::Cv1 => {
                                 let value = if value == 63 {
                                     64
                                 } else {
                                     value
                                 };
-                                sh01a_output.send(&[(176 - 1) + bass_channel, 76, value]).unwrap();
-                                throttled_blackbox_output.send(&[(224 - 1) + bass_channel, 0, value]);
+                                cv1_output.send(&[176, 1, value]).unwrap();
                             },
 
-
-                            Control::SynthFilter => {
-                                // streichfett_output.send(&[176, 74, value]);
+                            Control::Cv2 => {
+                                cv2_output.send(&[176, 1, value]).unwrap();
                             },
 
-                            Control::SynthRes => {
-                                // streichfett_output.send(&[176, 71, value]);
+                            Control::Cv2LfoAmount => {
+                                lfo_amounts.insert(Control::Cv2, midi_to_polar(value));
                             },
 
-
-                            Control::SynthNoise => {
-                                // streichfett_output.send(&[176, 19, value]);
+                            Control::BassPitch => {
+                                let value = float_to_msb_lsb(midi_to_polar(value));
+                                typhon_output.send(&[(224 - 1) + bass_channel, value.0, value.1]).unwrap();
+                                throttled_blackbox_output.send(&[(224 - 1) + bass_channel, value.0, value.1]);
                             },
 
-
-                            Control::SynthVibrato => {
-                                // streichfett_output.send(&[176, 13, value]);
+                            Control::BassCutoff => {
+                                typhon_output.send(&[(176 - 1) + bass_channel, 4, value]).unwrap();
                             },
 
+                            Control::BassWave => {
+                                typhon_output.send(&[(176 - 1) + bass_channel, 5, value]).unwrap();
+                            },
+
+                            Control::BassTune => {
+                                typhon_output.send(&[(176 - 1) + bass_channel, 6, value]).unwrap();
+                            },
+
+                            Control::BassFilterLfoAmount => {
+                                lfo_amounts.insert(Control::BassCutoff, midi_to_polar(value));
+                            },
+                            
                             Control::SynthPitch => {
                                 // hack around detent on mf twister
                                 let value = float_to_msb_lsb(midi_to_polar(value));
                                 streichfett_output.send(&[224, value.0, value.1]).unwrap();
                             },
 
+                            Control::SynthTone => {
+                                streichfett_output.send(&[176, 76, value]).unwrap();
+                            },
+                            Control::SynthRegistration => {
+                                streichfett_output.send(&[176, 70, value]).unwrap();
+                            },
+                            Control::SynthMod => {
+                                streichfett_output.send(&[176, 1, value]).unwrap();
+                            },
+
+                            Control::ChannelFilterLfoAmount(channel) => {
+                                lfo_amounts.insert(Control::ChannelFilter(channel), midi_to_polar(value));
+                            },
+
+                            Control::ExtPitch => {
+                                // hack around detent on mf twister
+                                let value = float_to_msb_lsb(midi_to_polar(value));
+                                nts1_output.send(&[224, value.0, value.1]);
+                            },
+
+                            Control::ExtFilter => {
+                                nts1_output.send(&[176, 43, value]).unwrap();
+                            },
+
+                            Control::ExtFilterLfoAmount => {
+                                lfo_amounts.insert(Control::ExtFilter, midi_to_polar(value));
+                            },
+
                             Control::None => ()
                         }
 
                     },
-                    TwisterMessage::Event(event) => {
+                    TwisterMessage::Event(event, source) => {
                         let control = Control::from_id(event.id);
                         let value = event.value.value();
 
                         last_values.insert(control, value);
 
-                        tx_feedback.send(TwisterMessage::Send(control)).unwrap();
+                        if source == EventSource::Internal {
+                            tx_feedback.send(TwisterMessage::Send(control)).unwrap();
+                        }
+
                         tx_feedback.send(TwisterMessage::Refresh(control)).unwrap();
 
                         recorder.add(event);
@@ -542,7 +588,7 @@ impl Twister {
                             if let Some(id) = control_ids.get(control) {
                                 if let Some(range) = recorder.get_range_for(id.clone(), playback_pos, playback_pos + length) {
                                     for event in range {
-                                        tx_feedback.send(TwisterMessage::Event(event.clone())).unwrap();
+                                        tx_feedback.send(TwisterMessage::Event(event.clone(), EventSource::Internal)).unwrap();
                                         scheduled.insert(control);
                                     }
                                 }
@@ -564,8 +610,9 @@ impl Twister {
 
         Twister {
             _midi_input: input,
-            _midi_input_ju06a: ju06a_input,
-            _midi_input_sh01a: sh01a_input,
+            _midi_input_streichfett: streichfett_input,
+            _midi_input_tr6s: tr6s_input,
+            _midi_input_nts1: nts1_input,
             tx: tx_clock
         }
     }
@@ -577,9 +624,9 @@ impl Twister {
 
 #[derive(Debug, Clone)]
 enum TwisterMessage {
-    ControlChange(Control, OutputValue),
+    ControlChange(Control, OutputValue, EventSource),
     BankChange(u8),
-    Event(LoopEvent),
+    Event(LoopEvent, EventSource),
     Send(Control),
     Refresh(Control),
     Recording(Control, bool),
@@ -594,6 +641,7 @@ enum Control {
     ChannelReverb(u32),
     ChannelDelay(u32),
     ChannelFilter(u32),
+    ChannelFilterLfoAmount(u32),
     
     ChannelCrush(u32),
     ChannelRedux(u32),
@@ -613,8 +661,9 @@ enum Control {
     DelayLow,
     DelayHigh,
 
-    DrumMod,
-
+    KickPitch,
+    KickDecay,
+    SamplerPitch,
     SamplerMod,
     
     Swing,
@@ -623,20 +672,25 @@ enum Control {
     LfoHold,
     LfoSkew,
     LfoOffset,
+
+    Cv1,
+    Cv2,
+    Cv2LfoAmount,
     
-    BassCutoff,
-    BassRes,
-    BassFilterLfoAmount,
     BassPitch,
-    BassPorta,
-    BassNoise,
+    BassCutoff,
+    BassWave,
+    BassTune,
+    BassFilterLfoAmount,
         
-    SynthFilter,
-    SynthRes,
-    SynthFilterLfoAmount,
     SynthPitch,
-    SynthVibrato,
-    SynthNoise,
+    SynthTone,
+    SynthRegistration,
+    SynthMod,
+
+    ExtPitch,
+    ExtFilter,
+    ExtFilterLfoAmount,
 
     None
 }
@@ -664,30 +718,35 @@ impl Control {
             // Bank B
             (1, row, 0) => Control::ChannelCrush(row),
             (1, row, 1) => Control::ChannelRedux(row),
-            (1, row, 2) => Control::ChannelDrive(row),
-            (1, row, 3) => Control::ChannelFilterFollower(row),
+            (1, row, 2) => Control::ChannelFilterLfoAmount(row),
+
+            (1, 0, 3) => Control::LfoRate,
+            (1, 1, 3) => Control::LfoHold,
+            (1, 2, 3) => Control::LfoSkew,
+            (1, 3, 3) => Control::LfoOffset,
+
 
             // Bank C
-            (2, 0, 0) => Control::BassCutoff,
-            (2, 0, 1) => Control::BassRes,
-            (2, 0, 2) => Control::BassFilterLfoAmount,
+            (2, 0, 0) => Control::KickPitch,
+            (2, 0, 1) => Control::KickDecay,
+            (2, 0, 2) => Control::Cv1,
+            (2, 0, 3) => Control::Cv2,
 
-            (2, 1, 0) => Control::BassPitch,
-            (2, 1, 1) => Control::BassPorta,
-            (2, 1, 2) => Control::BassNoise,
+            (2, 1, 0) => Control::SamplerPitch,
+            (2, 1, 1) => Control::SamplerMod,
+            (2, 1, 2) => Control::ExtPitch,
+            (2, 1, 3) => Control::ExtFilter,
 
-            (2, 2, 0) => Control::SynthFilter,
-            (2, 2, 1) => Control::SynthRes,
-            (2, 2, 2) => Control::SynthFilterLfoAmount,
+            (2, 2, 0) => Control::BassPitch,
+            (2, 2, 1) => Control::BassCutoff,
+            (2, 2, 2) => Control::BassWave,
+            (2, 2, 3) => Control::BassTune,
 
             (2, 3, 0) => Control::SynthPitch,
-            (2, 3, 1) => Control::SynthVibrato,
-            (2, 3, 2) => Control::SynthNoise,
+            (2, 3, 1) => Control::SynthTone,
+            (2, 3, 2) => Control::SynthRegistration,
+            (2, 3, 3) => Control::SynthMod,
 
-            (2, 0, 3) => Control::LfoRate,
-            (2, 1, 3) => Control::LfoHold,
-            (2, 2, 3) => Control::LfoSkew,
-            (2, 3, 3) => Control::LfoOffset,
 
 
             // Bank D
@@ -705,8 +764,6 @@ impl Control {
 
             (3, 0, 3) => Control::Swing,
             (3, 1, 3) => Control::DuckRelease,
-            (3, 2, 3) => Control::DrumMod,
-            (3, 3, 3) => Control::SamplerMod,
 
             _ => Control::None
         }

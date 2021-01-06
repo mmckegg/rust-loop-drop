@@ -1,14 +1,11 @@
 use ::midi_connection;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use ::chunk::{Triggerable, OutputValue, SystemTime, ScheduleMode, MidiTime};
 use ::devices::MidiKeys;
-use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 pub use ::scale::{Scale, Offset};
 pub use ::midi_connection::SharedMidiOutputConnection;
-use ::clock_source::{RemoteClock, FromClock};
 
 const ROBOT_ADDRESS: [u8; 4] = [0x10, 0x00, 0x00, 0x00];
 

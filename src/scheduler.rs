@@ -51,6 +51,10 @@ impl RemoteSchedulerState {
     fn tick (&mut self, stamp: u64) {
         if let Some(last_tick_stamp) = self.last_tick_stamp {
             let duration = Duration::from_micros(stamp - last_tick_stamp);
+            let d = duration.as_millis();
+            // if d < 19 || d > 21 {
+                println!("UP {}", d);
+            // }
             if duration < Duration::from_millis(500) {
                 self.tick_durations.push(Duration::from_micros(stamp - last_tick_stamp));
                 self.last_tick_at = Some(self.tick_start_at + Duration::from_micros(stamp - self.stamp_offset));
@@ -100,15 +104,15 @@ impl Scheduler {
         
         let state_s = remote_state.clone();
         let tx_sub_clock = tx.clone();
-        thread::spawn(move || {
-            loop {
-                let state: std::sync::MutexGuard<RemoteSchedulerState> = state_s.lock().unwrap();
-                let duration = state.tick_duration() / (SUB_TICKS as u32);
-                drop(state);
-                thread::sleep(duration);
-                tx_sub_clock.send(ScheduleTick::SubTick(duration)).unwrap();
-            }
-        });
+        // thread::spawn(move || {
+        //     loop {
+        //         let state: std::sync::MutexGuard<RemoteSchedulerState> = state_s.lock().unwrap();
+        //         let duration = state.tick_duration() / (SUB_TICKS as u32);
+        //         drop(state);
+        //         thread::sleep(duration);
+        //         tx_sub_clock.send(ScheduleTick::SubTick(duration)).unwrap();
+        //     }
+        // });
 
         
         Scheduler {

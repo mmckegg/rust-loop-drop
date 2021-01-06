@@ -1,4 +1,4 @@
-use ::clock_source::{MidiTime};
+use ::MidiTime;
 
 lazy_static! {
     static ref RATES: [MidiTime; 10] = [

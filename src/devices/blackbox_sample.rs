@@ -1,4 +1,4 @@
-use ::chunk::{Triggerable, OutputValue};
+use ::chunk::{Triggerable, OutputValue, LatchMode};
 use ::midi_connection;
 
 use std::collections::HashMap;
@@ -42,5 +42,9 @@ impl Triggerable for BlackboxSample {
                 self.output_values.insert(id, (channel, note_id, velocity));
             }
         }
+    }
+
+    fn latch_mode (&self) -> LatchMode {
+        LatchMode::LatchSuppress
     }
 }

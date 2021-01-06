@@ -1,6 +1,7 @@
 use std::collections::{HashMap};
 use ::midi_time::MidiTime;
 pub use ::loop_event::LoopEvent;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 
 pub struct LoopRecorder {
     per_id: HashMap<u32, Vec<LoopEvent>>
@@ -10,6 +11,17 @@ impl LoopRecorder {
     pub fn new () -> Self {
         Self {
             per_id: HashMap::new()
+        }
+    }
+
+    pub fn allocate (&mut self, id: u32, capacity: usize) {
+        match self.per_id.entry(id) {
+            Vacant(entry) => {
+                entry.insert(Vec::with_capacity(capacity));
+            },
+            Occupied(entry) => {
+                entry.into_mut().reserve(capacity);
+            }
         }
     }
 

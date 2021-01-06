@@ -79,8 +79,11 @@ pub enum TriggerModeChange {
     Active(u32, bool)
 }
 
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 pub enum RepeatMode {
     Global,
+    OnlyQuant,
+    NoCycle,
     None
 }
 
@@ -88,6 +91,7 @@ pub enum RepeatMode {
 pub enum LatchMode {
     None,
     LatchSingle,
+    LatchSuppress,
     NoSuppress
 }
 
