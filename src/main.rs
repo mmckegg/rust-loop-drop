@@ -78,7 +78,7 @@ fn main() {
 
     // PWM CV voltages
     let cv1_port = midi_connection::get_shared_output("RK006 PORT 7");
-    let cv2_port = midi_connection::get_shared_output("RK006 PORT 8");
+    let cv2_port = midi_connection::get_shared_output("RK006 PORT 9");
     
     let vt4_output_port = midi_connection::get_shared_output("VT-4");
     let streichfett_output_port = midi_connection::get_shared_output("Streichfett");
