@@ -188,7 +188,7 @@ fn main() {
             Shape::new(1, 8),
             9, // orange
             Some(1),
-            RepeatMode::NoCycle
+            RepeatMode::OnlyQuant
         ),
 
         // BASS
