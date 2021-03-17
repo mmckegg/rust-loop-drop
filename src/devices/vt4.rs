@@ -43,7 +43,7 @@ impl VT4 {
         });
 
         VT4 {
-            midi_keys: MidiKeys::new(vec![midi_output], 1, scale, offset),
+            midi_keys: MidiKeys::new(vec![(midi_output, 1)], scale, offset),
             last_key: None,
             in_robot_mode,
             _midi_input: input
@@ -73,7 +73,7 @@ impl Triggerable for VT4 {
 
             if Some(key) != self.last_key {
                 for midi_output in &mut self.midi_keys.midi_outputs {
-                    midi_output.send(&[176, 48, key]).unwrap();
+                    midi_output.0.send(&[176, 48, key]).unwrap();
                 }
                 self.last_key = Some(key);
             }

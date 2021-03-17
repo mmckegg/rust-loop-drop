@@ -211,7 +211,6 @@ enum LaunchpadEvent {
     RateButton {id: usize, pressed: bool},
     TriggerModeButton {id: usize, pressed: bool},
     BankButton {id: usize, pressed: bool},
-    SampleButton {id: usize, pressed: bool},
     GridInput {id: u32, value: u8, stamp: u64}
 }
 
@@ -229,8 +228,6 @@ pub struct LoopGridLaunchpad {
     
     _input: midi_connection::ThreadReference,
     params: Arc<Mutex<LoopGridParams>>,
-    sample_channel: u8,
-    sample_note_offset: u8,
 
     input_queue: mpsc::Receiver<LaunchpadEvent>,
 
@@ -239,7 +236,6 @@ pub struct LoopGridLaunchpad {
     chunk_colors: Vec<Light>,
     chunk_channels: HashMap<usize, u32>,
     chunk_trigger_ids: Vec<Vec<u32>>,
-    sample_midi_port: midi_connection::SharedMidiOutputConnection,
     launchpad_output: midi_connection::SharedMidiOutputConnection,
 
     no_suppress: HashSet<u32>,
@@ -318,7 +314,7 @@ pub struct LoopGridLaunchpad {
 }
 
 impl LoopGridLaunchpad {
-    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>, sample_midi_port: midi_connection::SharedMidiOutputConnection, sample_channel: u8, sample_note_offset: u8) -> Self {
+    pub fn new(launchpad_port_name: &str, chunk_map: Vec<Box<ChunkMap>>, scale: Arc<Mutex<Scale>>, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
         let (input_queue_tx, input_queue) = mpsc::channel();
@@ -392,8 +388,6 @@ impl LoopGridLaunchpad {
             launchpad_output,
             loop_length,
             params,
-            sample_channel,
-            sample_note_offset,
             id_to_midi,
 
             trigger_mode: TriggerMode::Immediate,
@@ -413,7 +407,6 @@ impl LoopGridLaunchpad {
             chunk_colors: Vec::new(),
             chunk_channels: HashMap::new(),
             chunk_trigger_ids: Vec::new(),
-            sample_midi_port: sample_midi_port,
 
             no_suppress: HashSet::new(),
             latch_suppress: HashSet::new(),
@@ -673,9 +666,6 @@ impl LoopGridLaunchpad {
                     self.set_rate(rate);
                 }
             },
-            LaunchpadEvent::SampleButton {id, pressed} => {
-                self.play_sample(id as u8, pressed);
-            },
             LaunchpadEvent::TriggerModeButton {id, pressed} => {
                 if pressed {
                     self.set_trigger_mode(TriggerMode::from_id(id));
@@ -861,16 +851,6 @@ impl LoopGridLaunchpad {
         }
 
         self.update_cycle_steps();
-    }
-
-
-    fn play_sample (&mut self, id: u8, pressed: bool) {
-        let velocity = if pressed {
-            120
-        } else {
-            0
-        };
-        self.sample_midi_port.send(&[144 - 1 + self.sample_channel, self.sample_note_offset + id, velocity]).unwrap();
     }
 
     fn refresh_selected_bank (&mut self) {

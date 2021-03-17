@@ -2,6 +2,8 @@ pub use std::time::{SystemTime, Duration};
 pub use ::output_value::OutputValue;
 pub use ::midi_time::MidiTime;
 use std::collections::HashSet;
+use ::serde::{Deserialize, Serialize};
+use ::serde_json::Result;
 
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
@@ -12,7 +14,7 @@ pub trait Triggerable {
     fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash, Serialize, Deserialize)]
 pub struct Coords {
     pub row: u32,
     pub col: u32
@@ -39,6 +41,7 @@ impl Coords {
     // }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Shape {
     pub rows: u32,
     pub cols: u32
@@ -79,7 +82,7 @@ pub enum TriggerModeChange {
     Active(u32, bool)
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash, Serialize, Deserialize)]
 pub enum RepeatMode {
     Global,
     OnlyQuant,
