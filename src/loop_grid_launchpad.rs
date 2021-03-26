@@ -572,7 +572,7 @@ impl LoopGridLaunchpad {
                     } else {
                         if self.shift_held {
                             self.clear_loops(TransformTarget::All, false);
-                            self.clear_automation()
+                            self.clear_automation();
                         } else {
                             if self.selecting_scale {
                                 self.clear_loops(TransformTarget::Scale, false);
@@ -1653,7 +1653,10 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_should_flatten (&mut self) {
-        let new_value = &self.selection_override != &LoopTransform::None || self.override_values.values().any(|value| value != &LoopTransform::None) || self.sustained_values.len() > 0;
+        let loop_collection = self.loop_state.get();
+        let is_sustained = self.sustained_values.iter().any(|(key, value)| value != loop_collection.transforms.get(key).unwrap_or(&LoopTransform::None));
+        let is_overridden = self.override_values.values().any(|value| value != &LoopTransform::None);
+        let new_value = &self.selection_override != &LoopTransform::None || is_overridden || is_sustained;
         if new_value != self.should_flatten {
             self.should_flatten = new_value;
             let color = if self.should_flatten {
