@@ -1,13 +1,92 @@
 use ::serde::{Deserialize, Serialize};
-use ::serde_json::Result;
 use chunk::{Shape, Coords, ChunkMap, RepeatMode};
+use serde_json::{json, to_writer_pretty};
+use std::error::Error;
+use std::fs::File;
+use std::io::BufReader;
+
+impl Config {
+  pub fn read(filepath: &str) -> Result<Self, Box<Error>> {
+    let file = File::open(filepath)?;
+    let reader = BufReader::new(file);
+
+    let config = serde_json::from_reader(reader)?;
+    Ok(config)
+  }
+
+  pub fn write(&self, filepath: &str) -> std::io::Result<()> {
+    let myjson = json!(self);
+    // println!("{}", myjson.to_string());
+    to_writer_pretty(&File::create(filepath)?, &myjson)?;
+    Ok(())
+  }
+
+  pub fn default() -> Self {
+    Config {
+        chunks: vec![
+            ChunkConfig {
+                shape: Shape::new(1, 8),
+                coords: Coords::new(0, 0),
+                color: 22,
+                channel: Some(1),
+                repeat_mode: RepeatMode::Global,
+                device: DeviceConfig::MidiKeys{
+                    outputs: vec![MidiPortConfig{
+                        name: String::from("RK006 PORT 2"),
+                        channel: 2
+                    }],
+                    offset_id: String::from("SomeNameToUseItSomewhere"),
+                    note_offset: 0,
+                    octave_offset: -1
+                }
+            },
+            ChunkConfig {
+                shape: Shape::new(1, 8),
+                coords: Coords::new(1, 0),
+                color: 44,
+                channel: Some(2),
+                repeat_mode: RepeatMode::Global,
+                device: DeviceConfig::BlackboxSample {
+                    output: MidiPortConfig{
+                        name: String::from("RK006 PORT 3"),
+                        channel: 1
+                    }
+                }
+            },
+            ChunkConfig {
+                shape: Shape::new(1, 8),
+                coords: Coords::new(2, 0),
+                color: 66,
+                channel: Some(3),
+                repeat_mode: RepeatMode::Global,
+                device: DeviceConfig::OffsetChunk {
+                    id: String::from("SomeNameToUseItSomewhere")
+                }
+            },
+            ChunkConfig {
+                shape: Shape::new(1, 8),
+                coords: Coords::new(3, 0),
+                color: 88,
+                channel: Some(4),
+                repeat_mode: RepeatMode::Global,
+                device: DeviceConfig::RootSelect
+            }
+        ],
+        clock_input_port_name: String::from("TR-6S"),
+        clock_output_port_names: vec![String::from("clock_output_port_names")],
+        resync_port_names: vec![String::from("resync_port_names")],
+        twister_main_output_port: None
+    }
+  }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub chunks: Vec<ChunkConfig>,
     pub clock_input_port_name: String,
     pub clock_output_port_names: Vec<String>,
-    pub resync_port_names: Vec<String>
+    pub resync_port_names: Vec<String>,
+    pub twister_main_output_port: Option<MidiPortConfig>
 }
 
 #[derive(Serialize, Deserialize)]
