@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::process;
 use std::time::{Duration, Instant};
+use std::path::Path;
 
 mod config;
 mod midi_connection;
@@ -33,76 +34,25 @@ use std::sync::atomic::AtomicUsize;
 use ::midi_time::{MidiTime, SUB_TICKS};
 use scheduler::{Scheduler, ScheduleRange};
 use std::sync::mpsc;
-use serde_json::json;
 
 
 const APP_NAME: &str = "Loop Drop";
+const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
 
 fn main() {
     
     let mut chunks = Vec::new();
+    let mut myconfig = config::Config::default();
 
-    let myconfig = config::Config{
-        chunks: vec![
-            config::ChunkConfig {
-                shape: Shape::new(1, 8),
-                coords: Coords::new(0, 0),
-                color: 22,
-                channel: Some(1),
-                repeat_mode: RepeatMode::Global,
-                device: config::DeviceConfig::MidiKeys{
-                    outputs: vec![config::MidiPortConfig{
-                        name: String::from("RK006 PORT 2"),
-                        channel: 2
-                    }],
-                    offset_id: String::from("SomeNameToUseItSomewhere"),
-                    note_offset: 0,
-                    octave_offset: -1
-                }
-            },
-            config::ChunkConfig {
-                shape: Shape::new(1, 8),
-                coords: Coords::new(1, 0),
-                color: 44,
-                channel: Some(2),
-                repeat_mode: RepeatMode::Global,
-                device: config::DeviceConfig::BlackboxSample {
-                    output: config::MidiPortConfig{
-                        name: String::from("RK006 PORT 3"),
-                        channel: 1
-                    }
-                }
-            },
-            config::ChunkConfig {
-                shape: Shape::new(1, 8),
-                coords: Coords::new(2, 0),
-                color: 66,
-                channel: Some(3),
-                repeat_mode: RepeatMode::Global,
-                device: config::DeviceConfig::OffsetChunk {
-                    id: String::from("SomeNameToUseItSomewhere")
-                }
-            },
-            config::ChunkConfig {
-                shape: Shape::new(1, 8),
-                coords: Coords::new(3, 0),
-                color: 88,
-                channel: Some(4),
-                repeat_mode: RepeatMode::Global,
-                device: config::DeviceConfig::RootSelect
-            }
-        ],
-        clock_input_port_name: String::from("TR-6S"),
-        clock_output_port_names: vec![String::from("clock_output_port_names")],
-        resync_port_names: vec![String::from("resync_port_names")],
-    };
+    if Path::new(CONFIG_FILEPATH).exists() {
+        myconfig = config::Config::read(CONFIG_FILEPATH).unwrap();
+        println!("Read config from {}", CONFIG_FILEPATH);
+    } else {
+        myconfig.write(CONFIG_FILEPATH).unwrap();
+        println!("Wrote config to {}", CONFIG_FILEPATH);
+    }
 
-    let myjson = json!(myconfig);
-
-    println!("{}", myjson.to_string());
-
-
-    Command::new("renice").args(&["-n", "-20", &format!("{}", process::id())]).output();
+    // Command::new("renice").args(&["-n", "-20", &format!("{}", process::id())]).output();
     let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
     let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
 
@@ -130,26 +80,6 @@ fn main() {
         v.insert(0, 127);
         v.insert(4, 127);
     }
-
-    // let bass_offset = Offset::new(-2, -4);
-    // let keys_offset = Offset::new(0, -4);
-    // let ext_offset = Offset::new(-1, -4);
-
-    // let tr6s_output_port = midi_connection::get_shared_output("TR-6S");
-    
-    // let rk006_out_1_port = midi_connection::get_shared_output("RK006 PORT 2");
-    // let rk006_out_2_port = midi_connection::get_shared_output("RK006 PORT 3");
-    // let rk006_out_3_port = midi_connection::get_shared_output("RK006 PORT 4");
-    // let rk006_out_4_port = midi_connection::get_shared_output("RK006 PORT 5");
-    // let rk006_out_5_port = midi_connection::get_shared_output("RK006 PORT 6");
-
-    // // PWM CV voltages
-    // let cv1_port = midi_connection::get_shared_output("RK006 PORT 7");
-    // let cv2_port = midi_connection::get_shared_output("RK006 PORT 9");
-    
-    // let vt4_output_port = midi_connection::get_shared_output("VT-4");
-    // let streichfett_output_port = midi_connection::get_shared_output("Streichfett");
-    // let nts1_output_port = midi_connection::get_shared_output("NTS-1 digital kit");
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro MK3"
@@ -195,143 +125,16 @@ fn main() {
         )
     }
 
-
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, chunks, Arc::clone(&scale), Arc::clone(&params));
+    let mut _twister = None;
 
-    // let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, vec![
-
-    //     // EXT SYNTH
-    //     // Send this to Geode, Blackbox (channel 1), Blackbox (channel 2 but as slicer rather than pitch), and RK-006 port 4 (TRS)
-    //     ChunkMap::new(
-    //         Box::new(devices::MultiChunk::new(vec![
-    //             Box::new(devices::MidiKeys::new(vec![rk006_out_1_port.clone(), rk006_out_5_port.clone(), nts1_output_port.clone()], 1, Arc::clone(&scale), Arc::clone(&ext_offset))), 
-    //             Box::new(devices::BlackboxSlicer::new(rk006_out_1_port.clone(), 2))
-    //         ])),
-    //         Coords::new(0 + 8, 0),
-    //         Shape::new(3, 8),
-    //         125, // gross
-    //         Some(2),
-    //         RepeatMode::Global
-    //     ),
-
-    //     // EXT SYNTH OFFSET 
-    //     // (also sends pitch mod on channel 2 for slicer)
-    //     ChunkMap::new(
-    //         Box::new(devices::MultiChunk::new(vec![
-    //             Box::new(devices::OffsetChunk::new(Arc::clone(&ext_offset))),
-    //             Box::new(devices::PitchOffsetChunk::new(rk006_out_1_port.clone(), 2))
-    //         ])),
-    //         Coords::new(3 + 8, 0), 
-    //         Shape::new(1, 8),
-    //         12, // soft yellow
-    //         None,
-    //         RepeatMode::OnlyQuant
-    //     ),
-
-    //     // BASS OFFSET
-    //     ChunkMap::new(
-    //         Box::new(devices::OffsetChunk::new(Arc::clone(&bass_offset))),
-    //         Coords::new(4 + 8, 0), 
-    //         Shape::new(1, 8),
-    //         43, // blue
-    //         None,
-    //         RepeatMode::OnlyQuant
-    //     ),
-
-    //     // SYNTH OFFSET
-    //     ChunkMap::new(
-    //         Box::new(devices::OffsetChunk::new(Arc::clone(&keys_offset))), 
-    //         Coords::new(5 + 8, 0), 
-    //         Shape::new(1, 8),
-    //         55, // pink
-    //         None,
-    //         RepeatMode::OnlyQuant
-    //     ),
-        
-    //     // ROOT NOTE SELECTOR
-    //     ChunkMap::new(
-    //         Box::new(devices::RootSelect::new(Arc::clone(&scale))), 
-    //         Coords::new(6 + 8, 0), 
-    //         Shape::new(2, 8),
-    //         35, // soft green
-    //         None,
-    //         RepeatMode::OnlyQuant
-    //     ),
-
-    //     // SCALE MODE SELECTOR
-    //     ChunkMap::new(
-    //         Box::new(devices::ScaleSelect::new(Arc::clone(&scale))), 
-    //         Coords::new(16, 0), 
-    //         Shape::new(1, 8),
-    //         0, // black
-    //         None,
-    //         RepeatMode::OnlyQuant
-    //     ),
-
-    //     // DRUMS
-    //     ChunkMap::new(
-    //         Box::new(devices::TR6s::new(tr6s_output_port.clone(), 10, rk006_out_2_port.clone(), 16, Arc::clone(&drum_velocities))), 
-    //         Coords::new(0, 0), 
-    //         Shape::new(1, 6),
-    //         15, // yellow
-    //         Some(0),
-    //         RepeatMode::NoCycle
-    //     ),
-
-    //     // EXTRA PERC (to fill in for only 6 triggers on cycles)
-    //     ChunkMap::new(
-    //         Box::new(devices::BlackboxPerc::new(rk006_out_1_port.clone(), 10, Arc::clone(&drum_velocities))), 
-    //         Coords::new(0, 6), 
-    //         Shape::new(1, 2),
-    //         9, // orange
-    //         Some(1),
-    //         RepeatMode::NoCycle
-    //     ),
-
-    //     // SAMPLER
-    //     ChunkMap::new(
-    //         Box::new(devices::BlackboxSample::new(rk006_out_1_port.clone(), 10)), 
-    //         Coords::new(1, 0), 
-    //         Shape::new(1, 8),
-    //         9, // orange
-    //         Some(1),
-    //         RepeatMode::OnlyQuant
-    //     ),
-
-    //     // BASS
-    //     ChunkMap::new(
-    //         Box::new(devices::MidiKeys::new(vec![rk006_out_3_port.clone(), rk006_out_1_port.clone()], 11, Arc::clone(&scale), Arc::clone(&bass_offset))), 
-    //         Coords::new(2, 0), 
-    //         Shape::new(3, 8),
-    //         43, // blue
-    //         Some(2),
-    //         RepeatMode::Global
-    //     ),
-
-    //     // SYNTH
-    //     ChunkMap::new(
-    //         Box::new(devices::MidiKeys::new(vec![streichfett_output_port.clone(), rk006_out_4_port.clone()], 1, Arc::clone(&scale), Arc::clone(&keys_offset))), 
-    //         Coords::new(5, 0), 
-    //         Shape::new(3, 8),
-    //         59, // pink
-    //         Some(3),
-    //         RepeatMode::Global
-    //     )
-    // ], Arc::clone(&scale), Arc::clone(&params), rk006_out_1_port.clone(), 10, 36);
-
-    // let _keyboard = devices::KBoard::new("K-Board", streichfett_output_port.clone(), 1, scale.clone());
-
-    // let twister = devices::Twister::new("Midi Fighter Twister",
-    //     rk006_out_3_port.clone(),
-    //     streichfett_output_port.clone(),
-    //     tr6s_output_port.clone(),
-    //     rk006_out_1_port.clone(),
-    //     nts1_output_port.clone(),
-    //     rk006_out_2_port.clone(),
-    //     cv1_port.clone(),
-    //     cv2_port.clone(),
-    //     Arc::clone(&params)
-    // );
+    if let Some(port) = myconfig.twister_main_output_port {
+        _twister = Some(devices::Twister::new("Midi Fighter Twister",
+            get_port(&mut output_ports, &port.name),
+            port.channel,
+            Arc::clone(&params)
+        ));
+    } 
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
 
@@ -376,6 +179,10 @@ fn main() {
         }
     }
 }
+
+
+
+// Helper functions
 
 fn get_port(ports_lookup: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>, port_name: &str) -> midi_connection::SharedMidiOutputConnection {
     if !ports_lookup.contains_key(port_name) {
