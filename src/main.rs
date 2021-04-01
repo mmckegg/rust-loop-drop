@@ -72,14 +72,6 @@ fn main() {
         align_offset: MidiTime::zero(),
         reset_automation: false
     }));
-    
-    let drum_velocities = Arc::new(Mutex::new(HashMap::new()));
-
-    { // release lock
-        let mut v = drum_velocities.lock().unwrap();
-        v.insert(0, 127);
-        v.insert(4, 127);
-    }
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
         "Launchpad Pro MK3"
@@ -91,31 +83,9 @@ fn main() {
     let mut offset_lookup = HashMap::new();
 
     for chunk in myconfig.chunks {
-
-        let device: Box<Triggerable + Send> = match chunk.device{
-            config::DeviceConfig::MidiKeys{outputs, offset_id, note_offset, octave_offset} => {
-                let device_ports = outputs.iter().map(|port| (get_port(&mut output_ports, &port.name), port.channel)).collect();
-                let offset = get_offset(&mut offset_lookup, &offset_id);
-                set_offset(offset.clone(), &note_offset, &octave_offset);
-
-                Box::new(devices::MidiKeys::new(device_ports, scale.clone(), offset))
-            },
-            config::DeviceConfig::OffsetChunk{id} => {
-                Box::new(devices::OffsetChunk::new(get_offset(&mut offset_lookup, &id)))
-            },
-            config::DeviceConfig::RootSelect => {
-                Box::new(devices::RootSelect::new(scale.clone()))
-            },
-            config::DeviceConfig::BlackboxSample{output} => {
-                let device_port = get_port(&mut output_ports, &output.name);
-
-                Box::new(devices::BlackboxSample::new(device_port, output.channel))
-            }
-        };
-
         chunks.push(
             ChunkMap::new(
-                device,
+                make_device(chunk.device, &mut output_ports, &mut offset_lookup, &scale),
                 chunk.coords, 
                 chunk.shape,
                 chunk.color,
@@ -138,8 +108,6 @@ fn main() {
 
     let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
 
-    // let mut vt4 = devices::VT4Key::new(vt4_output_port.clone(), 8, scale.clone());
-    
     // let mut clock_blackbox_output_port = rk006_out_1_port.clone();
     // let mut tr6s_clock_output_port = tr6s_output_port.clone();
     // let mut nts1_clock_output_port = nts1_output_port.clone();
@@ -172,7 +140,6 @@ fn main() {
         if range.ticked {
             let length = MidiTime::tick();
             // twister.schedule(range.tick_pos, length);
-            // vt4.schedule(range.tick_pos, length);
 
             // keep the tr6s midi input active (otherwise it stops responding to incoming midi immediately)
             // tr6s_clock_output_port.send(&[254]).unwrap();
@@ -205,4 +172,46 @@ fn set_offset(offset: Arc<Mutex<Offset>>, note_offset: &i32, octave_offset: &i32
 
     value.oct = *octave_offset;
     value.base = *note_offset;
+}
+
+fn make_device(device: config::DeviceConfig, output_ports: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>, offset_lookup: &mut HashMap<String, Arc<Mutex<Offset>> >, scale: &Arc<Mutex<Scale>>) -> Box<Triggerable + Send> {
+    let mut output_ports = output_ports;
+    let mut offset_lookup = offset_lookup;
+
+    match device {
+        config::DeviceConfig::Multi{devices} => {
+            let instances = devices.iter().map(|device| make_device(device.clone(), output_ports, offset_lookup, scale)).collect();
+            Box::new(devices::MultiChunk::new(instances))
+
+        }
+        config::DeviceConfig::MidiKeys{output, offset_id, note_offset, octave_offset} => {
+            let device_port = get_port(&mut output_ports, &output.name);
+            let offset = get_offset(&mut offset_lookup, &offset_id);
+            set_offset(offset.clone(), &note_offset, &octave_offset);
+
+            Box::new(devices::MidiKeys::new(device_port, output.channel, scale.clone(), offset))
+        },
+        config::DeviceConfig::OffsetChunk{id} => {
+            Box::new(devices::OffsetChunk::new(get_offset(&mut offset_lookup, &id)))
+        },
+        config::DeviceConfig::RootSelect => {
+            Box::new(devices::RootSelect::new(scale.clone()))
+        },
+        config::DeviceConfig::MidiTriggers{output, sidechain_output, trigger_ids} => {
+            let device_port = get_port(&mut output_ports, &output.name);
+
+            let sidechain_output = if let Some(sidechain_output) = sidechain_output {
+                Some(devices::SidechainOutput{
+                    midi_port: get_port(&mut output_ports, &sidechain_output.port.name),
+                    midi_channel: sidechain_output.port.channel,
+                    trigger_id: sidechain_output.trigger_id,
+                    id: sidechain_output.id
+                })
+            } else {
+                None
+            };
+
+            Box::new(devices::MidiTriggers::new(device_port, output.channel, sidechain_output, trigger_ids))
+        }
+    }
 }

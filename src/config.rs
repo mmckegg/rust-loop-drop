@@ -30,14 +30,27 @@ impl Config {
                 color: 22,
                 channel: Some(1),
                 repeat_mode: RepeatMode::Global,
-                device: DeviceConfig::MidiKeys{
-                    outputs: vec![MidiPortConfig{
-                        name: String::from("RK006 PORT 2"),
-                        channel: 2
-                    }],
-                    offset_id: String::from("SomeNameToUseItSomewhere"),
-                    note_offset: 0,
-                    octave_offset: -1
+                device: DeviceConfig::Multi {
+                  devices: vec![
+                    DeviceConfig::MidiKeys{
+                      output: MidiPortConfig{
+                          name: String::from("RK006 PORT 2"),
+                          channel: 2
+                      },
+                      offset_id: String::from("SomeNameToUseItSomewhere"),
+                      note_offset: 0,
+                      octave_offset: -1
+                    }, 
+                    DeviceConfig::MidiKeys{
+                      output: MidiPortConfig{
+                          name: String::from("RK006 PORT 3"),
+                          channel: 3
+                      },
+                      offset_id: String::from("SomeNameToUseItSomewhere"),
+                      note_offset: 0,
+                      octave_offset: -1
+                    }
+                  ]
                 }
             },
             ChunkConfig {
@@ -46,11 +59,13 @@ impl Config {
                 color: 44,
                 channel: Some(2),
                 repeat_mode: RepeatMode::Global,
-                device: DeviceConfig::BlackboxSample {
+                device: DeviceConfig::MidiTriggers {
                     output: MidiPortConfig{
                         name: String::from("RK006 PORT 3"),
                         channel: 1
-                    }
+                    },
+                    sidechain_output: None,
+                    trigger_ids: vec![48, 49, 50, 51, 44, 45, 46, 47]
                 }
             },
             ChunkConfig {
@@ -99,28 +114,38 @@ pub struct ChunkConfig {
     pub device: DeviceConfig
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MidiPortConfig {
     pub name: String,
     pub channel: u8
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SidechainOutput {
+    pub port: MidiPortConfig,
+    pub trigger_id: u8,
+    pub id: u32
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub enum DeviceConfig {
-//   MultiChunk,
+  Multi {
+    devices: Vec<DeviceConfig>
+  },
   MidiKeys { 
-      outputs: Vec<MidiPortConfig>, 
+      output: MidiPortConfig, 
       offset_id: String,
       note_offset: i32,
       octave_offset: i32
   },
-//   BlackboxSlicer { output: MidiPortConfig },
   OffsetChunk { id: String },
 //   PitchOffsetChunk { output: MidiPortConfig },
   RootSelect,
 //   ScaleSelect,
-//   TR6s { output: MidiPortConfig },
-//   BlackboxPerc { output: MidiPortConfig },
-  BlackboxSample { output: MidiPortConfig }
+  MidiTriggers { 
+    output: MidiPortConfig,
+    trigger_ids: Vec<u8>,
+    sidechain_output: Option<SidechainOutput>
+  }
 }
 
