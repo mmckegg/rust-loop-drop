@@ -241,8 +241,8 @@ fn main() {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
                 clock_blackbox_output_port.send(&[250]).unwrap();
             }
+            nts1_clock_output_port.send(&[248]).unwrap();
         }
-        nts1_clock_output_port.send(&[248]).unwrap();
         
         if range.ticked && range.from.ticks() != range.to.ticks() {
             // HACK: straighten out missing sub ticks into separate schedules
