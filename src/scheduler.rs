@@ -52,9 +52,7 @@ impl RemoteSchedulerState {
         if let Some(last_tick_stamp) = self.last_tick_stamp {
             let duration = Duration::from_micros(stamp - last_tick_stamp);
             let d = duration.as_millis();
-            // if d < 19 || d > 21 {
-                println!("UP {}", d);
-            // }
+
             if duration < Duration::from_millis(500) {
                 self.tick_durations.push(Duration::from_micros(stamp - last_tick_stamp));
                 self.last_tick_at = Some(self.tick_start_at + Duration::from_micros(stamp - self.stamp_offset));
@@ -138,7 +136,6 @@ impl Scheduler {
                     self.sub_ticks = 1;
                     self.ticks += 1;
                     self.next_pos = MidiTime::new(self.ticks, self.sub_ticks);
-                    // println!("TICK {}: {} - {}", (self.next_pos - from).as_float(), from.as_float(), self.next_pos.as_float());
 
                     return ScheduleRange { 
                         from, 
@@ -152,7 +149,6 @@ impl Scheduler {
                     if from.sub_ticks() < (SUB_TICKS - 1) && self.last_tick_at.elapsed() > (duration / 2) {
                         self.sub_ticks += 1;
                         self.next_pos = MidiTime::new(self.ticks, self.sub_ticks);
-                        // println!("SUB TICK {}: {} - {}", (self.next_pos - from).as_float(), from.as_float(), self.next_pos.as_float());
                         return ScheduleRange { 
                             from, 
                             to: self.next_pos, 
