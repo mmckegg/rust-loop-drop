@@ -52,6 +52,7 @@ fn main() {
         swing: 0.0,
         bank: 0,
         frozen: false,
+        cueing: false,
         align_offset: MidiTime::zero(),
         reset_automation: false
     }));

@@ -17,13 +17,15 @@ pub struct Twister {
     _midi_input_streichfett: midi_connection::ThreadReference,
     _midi_input_tr6s: midi_connection::ThreadReference,
     _midi_input_nts1: midi_connection::ThreadReference,
+    // _midi_input_typhon: midi_connection::ThreadReference,
     tx: mpsc::Sender<TwisterMessage>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum EventSource {
-    Internal,
-    External
+    User,
+    Loop,
+    External,
 }
 
 impl Twister {
@@ -68,7 +70,7 @@ impl Twister {
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
             let control = Control::from_id(message[1] as u32);
             if message[0] == 176 {
-                tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]), EventSource::Internal)).unwrap();
+                tx_input.send(TwisterMessage::ControlChange(control, OutputValue::On(message[2]), EventSource::User)).unwrap();
             } else if message[0] == 177 {
                 tx_input.send(TwisterMessage::Recording(control, message[2] > 0)).unwrap();
             } else if message[0] == 179 && message[1] < 4 && message[2] == 127 {
@@ -113,6 +115,16 @@ impl Twister {
             }
         });
 
+        // let tx_typhon = tx.clone();
+        // let typhon_input = midi_connection::get_input("RK006 PORT 3", move |_stamp, message| {
+        //     println!("typhon {:?}", message);
+        //     if message[0] == 176 {
+        //         if message[1] == 43 { 
+        //             // tx_typhon.send(TwisterMessage::ControlChange(Control::BassFilter, OutputValue::On(message[2]), EventSource::External)).unwrap();
+        //         }
+        //     }
+        // });
+
         thread::spawn(move || {
             let mut recorder = LoopRecorder::new();
             let mut last_pos = MidiTime::zero();
@@ -131,8 +143,10 @@ impl Twister {
             let mut current_bank = 0;
 
             let mut frozen = false;
+            let mut cueing = false;
             let mut frozen_values = None;
-            let mut frozen_loops = None;
+            let mut frozen_loops: Option<HashMap<Control, Loop>> = None;
+            let mut cued_values: Option<HashMap<Control, u8>> = None;
 
             let mut lfo_amounts = HashMap::new();
 
@@ -174,6 +188,7 @@ impl Twister {
             last_values.insert(Control::DuckRelease, 64);
 
             last_values.insert(Control::SamplerPitch, 64);
+            last_values.insert(Control::SamplerMod, 64);
 
             last_values.insert(Control::Cv1, 64);
             last_values.insert(Control::Cv2, 0);
@@ -222,13 +237,22 @@ impl Twister {
 
             for received in rx {
                 match received {
-                    TwisterMessage::LeftButton(pressed) => {
+                    TwisterMessage::LeftButton(pressed) | TwisterMessage::RightButton(pressed) => {
                         let mut params = params.lock().unwrap();
-                        params.frozen = pressed;
-                    },
-                    TwisterMessage::RightButton(pressed) => {
-                        let mut params = params.lock().unwrap();
-                        params.frozen = pressed;
+                        if pressed {
+                            // if already frozen, go into cueing mode
+                            // if already in cueing mode, revert back to normal frozen mode
+                            if params.cueing {
+                                params.cueing = false
+                            } else if params.frozen {
+                                params.cueing = true
+                            } else {
+                                params.frozen = true
+                            }
+                        } else if !cued_values.is_some() {
+                            // only leave frozen on button up if not cueing
+                            params.frozen = false
+                        }
                     },
                     TwisterMessage::BankChange(bank) => {
                         let mut params = params.lock().unwrap();
@@ -244,7 +268,6 @@ impl Twister {
                             };
 
                             if allow {
-                                loops.remove(&control);
                                 let event = LoopEvent { 
                                     id: id.clone(), 
                                     value,
@@ -489,9 +512,22 @@ impl Twister {
                         let control = Control::from_id(event.id);
                         let value = event.value.value();
 
-                        last_values.insert(control, value);
+                        if source != EventSource::Loop && !cueing {
+                            loops.remove(&control);
+                        }
 
-                        if source == EventSource::Internal {
+                        if let Some(loops) = &mut cued_values {
+                            if source != EventSource::Loop && cueing {
+                                loops.insert(control, value);
+                            }
+                        }
+
+                        if source == EventSource::Loop || !cueing {
+                            last_values.insert(control, value);
+                        }
+
+                        // suppress updating device with cued values
+                        if source == EventSource::Loop || (source == EventSource::User && !cueing) {
                             tx_feedback.send(TwisterMessage::Send(control)).unwrap();
                         }
 
@@ -519,12 +555,29 @@ impl Twister {
                     },
 
                     TwisterMessage::Refresh(control) => {
+                        let cued_value = if let Some(cued_values) = &cued_values {
+                            if cueing {
+                                cued_values.get(&control)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
                         let value = *last_values.get(&control).unwrap_or(&0);
                         if let Some(id) = control_ids.get(&control) {
-                            output.send(&[176, id.clone() as u8, value]).unwrap();
+                            
+                            output.send(&[176, id.clone() as u8, *cued_value.unwrap_or(&value)]).unwrap();
 
                             // MFT animation for currently looping (Channel 6)
-                            if loops.contains_key(&control) {
+                            if cued_value.is_some() { 
+                                output.send(&[181, id.clone() as u8, 61]).unwrap();
+                            } else if cueing {
+                                output.send(&[181, id.clone() as u8, 15]).unwrap();
+                            } else if frozen {
+                                output.send(&[181, id.clone() as u8, 59]).unwrap();
+                            } else if loops.contains_key(&control) {
                                 output.send(&[181, id.clone() as u8, 13]).unwrap();
                             } else {
                                 output.send(&[181, id.clone() as u8, 0]).unwrap();
@@ -562,6 +615,9 @@ impl Twister {
                             if frozen {
                                 frozen_values = Some(last_values.clone());
                                 frozen_loops = Some(loops.clone());
+                                for control in control_ids.keys() {
+                                    tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                                }
                             } else {
                                 if let Some(frozen_loops) = frozen_loops.take() {
                                     loops = frozen_loops;
@@ -572,23 +628,50 @@ impl Twister {
                                             // queue a value send for changed values on next message loop
                                             tx.send(TwisterMessage::Send(*control)).unwrap();
                                         }
-                                        tx.send(TwisterMessage::Refresh(*control)).unwrap();
                                     }
 
                                     last_values = frozen_values;
                                 }
+
+                                if let Some(values) = cued_values {
+                                    for (key, value) in values {
+                                        last_values.insert(key, value);
+                                        tx.send(TwisterMessage::Send(key)).unwrap();
+                                    }
+                                }
+
+                                for control in control_ids.keys() {
+                                    tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                                }
+
+                                cued_values = None;
+                            }
+                        }
+
+                        if params.cueing != cueing {
+                            cueing = params.cueing;
+                            if cueing {
+                                if !cued_values.is_some() {
+                                    cued_values = Some(HashMap::new());
+                                }
+                            }
+
+                            for control in control_ids.keys() {
+                                tx.send(TwisterMessage::Refresh(*control)).unwrap();
                             }
                         }
 
                         let mut scheduled = HashSet::new();
                         for (control, value) in &loops {
                             let offset = value.offset % value.length;
-                            let playback_pos = value.offset + ((pos - offset) % value.length);
+                            let playback_pos = value.offset + ((pos - offset) % value.length);     
 
                             if let Some(id) = control_ids.get(control) {
+
+
                                 if let Some(range) = recorder.get_range_for(id.clone(), playback_pos, playback_pos + length) {
                                     for event in range {
-                                        tx_feedback.send(TwisterMessage::Event(event.clone(), EventSource::Internal)).unwrap();
+                                        tx_feedback.send(TwisterMessage::Event(event.clone(), EventSource::Loop)).unwrap();
                                         scheduled.insert(control);
                                     }
                                 }
@@ -613,6 +696,7 @@ impl Twister {
             _midi_input_streichfett: streichfett_input,
             _midi_input_tr6s: tr6s_input,
             _midi_input_nts1: nts1_input,
+            // _midi_input_typhon: typhon_input,
             tx: tx_clock
         }
     }

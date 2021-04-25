@@ -78,6 +78,7 @@ pub struct LoopGridParams {
     pub swing: f64,
     pub bank: u8,
     pub frozen: bool,
+    pub cueing: bool,
     pub align_offset: MidiTime,
     pub reset_automation: bool
 }
@@ -1309,6 +1310,8 @@ impl LoopGridLaunchpad {
             LaunchpadLight::Pulsing(Light::RedLow)
         } else if self.active.contains(&id) {
             LaunchpadLight::Pulsing(color)
+        } else if self.frozen_loop.is_some() {
+            LaunchpadLight::Pulsing(Light::Orange)
         } else {
             LaunchpadLight::Constant(color)
         };
@@ -1381,12 +1384,21 @@ impl LoopGridLaunchpad {
             Light::Off
         };
 
+        let current_loop = self.loop_state.get();
+        let frozen_differs = if let Some(frozen_loop) = &self.frozen_loop {
+            frozen_loop.transforms.contains_key(&id) && frozen_loop.transforms.get(&id) != current_loop.transforms.get(&id)
+        } else {
+            false
+        };
+
         let new_value = if triggering && self.selection.contains(&id) {
             LaunchpadLight::Pulsing(Light::White)
         } else if triggering {
             LaunchpadLight::Constant(Light::White)
         } else if self.selection.contains(&id) {
             LaunchpadLight::Pulsing(selection_color)
+        } else if frozen_differs {
+            LaunchpadLight::Pulsing(Light::White)
         } else if self.recording.contains(&id) {
             LaunchpadLight::Pulsing(Light::RedLow)
         } else if background_triggering {
@@ -1781,10 +1793,15 @@ impl LoopGridLaunchpad {
             self.refresh_override(id);
         }
 
+        for id in 0..8 {
+            self.refresh_bottom_button(id);
+        }
+
         self.refresh_should_flatten();
 
         let mut params = self.params.lock().unwrap();
         params.frozen = pressed;
+        params.cueing = false;
     }
 
     fn refresh_selecting_scale (&mut self) {
@@ -2103,12 +2120,7 @@ impl LoopGridLaunchpad {
         // we avoid override in these cases unless it is a targeted suppress (in which case it is honored)
         let avoid_suppress = (self.latch_suppress.contains(&id) && matches!(result, LoopTransform::Value(..))) || self.no_suppress.contains(&id);
 
-        if ((self.selection.len() == 0 && !avoid_suppress) || self.selection.contains(&id)) && result.is_active() {
-            result = self.selection_override.apply(&result);
-        }
-
         let sustained_value = self.sustained_values.get(&id);
-
 
         // use the sustained value if override value is none
         // what a mess!
@@ -2120,6 +2132,10 @@ impl LoopGridLaunchpad {
             }
         } else if let Some(sustained_value) = sustained_value {
             result = sustained_value.apply(&result);
+        }
+
+        if ((self.selection.len() == 0 && !avoid_suppress) || self.selection.contains(&id)) && result.is_active() {
+            result = self.selection_override.apply(&result);
         }
 
         // handle triggering of "early repeat"
