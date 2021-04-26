@@ -2,6 +2,7 @@ pub use std::time::{SystemTime, Duration};
 pub use ::output_value::OutputValue;
 pub use ::midi_time::MidiTime;
 use std::collections::HashSet;
+use ::serde::{Deserialize, Serialize};
 
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
@@ -12,7 +13,7 @@ pub trait Triggerable {
     fn schedule_mode (&self) -> ScheduleMode { ScheduleMode::MostRecent }  
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash, Serialize, Deserialize)]
 pub struct Coords {
     pub row: u32,
     pub col: u32
@@ -39,6 +40,7 @@ impl Coords {
     // }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Shape {
     pub rows: u32,
     pub cols: u32
@@ -59,27 +61,21 @@ pub struct MidiMap {
 pub struct ChunkMap {
     pub coords: Coords,
     pub shape: Shape,
-    pub chunk: Box<Triggerable + Send>,
+    pub chunk: Box<dyn Triggerable + Send>,
     pub channel: Option<u32>,
     pub color: u8,
     pub repeat_mode: RepeatMode
 }
 
 impl ChunkMap {
-    pub fn new (chunk: Box<Triggerable + Send>, coords: Coords, shape: Shape, color: u8, channel: Option<u32>, repeat_mode: RepeatMode) -> Box<Self> {
+    pub fn new (chunk: Box<dyn Triggerable + Send>, coords: Coords, shape: Shape, color: u8, channel: Option<u32>, repeat_mode: RepeatMode) -> Box<Self> {
         Box::new(ChunkMap {
             chunk, coords, shape, color, channel, repeat_mode
         })
     }
 }
 
-pub enum TriggerModeChange {
-    Selected(u32, bool),
-    SelectingScale(bool),
-    Active(u32, bool)
-}
-
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone, Hash, Serialize, Deserialize)]
 pub enum RepeatMode {
     Global,
     OnlyQuant,

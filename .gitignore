@@ -11,3 +11,5 @@ Cargo.lock
 
 .DS_Store
 node_modules
+
+loopdrop-config.json
