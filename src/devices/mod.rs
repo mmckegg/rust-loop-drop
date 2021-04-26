@@ -1,7 +1,4 @@
 mod midi_triggers;
-mod keyboard;
-mod k_board;
-mod twister;
 mod midi_keys;
 mod offset;
 mod pitch_offset_chunk;
@@ -9,18 +6,11 @@ mod root_select;
 mod root_offset_chunk;
 mod scale_offset_chunk;
 mod scale_select;
-mod umi3;
 mod multi;
-mod velocity_map;
 
 pub use self::midi_triggers::MidiTriggers;
 pub use self::midi_triggers::SidechainOutput;
 pub use self::multi::MultiChunk;
-pub use self::keyboard::Keyboard;
-pub use self::k_board::KBoard;
-pub use self::twister::Twister;
-pub use self::umi3::Umi3;
-pub use self::velocity_map::VelocityMap;
 
 pub use self::midi_keys::MidiKeys;
 pub use self::offset::OffsetChunk;

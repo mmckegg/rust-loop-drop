@@ -6,12 +6,10 @@ extern crate serde_json;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use std::process::Command;
-use std::process;
-use std::time::{Duration, Instant};
 use std::path::Path;
 
 mod config;
+mod controllers;
 mod midi_connection;
 mod loop_grid_launchpad;
 mod loop_recorder;
@@ -29,30 +27,31 @@ mod scheduler;
 
 use scale::{Scale, Offset};
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
-use chunk::{Shape, Coords, ChunkMap, RepeatMode, Triggerable};
-use std::sync::atomic::AtomicUsize;
-use ::midi_time::{MidiTime, SUB_TICKS};
-use scheduler::{Scheduler, ScheduleRange};
-use std::sync::mpsc;
+use chunk::{ChunkMap, Triggerable};
+use ::midi_time::MidiTime;
+use scheduler::Scheduler;
 
 
 const APP_NAME: &str = "Loop Drop";
 const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
+
+type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
+type OffsetLookup = HashMap<String, Arc<Mutex<Offset>>>;
 
 fn main() {
     
     let mut chunks = Vec::new();
     let mut myconfig = config::Config::default();
 
-    if Path::new(CONFIG_FILEPATH).exists() {
-        myconfig = config::Config::read(CONFIG_FILEPATH).unwrap();
-        println!("Read config from {}", CONFIG_FILEPATH);
-    } else {
-        myconfig.write(CONFIG_FILEPATH).unwrap();
-        println!("Wrote config to {}", CONFIG_FILEPATH);
-    }
+    // TODO: enable config persistence when loaded with filepath
+    // if Path::new(CONFIG_FILEPATH).exists() {
+    //     myconfig = config::Config::read(CONFIG_FILEPATH).unwrap();
+    //     println!("Read config from {}", CONFIG_FILEPATH);
+    // } else {
+    //     myconfig.write(CONFIG_FILEPATH).unwrap();
+    //     println!("Wrote config to {}", CONFIG_FILEPATH);
+    // }
 
-    // Command::new("renice").args(&["-n", "-20", &format!("{}", process::id())]).output();
     let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
     let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
 
@@ -97,30 +96,56 @@ fn main() {
     }
 
     let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, chunks, Arc::clone(&scale), Arc::clone(&params));
-    let mut _twister = None;
 
-    if let Some(port) = myconfig.twister_main_output_port {
-        _twister = Some(devices::Twister::new("Midi Fighter Twister",
-            get_port(&mut output_ports, &port.name),
-            port.channel,
-            Arc::clone(&params)
-        ));
-    } 
+    let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();
 
-    let _pedal = devices::Umi3::new("Logidy UMI3", launchpad.remote_tx.clone());
+    for controller in myconfig.controllers {
+        controller_references.push(match controller {
+            config::ControllerConfig::Twister {port_name, mixer_port, modulators} => {
+                Box::new(controllers::Twister::new(
+                    &port_name,
+                    get_port(&mut output_ports, &mixer_port.name),
+                    mixer_port.channel,
+                    resolve_modulators(&mut output_ports, &modulators),
+                    Arc::clone(&params)
+                ))
+            },
+            config::ControllerConfig::Umi3 {port_name} => {
+                Box::new(controllers::Umi3::new(&port_name, launchpad.remote_tx.clone()))
+            },
+            config::ControllerConfig::Init {modulators} => {
+                Box::new(controllers::Init::new(resolve_modulators(&mut output_ports, &modulators)))
+            }
+        })
+    }
 
-    // let mut clock_blackbox_output_port = rk006_out_1_port.clone();
-    // let mut tr6s_clock_output_port = tr6s_output_port.clone();
-    // let mut nts1_clock_output_port = nts1_output_port.clone();
+    let mut clock_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
+    for name in myconfig.clock_output_port_names {
+        clock_outputs.push(get_port(&mut output_ports, &name))
+    }
 
+    let mut keep_alive_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
+    for name in myconfig.keep_alive_port_names {
+        keep_alive_outputs.push(get_port(&mut output_ports, &name))
+    }
+
+    let mut resync_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
+    for name in myconfig.resync_port_names {
+        resync_outputs.push(get_port(&mut output_ports, &name))
+    }
 
     for range in Scheduler::start(clock_input_name) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
-                // clock_blackbox_output_port.send(&[250]).unwrap();
+                for output in &mut resync_outputs {
+                    output.send(&[248]).unwrap();
+                }
             }
-            nts1_clock_output_port.send(&[248]).unwrap();
+
+            for output in &mut clock_outputs {
+                output.send(&[248]).unwrap();
+            }
         }
         
         if range.ticked && range.from.ticks() != range.to.ticks() {
@@ -140,10 +165,13 @@ fn main() {
         // now for the lower priority stuff
         if range.ticked {
             let length = MidiTime::tick();
-            // twister.schedule(range.tick_pos, length);
+            for controller in &mut controller_references {
+                controller.schedule(range.tick_pos, length)
+            }
 
-            // keep the tr6s midi input active (otherwise it stops responding to incoming midi immediately)
-            // tr6s_clock_output_port.send(&[254]).unwrap();
+            for output in &mut keep_alive_outputs {
+                output.send(&[254]).unwrap();
+            }
         }
     }
 }
@@ -151,8 +179,22 @@ fn main() {
 
 
 // Helper functions
+fn resolve_modulators(output_ports: &mut PortLookup, modulators: &Vec<Option<config::ModulatorConfig>>) -> Vec<Option<controllers::Modulator>> {
+    modulators.iter().map(|modulator| 
+        if let Some(modulator) = modulator {
+            Some(controllers::Modulator {
+                port: get_port(output_ports, &modulator.port.name),
+                channel: modulator.port.channel,
+                rx_port: modulator.rx_port.clone(),
+                modulator: modulator.modulator.clone()
+            })
+        } else {
+            None
+        }
+    ).collect()
+}
 
-fn get_port(ports_lookup: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>, port_name: &str) -> midi_connection::SharedMidiOutputConnection {
+fn get_port(ports_lookup: &mut PortLookup, port_name: &str) -> midi_connection::SharedMidiOutputConnection {
     if !ports_lookup.contains_key(port_name) {
         ports_lookup.insert(String::from(port_name), midi_connection::get_shared_output(port_name));
     }
@@ -160,7 +202,7 @@ fn get_port(ports_lookup: &mut HashMap<String, midi_connection::SharedMidiOutput
     ports_lookup.get(port_name).unwrap().clone()
 }
 
-fn get_offset(offset_lookup: &mut HashMap<String, Arc<Mutex<Offset>> >, id: &str) -> Arc<Mutex<Offset>> {
+fn get_offset(offset_lookup: &mut OffsetLookup, id: &str) -> Arc<Mutex<Offset>> {
     if !offset_lookup.contains_key(id) {
         offset_lookup.insert(String::from(id), Offset::new(0, 0));
     }
@@ -175,7 +217,7 @@ fn set_offset(offset: Arc<Mutex<Offset>>, note_offset: &i32, octave_offset: &i32
     value.base = *note_offset;
 }
 
-fn make_device(device: config::DeviceConfig, output_ports: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>, offset_lookup: &mut HashMap<String, Arc<Mutex<Offset>> >, scale: &Arc<Mutex<Scale>>) -> Box<Triggerable + Send> {
+fn make_device(device: config::DeviceConfig, output_ports: &mut PortLookup, offset_lookup: &mut OffsetLookup, scale: &Arc<Mutex<Scale>>) -> Box<Triggerable + Send> {
     let mut output_ports = output_ports;
     let mut offset_lookup = offset_lookup;
 
@@ -197,6 +239,12 @@ fn make_device(device: config::DeviceConfig, output_ports: &mut HashMap<String, 
         },
         config::DeviceConfig::RootSelect => {
             Box::new(devices::RootSelect::new(scale.clone()))
+        },
+        config::DeviceConfig::ScaleSelect => {
+            Box::new(devices::ScaleSelect::new(scale.clone()))
+        },
+        config::DeviceConfig::PitchOffsetChunk {output} => {
+            Box::new(devices::PitchOffsetChunk::new(get_port(&mut output_ports, &output.name), output.channel))
         },
         config::DeviceConfig::MidiTriggers{output, sidechain_output, trigger_ids} => {
             let device_port = get_port(&mut output_ports, &output.name);

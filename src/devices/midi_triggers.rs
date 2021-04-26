@@ -63,7 +63,7 @@ impl Triggerable for MidiTriggers {
                 // send sync if kick
                 if let Some(sidechain_output) = &mut self.sidechain_output {
                     if id == sidechain_output.id {
-                        sidechain_output.midi_port.send(&[144 - 1 + sidechain_output.midi_channel, sidechain_output.trigger_id, 0]).unwrap();
+                        sidechain_output.midi_port.send(&[144 - 1 + sidechain_output.midi_channel, sidechain_output.trigger_id, 127]).unwrap();
                     }
                 }                
 

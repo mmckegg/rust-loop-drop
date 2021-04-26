@@ -29,3 +29,5 @@ impl Umi3 {
         }
     }
 }
+
+impl ::controllers::Schedulable for Umi3 {}

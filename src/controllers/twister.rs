@@ -6,11 +6,11 @@ use ::output_value::OutputValue;
 use ::loop_grid_launchpad::LoopGridParams;
 use ::throttled_output::ThrottledOutput;
 use ::lfo::Lfo;
-use rand::Rng;
 
 use std::thread;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use ::controllers::{midi_ease_out, midi_to_polar, float_to_msb_lsb, float_to_midi, polar_to_midi, Modulator};
 
 pub struct Twister {
     _midi_input: midi_connection::ThreadReference,
@@ -25,33 +25,10 @@ enum EventSource {
 }
 
 impl Twister {
-    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, main_channel: u8, params: Arc<Mutex<LoopGridParams>>) -> Self {
+    pub fn new (port_name: &str, main_output: midi_connection::SharedMidiOutputConnection, main_channel: u8, modulators: Vec<Option<Modulator>>, params: Arc<Mutex<LoopGridParams>>) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
-
-        let drum_channel = 10;
-        let sampler_channel = 10;
-
-        // no triggers on this channel, only modulation
-        let sampler_mod_channel = 3;
-        
-        let bass_channel = 11;
-        let dividers = vec![
-            // 25.0,
-            150.0,
-            // 200.0
-            300.0,
-            // 400.0,
-            450.0,
-            600.0,
-            // 800.0,
-            900.0,
-            1200.0,
-            // 1600.0,
-            1800.0,
-            2400.0
-        ];
 
         let channel_offsets = [10, 20, 30, 40, 50, 60, 70, 80];
 
@@ -82,7 +59,7 @@ impl Twister {
             let mut last_values: HashMap<Control, u8> = HashMap::new();
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
-            let mut main_output = main_output;
+            let mut modulators = modulators;
             let mut throttled_main_output = ThrottledOutput::new(main_output);
 
             let mut current_bank = 0;
@@ -97,26 +74,32 @@ impl Twister {
 
             let mut lfo = Lfo::new();
 
-            let mut resend_params: Vec<Control> = vec![
-                Control::DelayDivider,
-                Control::DelayFeedback
-            ];
-
             for channel in 0..8 {
-                last_values.insert(Control::ChannelVolume(channel), 100);
+                last_values.insert(Control::ChannelVolume(channel), 80);
                 last_values.insert(Control::ChannelReverb(channel), 0);
                 last_values.insert(Control::ChannelDelay(channel), 0);
-                last_values.insert(Control::ChannelFilter(channel), 0);
                 last_values.insert(Control::ChannelFilterLfoAmount(channel), 64);
-
-                resend_params.push(Control::ChannelReverb(channel));
-                resend_params.push(Control::ChannelDelay(channel));
-                resend_params.push(Control::ChannelFilter(channel));
                 last_values.insert(Control::ChannelFilter(channel), 64);
-                last_values.insert(Control::ChannelDuck(channel), 64);
+                last_values.insert(Control::ChannelDuck(channel), 20);
             }
 
             last_values.insert(Control::Swing, 64);
+            last_values.insert(Control::DuckRelease, 64);
+            last_values.insert(Control::LfoRate, 64);
+            last_values.insert(Control::LfoSkew, 64);
+
+            // default values for modulators
+            for (index, modulator) in modulators.iter().enumerate() {
+                if let Some(modulator) = modulator {
+                    last_values.insert(Control::Modulator(index), match modulator.modulator {
+                        ::config::Modulator::Cc(_id, value) => value,
+                        ::config::Modulator::MaxCc(_id, max, value) => {
+                            float_to_midi(value.min(max) as f64 / max as f64)
+                        },
+                        ::config::Modulator::PitchBend(value) => polar_to_midi(value)
+                    });
+                }
+            }
 
             // update display and send all of the start values on load
             for control in control_ids.keys() {
@@ -194,7 +177,7 @@ impl Twister {
                         match control {
                             Control::ChannelVolume(channel) => {
                                 let cc = channel_offsets[channel as usize % channel_offsets.len()] + 0;
-                                throttled_main_output.send(&[176 - 1 + main_channel, cc as u8, value]);
+                                throttled_main_output.send(&[176 - 1 + main_channel, cc as u8, midi_ease_out(value)]);
                             },
 
                             Control::ChannelReverb(channel) => {
@@ -207,8 +190,17 @@ impl Twister {
                             },
 
                             Control::ChannelFilter(channel) => {
-                                let cc = channel_offsets[channel as usize % channel_offsets.len()] + 3;
-                                throttled_main_output.send(&[176 - 1 + main_channel, cc as u8, value]);
+                                let hp_cc = channel_offsets[channel as usize % channel_offsets.len()] + 3;
+                                let lp_cc = channel_offsets[channel as usize % channel_offsets.len()] + 4;
+
+                                if value > 60 {
+                                    throttled_main_output.send(&[176 - 1 + main_channel, hp_cc as u8, (value.max(64) - 64) * 2 ]);
+                                } 
+                                
+                                if value < 70 {
+                                    throttled_main_output.send(&[176 - 1 + main_channel, lp_cc as u8, value.min(63) * 2]);
+                                }
+
                             },
 
                             Control::ChannelDuck(channel) => {
@@ -218,14 +210,6 @@ impl Twister {
 
                             Control::DuckRelease => {
                                 throttled_main_output.send(&[176 - 1 + main_channel, 2, value]);
-                            },
-
-                            Control::DelayFeedback => {
-                                throttled_main_output.send(&[176 - 1 + main_channel, 3, value]);
-                            },
-
-                            Control::DelayDivider => {
-                                throttled_main_output.send(&[176 - 1 + main_channel, 4, value]);
                             },
 
                             Control::Swing => {
@@ -244,15 +228,26 @@ impl Twister {
                             },
                             Control::LfoSkew => {
                                 lfo.skew = value;
-        
                             },
-                            Control::LfoHold => {
-                                lfo.hold = value;
+                            Control::Modulator(index) => {
+                                if let Some(Some(modulator)) = modulators.get_mut(index) {
+                                    match modulator.modulator {
+                                        ::config::Modulator::Cc(id, ..) => {
+                                            modulator.port.send(&[176 - 1 + modulator.channel, id, value]).unwrap();
+                                        },
+                                        ::config::Modulator::MaxCc(id, max, ..) => {
+                                            let f_value = value as f64 / 127.0 as f64;
+                                            let u_value = (f_value * max as f64).min(127.0) as u8;
+                                            println!("val {}", u_value);
+                                            modulator.port.send(&[176 - 1 + modulator.channel, id, u_value]).unwrap();
+                                        },
+                                        ::config::Modulator::PitchBend(..) => {
+                                            let value = float_to_msb_lsb(midi_to_polar(value));
+                                            modulator.port.send(&[224 - 1 + modulator.channel, value.0, value.1]).unwrap();
+                                        }
+                                    }
+                                }
                             },
-                            Control::LfoOffset => {
-                                lfo.offset = value;
-                            },
-
                             Control::ChannelFilterLfoAmount(channel) => {
                                 lfo_amounts.insert(Control::ChannelFilter(channel), midi_to_polar(value));
                             },
@@ -350,13 +345,6 @@ impl Twister {
                             }
                         }
 
-                        // resend poly params every 32 beats (delayed by 1 tick to prevent holding up down beat scheduling)
-                        if pos % MidiTime::from_beats(32) == MidiTime::from_ticks(1) {
-                            for control in &resend_params {
-                                tx.send(TwisterMessage::Send(*control)).unwrap();
-                            }
-                        }
-
                         if current_bank != params.bank {
                             output.send(&[179, params.bank, 127]).unwrap();
                             current_bank = params.bank;
@@ -448,8 +436,10 @@ impl Twister {
             tx: tx_clock
         }
     }
+}
 
-    pub fn schedule (&self, pos: MidiTime, length: MidiTime) {
+impl ::controllers::Schedulable for Twister {
+    fn schedule (&mut self, pos: MidiTime, length: MidiTime) {
         self.tx.send(TwisterMessage::Schedule {pos, length}).unwrap();
     }
 }
@@ -470,24 +460,21 @@ enum TwisterMessage {
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 enum Control {
     ChannelVolume(u32),
+    ChannelFilter(u32),
+
     ChannelReverb(u32),
     ChannelDelay(u32),
-    ChannelFilter(u32),
-    ChannelFilterLfoAmount(u32),
     
+    ChannelFilterLfoAmount(u32),
     ChannelDuck(u32),
 
+    Modulator(usize),
+
     DuckRelease,
-
-    DelayDivider,
-    DelayFeedback,
-
     Swing,
 
     LfoRate,
-    LfoHold,
     LfoSkew,
-    LfoOffset,
 
     None
 }
@@ -510,8 +497,7 @@ impl Control {
             (0, channel, 1) => Control::ChannelFilter(channel),
             
             // Bank B
-            (1, 7, 0) => Control::DelayDivider,
-            (1, 7, 1) => Control::DelayFeedback,
+            (1, 7, control) => Control::Modulator((7 * 2 + control) as usize),
             (1, channel, 0) => Control::ChannelReverb(channel),
             (1, channel, 1) => Control::ChannelDelay(channel),
 
@@ -523,7 +509,8 @@ impl Control {
 
             // PARAMS
             (3, 7, 0) => Control::Swing,
-            (3, 7, 1) => Control::DelayFeedback,
+            (3, 7, 1) => Control::LfoSkew,
+            (3, channel, control) => Control::Modulator((channel * 2 + control) as usize),
 
             _ => Control::None
         }
@@ -539,47 +526,4 @@ fn get_control_ids () -> HashMap<Control, u32> {
         }
     }
     result
-}
-
-pub fn float_to_msb_lsb(input: f64) -> (u8, u8) {
-    let max = (2.0f64).powf(14.0) / 2.0;
-    let input_14bit = (input.max(-1.0).min(0.99999999999) * max + max) as u16;
-
-    let lsb = mask7(input_14bit as u8);
-    let msb = mask7((input_14bit >> 7) as u8);
-
-    (lsb, msb)
-}
-
-/// 7 bit mask
-#[inline(always)]
-pub fn mask7(input: u8) -> u8 {
-    input & 0b01111111
-}
-
-fn midi_to_polar (value: u8) -> f64 {
-    if value < 63 {
-        (value as f64 - 63.0) / 63.0
-    } else if value > 64 {
-        (value as f64 - 64.0) / 63.0
-    } else {
-        0.0
-    }
-} 
-
-fn midi_to_float (value: u8) -> f64 {
-     value as f64 / 127.0
-}
-
-fn float_to_midi (value: f64) -> u8 {
-    (value * 127.0).max(0.0).min(127.0) as u8
-}
-
-fn random_range (from: u8, to: u8) -> u8 {
-    rand::thread_rng().gen_range(from, to)
-}
-
-fn midi_ease_out (value: u8) -> u8 {
-    let f = midi_to_float(value);
-    float_to_midi(f * (2.0 - f))
 }
