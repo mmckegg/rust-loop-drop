@@ -139,7 +139,7 @@ fn main() {
         if range.ticked {
             if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
                 for output in &mut resync_outputs {
-                    output.send(&[248]).unwrap();
+                    output.send(&[250]).unwrap();
                 }
             }
 
