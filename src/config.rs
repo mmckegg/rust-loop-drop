@@ -228,8 +228,16 @@ impl Config {
                 },
                 ControllerConfig::Init {
                     modulators: vec![
-                        // enable the delay pedal
-                        // ModulatorConfig::new(fx_output_name, 15, Modulator::Cc(101, 127)),
+                        // default patch for NTS-1
+                        ModulatorConfig::new(nts1_port_name, 1, Modulator::Cc(53, 64)), // OSC TYPE: Souper
+                        ModulatorConfig::new(nts1_port_name, 1, Modulator::Cc(54, 35)), // Detune
+                        ModulatorConfig::new(nts1_port_name, 1, Modulator::Cc(88, 21)), // MOD TYPE: Chorus
+                        ModulatorConfig::new(nts1_port_name, 1, Modulator::Cc(90, 36)), // REVERB TYPE: Room
+                        ModulatorConfig::new(nts1_port_name, 1, Modulator::Cc(19, 64)), // Release                        
+                        ModulatorConfig::rx(nts1_port_name, 1, Modulator::Cc(45, 65)), // Filter Env Time
+                        ModulatorConfig::rx(nts1_port_name, 1, Modulator::Cc(46, 92)), // Filter Env Amt
+
+
                     ]
                 },
                 ControllerConfig::Umi3 {
