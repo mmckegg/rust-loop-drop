@@ -679,6 +679,9 @@ impl LoopGridLaunchpad {
             },
             LaunchpadEvent::GridInput {id, value, stamp: _} => {
                 if value > VELOCITY_THRESHOLD {
+                    // reinterpret velocity
+                    let range = 127.0 - VELOCITY_THRESHOLD as f64;
+                    let value = ((value - VELOCITY_THRESHOLD) as f64 / range * 127.0) as u8;
                     self.grid_input(id, OutputValue::On(value));
                 } else {
                     self.grid_input(id, OutputValue::Off);
