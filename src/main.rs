@@ -58,9 +58,7 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
 
-    // NAME OF CLOCK INPUT MIDI PORT *****
     let clock_input_name = &myconfig.clock_input_port_name;
-    // ***********************************
 
     let scale = Scale::new(60, 0);
 

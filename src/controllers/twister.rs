@@ -238,7 +238,6 @@ impl Twister {
                                         ::config::Modulator::MaxCc(id, max, ..) => {
                                             let f_value = value as f64 / 127.0 as f64;
                                             let u_value = (f_value * max as f64).min(127.0) as u8;
-                                            println!("val {}", u_value);
                                             modulator.port.send(&[176 - 1 + modulator.channel, id, u_value]).unwrap();
                                         },
                                         ::config::Modulator::PitchBend(..) => {
