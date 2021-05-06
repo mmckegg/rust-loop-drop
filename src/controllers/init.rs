@@ -19,18 +19,7 @@ impl ::controllers::Schedulable for Init {
         if !self.scheduled {
             for modulator in &mut self.modulators {
                 if let Some(modulator) = modulator {
-                    match modulator.modulator {
-                        ::config::Modulator::Cc(id, value) => {
-                            modulator.port.send(&[176 - 1 + modulator.channel, id, value]).unwrap();
-                        },
-                        ::config::Modulator::MaxCc(id, max, value) => {
-                            modulator.port.send(&[176 - 1 + modulator.channel, id, value.min(max)]).unwrap();
-                        },
-                        ::config::Modulator::PitchBend(value) => {
-                            let value = ::controllers::float_to_msb_lsb(value);
-                            modulator.port.send(&[224 - 1 + modulator.channel, value.0, value.1]).unwrap();
-                        }
-                    }
+                    modulator.send_default();
                 }
             }
             self.scheduled = true

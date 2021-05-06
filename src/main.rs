@@ -111,6 +111,10 @@ fn main() {
             config::ControllerConfig::Umi3 {port_name} => {
                 Box::new(controllers::Umi3::new(&port_name, launchpad.remote_tx.clone()))
             },
+            config::ControllerConfig::VT4Key {output} => {
+                let device_port = get_port(&mut output_ports, &output.name);
+                Box::new(controllers::VT4Key::new(device_port, output.channel, scale.clone()))
+            },
             config::ControllerConfig::Init {modulators} => {
                 Box::new(controllers::Init::new(resolve_modulators(&mut output_ports, &modulators)))
             }
@@ -235,8 +239,8 @@ fn make_device(device: config::DeviceConfig, output_ports: &mut PortLookup, offs
         config::DeviceConfig::OffsetChunk{id} => {
             Box::new(devices::OffsetChunk::new(get_offset(&mut offset_lookup, &id)))
         },
-        config::DeviceConfig::RootSelect => {
-            Box::new(devices::RootSelect::new(scale.clone()))
+        config::DeviceConfig::RootSelect{output_modulators} => {
+            Box::new(devices::RootSelect::new(scale.clone(), resolve_modulators(&mut output_ports, &output_modulators)))
         },
         config::DeviceConfig::ScaleSelect => {
             Box::new(devices::ScaleSelect::new(scale.clone()))

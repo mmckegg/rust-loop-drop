@@ -36,12 +36,12 @@ impl Triggerable for PitchOffsetChunk {
         }
 
         let result: i32 = self.output_values.values().sum();
-        let msb_lsb = float_to_msb_lsb(result as f32 / 12.0);
+        let msb_lsb = polar_to_msb_lsb(result as f32 / 12.0);
         self.midi_output.send(&[224 + self.channel - 1, msb_lsb.0, msb_lsb.1]);
     }
 }
 
-pub fn float_to_msb_lsb(input: f32) -> (u8, u8) {
+pub fn polar_to_msb_lsb(input: f32) -> (u8, u8) {
     let max = (2.0f32).powf(14.0) / 2.0;
     let input_14bit = (input.max(-1.0).min(1.0) * max + max) as u16;
 

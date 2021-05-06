@@ -10,7 +10,7 @@ use ::lfo::Lfo;
 use std::thread;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use ::controllers::{midi_ease_out, midi_to_polar, float_to_msb_lsb, float_to_midi, polar_to_midi, Modulator};
+use ::controllers::{midi_ease_out, midi_to_polar, polar_to_msb_lsb, float_to_midi, polar_to_midi, Modulator};
 
 pub struct Twister {
     _midi_input: midi_connection::ThreadReference,
@@ -231,20 +231,7 @@ impl Twister {
                             },
                             Control::Modulator(index) => {
                                 if let Some(Some(modulator)) = modulators.get_mut(index) {
-                                    match modulator.modulator {
-                                        ::config::Modulator::Cc(id, ..) => {
-                                            modulator.port.send(&[176 - 1 + modulator.channel, id, value]).unwrap();
-                                        },
-                                        ::config::Modulator::MaxCc(id, max, ..) => {
-                                            let f_value = value as f64 / 127.0 as f64;
-                                            let u_value = (f_value * max as f64).min(127.0) as u8;
-                                            modulator.port.send(&[176 - 1 + modulator.channel, id, u_value]).unwrap();
-                                        },
-                                        ::config::Modulator::PitchBend(..) => {
-                                            let value = float_to_msb_lsb(midi_to_polar(value));
-                                            modulator.port.send(&[224 - 1 + modulator.channel, value.0, value.1]).unwrap();
-                                        }
-                                    }
+                                    modulator.send(value);
                                 }
                             },
                             Control::ChannelFilterLfoAmount(channel) => {

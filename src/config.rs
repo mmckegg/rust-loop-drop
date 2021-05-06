@@ -24,7 +24,7 @@ impl Config {
     pub fn default() -> Self {
         let tr6s_port_name = "TR-6S"; // drums
         let nts1_port_name = "NTS-1 digital kit"; // synth
-        let streichfett_port_name = "Streichfett"; // synth
+        let micromonsta_port_name = "MicroMonsta 2"; // synth
         let blackbox_output_name = "RK006 PORT 2"; // output 1
         let blackbox_output_name = "RK006 PORT 2"; // output 1
         let bluebox_output_name = "RK006 PORT 3"; // output 2
@@ -102,7 +102,12 @@ impl Config {
                 
                 // ROOT NOTE SELECTOR
                 ChunkConfig {
-                    device: DeviceConfig::RootSelect, 
+                    device: DeviceConfig::RootSelect {
+                        output_modulators: vec![
+                            // based default sample pitch off root note on blackbox
+                            ModulatorConfig::rx(blackbox_output_name, 1, Modulator::PitchBend(0.0)),
+                        ]
+                    }, 
                     coords: Coords::new(6 + 8, 0), 
                     shape: Shape::new(2, 8),
                     color: 35, // soft green
@@ -183,12 +188,21 @@ impl Config {
 
                 // SYNTH
                 ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(streichfett_port_name, 1),
-                        offset_id: String::from("keys"),
-                        note_offset: -4,
-                        octave_offset: 0
-                    },                    coords: Coords::new(5, 0), 
+                    device: DeviceConfig::multi(vec![
+                        DeviceConfig::MidiKeys {
+                            output: MidiPortConfig::new(micromonsta_port_name, 1),
+                            offset_id: String::from("keys"),
+                            note_offset: -4,
+                            octave_offset: 0
+                        },     
+                        DeviceConfig::MidiKeys {
+                            output: MidiPortConfig::new("VT-4", 1),
+                            offset_id: String::from("keys"),
+                            note_offset: -4,
+                            octave_offset: 0
+                        }
+                    ]),
+                    coords: Coords::new(5, 0), 
                     shape: Shape::new(3, 8),
                     color: 59, // pink
                     channel: Some(3),
@@ -204,8 +218,8 @@ impl Config {
                     port_name: String::from("Midi Fighter Twister"),
                     mixer_port: MidiPortConfig::new(bluebox_output_name, 1),
                     modulators: vec![
-                        ModulatorConfig::rx(tr6s_port_name, 1, Modulator::Cc(20, 64)),
-                        ModulatorConfig::rx(tr6s_port_name, 1, Modulator::Cc(23, 64)),
+                        ModulatorConfig::rx(tr6s_port_name, 10, Modulator::Cc(46, 64)), // LT tune
+                        ModulatorConfig::rx(tr6s_port_name, 10, Modulator::Cc(62, 64)), // CH decay
                         ModulatorConfig::new(cv1_output_name, 1, Modulator::Cc(1, 64)),
                         ModulatorConfig::new(cv2_output_name, 1, Modulator::Cc(1, 64)),
 
@@ -215,9 +229,9 @@ impl Config {
                         ModulatorConfig::new(blackbox_output_name, 1, Modulator::Cc(4, 64)),
 
                         ModulatorConfig::new(typhon_output_name, 1, Modulator::PitchBend(0.0)),
-                        ModulatorConfig::new(typhon_output_name, 1, Modulator::Cc(4, 64)),
-                        ModulatorConfig::rx(streichfett_port_name, 1, Modulator::PitchBend(0.0)),
-                        ModulatorConfig::rx(streichfett_port_name, 1, Modulator::Cc(4, 0)),
+                        ModulatorConfig::new(typhon_output_name, 1, Modulator::Cc(4, 0)),
+                        ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::PitchBend(0.0)),
+                        ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::Cc(4, 0)),
 
                         ModulatorConfig::rx(nts1_port_name, 1, Modulator::PitchBend(0.0)),
                         ModulatorConfig::rx(nts1_port_name, 1, Modulator::Cc(43, 64)), 
@@ -239,6 +253,9 @@ impl Config {
 
 
                     ]
+                },
+                ControllerConfig::VT4Key {
+                    output: MidiPortConfig::new("VT-4", 1)
                 },
                 ControllerConfig::Umi3 {
                     port_name: String::from("Logidy UMI3")
@@ -303,7 +320,7 @@ pub enum DeviceConfig {
     },
     OffsetChunk { id: String },
     PitchOffsetChunk { output: MidiPortConfig },
-    RootSelect,
+    RootSelect { output_modulators: Vec<Option<ModulatorConfig>> },
     ScaleSelect,
     MidiTriggers { 
         output: MidiPortConfig,
@@ -335,6 +352,9 @@ pub enum ControllerConfig {
     },
     Umi3 {
         port_name: String
+    },
+    VT4Key {
+        output: MidiPortConfig, 
     },
     Init {
         modulators: Vec<Option<ModulatorConfig>>

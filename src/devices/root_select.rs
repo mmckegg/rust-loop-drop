@@ -4,18 +4,21 @@ use ::indexmap::IndexSet;
 use std::sync::{Arc, Mutex};
 use ::chunk::{Triggerable, OutputValue, ScheduleMode, LatchMode};
 use std::collections::HashSet;
+use ::controllers::Modulator;
 
 pub use ::scale::{Scale, Offset};
 
 pub struct RootSelect {
     stack: IndexSet<u32>,
-    scale: Arc<Mutex<Scale>>
+    scale: Arc<Mutex<Scale>>,
+    modulators: Vec<Option<Modulator>>
 }
 
 impl RootSelect {
-    pub fn new (scale: Arc<Mutex<Scale>>) -> Self {
+    pub fn new (scale: Arc<Mutex<Scale>>, modulators: Vec<Option<Modulator>>) -> Self {
         RootSelect { 
             scale, 
+            modulators,
             stack: IndexSet::new() 
         }
     }
@@ -24,6 +27,14 @@ impl RootSelect {
         if let Some(id) = self.stack.last().cloned() {
             let mut current_scale = self.scale.lock().unwrap();
             current_scale.root = 52 + (id as i32);
+
+            for modulator in &mut self.modulators {
+                let pitch_mod = (id as f64 - 8.0)  / 12.0;
+                if let Some(modulator) = modulator {
+                    modulator.send_polar(pitch_mod);
+                    println!("PITCH MOD {}", pitch_mod);
+                }
+            }
         }
     }
 }
