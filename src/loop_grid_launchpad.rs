@@ -813,8 +813,6 @@ impl LoopGridLaunchpad {
             self.update_swing();
         }
 
-        let start_schedule = Instant::now();
-
         self.last_raw_pos = range.from;
         self.last_pos =
             (range.from - self.align_offset).swing(self.current_swing) + self.align_offset;
@@ -950,11 +948,6 @@ impl LoopGridLaunchpad {
         }
 
         self.update_cycle_steps();
-
-        let duration = start_schedule.elapsed().as_millis();
-        if duration > 1 {
-            println!("schedule {}", duration)
-        }
     }
 
     fn refresh_selected_bank(&mut self) {
