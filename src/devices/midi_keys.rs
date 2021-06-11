@@ -12,16 +12,20 @@ pub struct MidiKeys {
     midi_channel: u8,
     output_values: HashMap<u32, (u8, u8)>,
     scale: Arc<Mutex<Scale>>,
-    offset: Arc<Mutex<Offset>>
+    offset: Arc<Mutex<Offset>>,
+    velocity_map: Option<Vec<u8>>,
+    octave_offset: i32
 }
 
 impl MidiKeys {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, midi_channel: u8, scale: Arc<Mutex<Scale>>, offset: Arc<Mutex<Offset>>, octave_offset: i32, velocity_map: Option<Vec<u8>>) -> Self {
         MidiKeys {
             midi_port,
             midi_channel,
+            velocity_map,
             output_values: HashMap::new(),
             offset,
+            octave_offset,
             scale
         }
     }
@@ -31,7 +35,7 @@ impl MidiKeys {
     }
 }
 
-fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>) -> u8 {
+fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>, octave_offset: i32) -> u8 {
     let scale = scale.lock().unwrap();
     let offset = offset.lock().unwrap();
     let mut scale_offset = offset.base + offset.offset;
@@ -47,7 +51,7 @@ fn get_note_id (id: u32, scale: &Arc<Mutex<Scale>>, offset: &Arc<Mutex<Offset>>)
         }
     }
 
-    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (offset.oct * 12)) as u8
+    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (octave_offset * 12)) as u8
 }
 
 impl Triggerable for MidiKeys {
@@ -62,7 +66,8 @@ impl Triggerable for MidiKeys {
                 }
             },
             OutputValue::On(velocity) => {
-                let note_id = get_note_id(id, &self.scale, &self.offset);
+                let note_id = get_note_id(id, &self.scale, &self.offset, self.octave_offset);
+                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
                 
                 self.midi_port.send(&[144 + self.midi_channel - 1, note_id, velocity]).unwrap();
                 self.output_values.insert(id, (note_id, velocity));
@@ -74,7 +79,7 @@ impl Triggerable for MidiKeys {
         let mut to_update = HashMap::new();
 
         for (id, (note_id, velocity)) in &self.output_values {
-            let new_note_id = get_note_id(*id, &self.scale, &self.offset);
+            let new_note_id = get_note_id(*id, &self.scale, &self.offset, self.octave_offset);
             if note_id != &new_note_id {
                 self.midi_port.send(&[144 + self.midi_channel - 1, *note_id, 0]).unwrap();
                 to_update.insert(id.clone(), (new_note_id, velocity.clone()));

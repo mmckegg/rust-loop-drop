@@ -69,6 +69,7 @@ impl Twister {
             let mut frozen_values = None;
             let mut frozen_loops: Option<HashMap<Control, Loop>> = None;
             let mut cued_values: Option<HashMap<Control, u8>> = None;
+            let mut triggering_channels: HashSet<u32> = HashSet::new();
 
             let mut lfo_amounts = HashMap::new();
 
@@ -304,17 +305,22 @@ impl Twister {
                             
                             output.send(&[176, id.clone() as u8, *cued_value.unwrap_or(&value)]).unwrap();
 
+                            let channel = id / 2 % 8;
+
                             // MFT animation for currently looping (Channel 6)
-                            if cued_value.is_some() { 
-                                output.send(&[181, id.clone() as u8, 61]).unwrap();
+                            if cued_value.is_some() {
+                                output.send(&[181, id.clone() as u8, 61]).unwrap(); // Fast Indicator Pulse
                             } else if cueing {
-                                output.send(&[181, id.clone() as u8, 15]).unwrap();
+                                output.send(&[181, id.clone() as u8, 15]).unwrap(); // Fast RGB Pulse
                             } else if frozen {
-                                output.send(&[181, id.clone() as u8, 59]).unwrap();
+                                output.send(&[181, id.clone() as u8, 59]).unwrap(); // Slow Indicator Pulse
+                            } else if triggering_channels.contains(&channel) {
+                                output.send(&[181, id.clone() as u8, 17]).unwrap(); // Turn off indicator (flash)
                             } else if loops.contains_key(&control) {
-                                output.send(&[181, id.clone() as u8, 13]).unwrap();
+                                // control has loop
+                                output.send(&[181, id.clone() as u8, 13]).unwrap(); // Slow RGB Pulse
                             } else {
-                                output.send(&[181, id.clone() as u8, 0]).unwrap();
+                                output.send(&[181, id.clone() as u8, 0]).unwrap(); 
                             } 
                         }
                     },
@@ -327,6 +333,23 @@ impl Twister {
                             loops.clear();
 
                             for control in control_ids.keys() {
+                                tx.send(TwisterMessage::Refresh(*control)).unwrap();
+                            }
+                        }
+
+                        let mut to_refresh = triggering_channels.clone();
+                        triggering_channels.clear();
+
+                        for channel in &params.channel_triggered {
+                            triggering_channels.insert(*channel);
+                            to_refresh.insert(*channel);
+                        }
+
+                        params.channel_triggered.clear();
+
+                        for (control, id) in control_ids.iter() {
+                            let channel = id / 2 % 8;
+                            if to_refresh.contains(&channel) {
                                 tx.send(TwisterMessage::Refresh(*control)).unwrap();
                             }
                         }
@@ -381,6 +404,10 @@ impl Twister {
                                 if !cued_values.is_some() {
                                     cued_values = Some(HashMap::new());
                                 }
+                            } else {
+                                // force refresh to clear out stalled animations by swapping pages
+                                output.send(&[179, (params.bank + 1) % 4, 127]).unwrap();
+                                output.send(&[179, params.bank, 127]).unwrap();
                             }
 
                             for control in control_ids.keys() {

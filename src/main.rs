@@ -5,8 +5,9 @@ extern crate serde;
 extern crate serde_json;
 
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::time::Instant;
 
 mod config;
 mod controllers;
@@ -67,6 +68,7 @@ fn main() {
         bank: 0,
         frozen: false,
         cueing: false,
+        channel_triggered: HashSet::new(),
         align_offset: MidiTime::zero(),
         reset_automation: false
     }));
@@ -212,10 +214,9 @@ fn get_offset(offset_lookup: &mut OffsetLookup, id: &str) -> Arc<Mutex<Offset>> 
     offset_lookup.get(id).unwrap().clone()
 }
 
-fn set_offset(offset: Arc<Mutex<Offset>>, note_offset: &i32, octave_offset: &i32) {
+fn set_offset(offset: Arc<Mutex<Offset>>, note_offset: &i32) {
     let mut value = offset.lock().unwrap();
 
-    value.oct = *octave_offset;
     value.base = *note_offset;
 }
 
@@ -229,12 +230,12 @@ fn make_device(device: config::DeviceConfig, output_ports: &mut PortLookup, offs
             Box::new(devices::MultiChunk::new(instances))
 
         }
-        config::DeviceConfig::MidiKeys{output, offset_id, note_offset, octave_offset} => {
+        config::DeviceConfig::MidiKeys{output, offset_id, note_offset, octave_offset, velocity_map} => {
             let device_port = get_port(&mut output_ports, &output.name);
             let offset = get_offset(&mut offset_lookup, &offset_id);
-            set_offset(offset.clone(), &note_offset, &octave_offset);
+            set_offset(offset.clone(), &note_offset);
 
-            Box::new(devices::MidiKeys::new(device_port, output.channel, scale.clone(), offset))
+            Box::new(devices::MidiKeys::new(device_port, output.channel, scale.clone(), offset, octave_offset, velocity_map))
         },
         config::DeviceConfig::OffsetChunk{id} => {
             Box::new(devices::OffsetChunk::new(get_offset(&mut offset_lookup, &id)))
@@ -248,7 +249,7 @@ fn make_device(device: config::DeviceConfig, output_ports: &mut PortLookup, offs
         config::DeviceConfig::PitchOffsetChunk {output} => {
             Box::new(devices::PitchOffsetChunk::new(get_port(&mut output_ports, &output.name), output.channel))
         },
-        config::DeviceConfig::MidiTriggers{output, sidechain_output, trigger_ids} => {
+        config::DeviceConfig::MidiTriggers{output, sidechain_output, trigger_ids, velocity_map} => {
             let device_port = get_port(&mut output_ports, &output.name);
 
             let sidechain_output = if let Some(sidechain_output) = sidechain_output {
@@ -262,7 +263,7 @@ fn make_device(device: config::DeviceConfig, output_ports: &mut PortLookup, offs
                 None
             };
 
-            Box::new(devices::MidiTriggers::new(device_port, output.channel, sidechain_output, trigger_ids))
+            Box::new(devices::MidiTriggers::new(device_port, output.channel, sidechain_output, trigger_ids, velocity_map))
         }
     }
 }

@@ -2,7 +2,7 @@
 use ::indexmap::IndexSet;
 
 use std::sync::{Arc, Mutex};
-use ::chunk::{Triggerable, OutputValue, ScheduleMode, LatchMode};
+use ::chunk::{Triggerable, OutputValue, ScheduleMode, LatchMode, MidiTime};
 use std::collections::HashSet;
 use ::controllers::Modulator;
 
@@ -32,7 +32,6 @@ impl RootSelect {
                 let pitch_mod = (id as f64 - 8.0)  / 12.0;
                 if let Some(modulator) = modulator {
                     modulator.send_polar(pitch_mod);
-                    println!("PITCH MOD {}", pitch_mod);
                 }
             }
         }
@@ -50,6 +49,12 @@ impl Triggerable for RootSelect {
                 self.stack.insert(id);
                 self.refresh_output();
             }
+        }
+    }
+
+    fn on_tick (&mut self, time: MidiTime) {
+        if time.is_whole_beat() {
+            self.refresh_output();
         }
     }
 

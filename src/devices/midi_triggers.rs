@@ -9,6 +9,7 @@ pub struct MidiTriggers {
     midi_channel: u8,
     sidechain_output: Option<SidechainOutput>,
     last_pos: MidiTime,
+    velocity_map: Option<Vec<u8>>,
     output_values: HashMap<u32, (u8, u8, u8)>,
     trigger_ids: Vec<u8>
 }
@@ -21,13 +22,14 @@ pub struct SidechainOutput {
 }
 
 impl MidiTriggers {
-    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sidechain_output: Option<SidechainOutput>, trigger_ids: Vec<u8>) -> Self {
+    pub fn new (midi_port: midi_connection::SharedMidiOutputConnection, channel: u8, sidechain_output: Option<SidechainOutput>, trigger_ids: Vec<u8>, velocity_map: Option<Vec<u8>>) -> Self {
         MidiTriggers {
             midi_port,
             last_pos: MidiTime::zero(),
             sidechain_output,
             midi_channel: channel,
             output_values: HashMap::new(),
+            velocity_map,
             trigger_ids
         }
     }
@@ -56,6 +58,7 @@ impl Triggerable for MidiTriggers {
             OutputValue::On(velocity) => {
                 let channel = self.midi_channel;
                 let note_id = self.trigger_ids[id as usize % self.trigger_ids.len()];
+                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
 
                 // send note
                 self.midi_port.send(&[144 - 1 + channel, note_id, velocity]).unwrap();           
