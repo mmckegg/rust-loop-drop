@@ -27,5 +27,7 @@
         "unswug",
         "zoia"
     ],
-    "editor.formatOnPaste": true
+    "editor.formatOnPaste": true,
+    "editor.defaultFormatter": "matklad.rust-analyzer",
+    "editor.formatOnSave": true
 }
