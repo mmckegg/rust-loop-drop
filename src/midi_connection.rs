@@ -7,11 +7,11 @@ pub use self::midir::{
 };
 use self::regex::Regex;
 use std::collections::HashMap;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+
 use std::thread;
-use std::time::Duration;
 pub use std::time::SystemTime;
+use std::time::{Duration, Instant};
 type Listener = Box<dyn Fn(&mut MidiOutputConnection) + Send + 'static>;
 
 const APP_NAME: &str = "Loop Drop";
@@ -57,7 +57,7 @@ pub fn get_shared_output(port_name: &str) -> SharedMidiOutputConnection {
     let rx_state = state.clone();
 
     // midi send queue
-    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(256);
     thread::spawn(move || {
         for message in rx {
             let mut state = rx_state.lock().unwrap();
@@ -225,7 +225,7 @@ fn build_name(base: &str, device_id: u32, port_id: u32) -> String {
 #[derive(Clone)]
 pub struct SharedMidiOutputConnection {
     state: Arc<Mutex<OutputState>>,
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: mpsc::SyncSender<Vec<u8>>,
 }
 
 impl SharedMidiOutputConnection {
@@ -246,8 +246,8 @@ impl SharedMidiOutputConnection {
     }
 
     // async send
-    pub fn send(&mut self, message: &[u8]) -> Result<(), mpsc::SendError<Vec<u8>>> {
-        self.tx.send(message.to_vec())
+    pub fn send(&mut self, message: &[u8]) -> Result<(), mpsc::TrySendError<Vec<u8>>> {
+        self.tx.try_send(message.to_vec())
     }
 
     pub fn on_connect<F>(&mut self, callback: F)
