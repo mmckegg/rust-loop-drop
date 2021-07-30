@@ -226,7 +226,7 @@ impl Config {
                     repeat_mode: RepeatMode::Global,
                 },
             ],
-            clock_input_port_name: String::from("IAC Driver Bus 1"),
+            clock_input_port_name: String::from(tr6s_port_name),
             clock_output_port_names: vec![
                 String::from(nts1_output_name),
                 String::from(micromonsta_port_name),
