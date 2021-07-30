@@ -8,6 +8,7 @@ extern crate serde_json;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 mod chunk;
 mod config;
@@ -160,19 +161,23 @@ fn main() {
             }
         }
 
-        if range.ticked && range.from.ticks() != range.to.ticks() {
-            // HACK: straighten out missing sub ticks into separate schedules
-            let mut a = range.clone();
-            a.to = MidiTime::new(a.to.ticks(), 0);
-            a.tick_pos = MidiTime::new(a.from.ticks(), 0);
-            a.ticked = false;
-            let mut b = range.clone();
-            b.from = MidiTime::new(b.to.ticks(), 0);
-            launchpad.schedule(a);
-            launchpad.schedule(b);
-        } else {
-            launchpad.schedule(range);
+        // if range.ticked && range.from.ticks() != range.to.ticks() {
+        //     // HACK: straighten out missing sub ticks into separate schedules
+        //     let mut a = range.clone();
+        //     a.to = MidiTime::new(a.to.ticks(), 0);
+        //     a.tick_pos = MidiTime::new(a.from.ticks(), 0);
+        //     a.ticked = false;
+        //     let mut b = range.clone();
+        //     b.from = MidiTime::new(b.to.ticks(), 0);
+        //     launchpad.schedule(a);
+        //     launchpad.schedule(b);
+        // } else {
+        let start = Instant::now();
+        launchpad.schedule(range);
+        if start.elapsed() > Duration::from_millis(15) {
+            println!("[WARN] SCHEDULE TIME {:?}", start.elapsed());
         }
+        // }
 
         // now for the lower priority stuff
         if range.ticked {
