@@ -68,7 +68,6 @@ fn main() {
         frozen: false,
         cueing: false,
         channel_triggered: HashSet::new(),
-        align_offset: MidiTime::zero(),
         reset_automation: false,
     }));
 

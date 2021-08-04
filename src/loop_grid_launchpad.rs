@@ -60,16 +60,6 @@ lazy_static! {
         MidiTime::from_beats(32),
         MidiTime::from_beats(64)
     ];
-    static ref ALIGN_OFFSET_NUDGES: [MidiTime; 8] = [
-        MidiTime::from_ticks(-12),
-        MidiTime::from_ticks(-6),
-        MidiTime::from_ticks(-3),
-        MidiTime::from_ticks(-1),
-        MidiTime::from_ticks(1),
-        MidiTime::from_ticks(3),
-        MidiTime::from_ticks(6),
-        MidiTime::from_ticks(12)
-    ];
 }
 
 pub struct LoopGridParams {
@@ -78,7 +68,6 @@ pub struct LoopGridParams {
     pub frozen: bool,
     pub cueing: bool,
     pub channel_triggered: HashSet<u32>,
-    pub align_offset: MidiTime,
     pub reset_automation: bool,
 }
 
@@ -269,7 +258,6 @@ pub struct LoopGridLaunchpad {
     last_pos: MidiTime,
     last_raw_pos: MidiTime,
     last_length: MidiTime,
-    align_offset: MidiTime,
 
     current_bank: u8,
 
@@ -468,7 +456,6 @@ impl LoopGridLaunchpad {
             last_pos: MidiTime::from_ticks(0),
             last_raw_pos: MidiTime::from_ticks(0),
             last_length: MidiTime::from_ticks(0),
-            align_offset: MidiTime::zero(),
 
             current_bank: 0,
 
@@ -632,10 +619,7 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::UndoButton(pressed) => {
                 if pressed {
-                    if self.shift_held && self.selecting_scale_held {
-                        // nudge clock backwards (modify timing of existing loop)
-                        // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(-1))).unwrap();
-                    } else if self.shift_held {
+                    if self.shift_held {
                         self.halve_loop_length();
                     } else if self.selection.len() > 0 {
                         self.undo_selection();
@@ -646,10 +630,7 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::RedoButton(pressed) => {
                 if pressed {
-                    if self.shift_held && self.selecting_scale_held {
-                        // nudge clock forwards
-                        // clock_sender.send(ToClock::Nudge(MidiTime::from_ticks(1))).unwrap();
-                    } else if self.shift_held {
+                    if self.shift_held {
                         self.double_loop_length();
                     } else if self.selection.len() > 0 {
                         self.redo_selection();
@@ -694,13 +675,7 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::LengthButton { id, pressed } => {
                 if pressed {
-                    if self.shift_held {
-                        // nudge align offset
-                        let nudge_offset = ALIGN_OFFSET_NUDGES[id % ALIGN_OFFSET_NUDGES.len()];
-                        self.nudge(nudge_offset);
-                    } else {
-                        self.set_loop_length(LOOP_LENGTHS[id % LOOP_LENGTHS.len()]);
-                    }
+                    self.set_loop_length(LOOP_LENGTHS[id % LOOP_LENGTHS.len()]);
                 }
             }
             LaunchpadEvent::RateButton { id, pressed } => {
@@ -808,11 +783,8 @@ impl LoopGridLaunchpad {
         }
 
         self.last_raw_pos = range.from;
-        self.last_pos =
-            (range.from - self.align_offset).swing(self.current_swing) + self.align_offset;
-        self.last_length = (range.to - self.align_offset).swing(self.current_swing)
-            + self.align_offset
-            - self.last_pos;
+        self.last_pos = range.from.swing(self.current_swing);
+        self.last_length = range.to.swing(self.current_swing) - self.last_pos;
 
         if range.jumped {
             self.initial_loop();
@@ -845,22 +817,14 @@ impl LoopGridLaunchpad {
                 if let Some(LoopTransform::Repeat { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
-                    repeat_state.to = next_repeat(
-                        self.last_pos + MidiTime::from_sub_ticks(1),
-                        *rate,
-                        *offset,
-                        self.align_offset,
-                    );
+                    repeat_state.to =
+                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Cycle { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
-                    repeat_state.to = next_repeat(
-                        self.last_pos + MidiTime::from_sub_ticks(1),
-                        *rate,
-                        *offset,
-                        self.align_offset,
-                    );
+                    repeat_state.to =
+                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Value { .. }) = self.override_values.get(&id) {
                     // extend quantize
@@ -973,7 +937,7 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_side_buttons(&mut self) {
-        let pos = self.last_pos - self.align_offset;
+        let pos = self.last_pos;
 
         let beat_display_multiplier = (24.0 * 8.0) / self.loop_length.ticks() as f64;
         let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
@@ -1264,7 +1228,7 @@ impl LoopGridLaunchpad {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Repeat { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
+                        let to = next_repeat(self.last_pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1294,7 +1258,7 @@ impl LoopGridLaunchpad {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Cycle { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset, self.align_offset);
+                        let to = next_repeat(self.last_pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1336,8 +1300,7 @@ impl LoopGridLaunchpad {
                             } else {
                                 MidiTime::zero()
                             };
-                            let to =
-                                next_repeat(self.last_pos, self.rate, offset, self.align_offset);
+                            let to = next_repeat(self.last_pos, self.rate, offset);
                             self.queue_quantized_trigger(id, transform.clone(), to);
                         }
                     }
@@ -2069,23 +2032,6 @@ impl LoopGridLaunchpad {
         self.refresh_loop_length();
     }
 
-    fn nudge(&mut self, nudge_offset: MidiTime) {
-        self.align_offset = self.align_offset + nudge_offset;
-
-        // flash offset amount
-        if let Some(index) = ALIGN_OFFSET_NUDGES.iter().position(|x| x == &nudge_offset) {
-            let iter = if index < 4 { index..4 } else { 4..(index + 1) };
-
-            for index in iter {
-                self.launchpad_output
-                    .send(&[176, LEFT_SIDE_BUTTONS[index], Light::Purple.value()])
-                    .unwrap();
-            }
-
-            self.refresh_loop_length_in = Some(nudge_offset.ticks().abs());
-        }
-    }
-
     fn sustain_button(&mut self, pressed: bool) {
         // send frozen to twister
         if pressed {
@@ -2373,23 +2319,13 @@ impl LoopGridLaunchpad {
                         let next_step = steps.get(current_pos + 1).unwrap_or(first_step).clone();
 
                         self.chunk_cycle_step.insert(*chunk_id, next_step);
-                        let pos = next_repeat(
-                            self.last_pos,
-                            next_step.rate,
-                            next_step.offset,
-                            self.align_offset,
-                        );
+                        let pos = next_repeat(self.last_pos, next_step.rate, next_step.offset);
                         *next_pos = pos;
                     }
                 } else {
                     // init time and clear step
                     let last_step = steps.get(steps.len() - 1).unwrap();
-                    let next_pos = next_repeat(
-                        self.last_pos,
-                        first_step.rate,
-                        first_step.offset,
-                        self.align_offset,
-                    );
+                    let next_pos = next_repeat(self.last_pos, first_step.rate, first_step.offset);
                     self.chunk_cycle_step.insert(*chunk_id, *last_step);
                     self.chunk_cycle_next_pos.insert(*chunk_id, next_pos);
                 }
@@ -2440,14 +2376,9 @@ impl LoopGridLaunchpad {
                         offset: repeat_offset,
                         value,
                     } => {
-                        let next_on =
-                            next_repeat(position, repeat_rate, repeat_offset, self.align_offset);
-                        let next_off = next_repeat(
-                            position,
-                            repeat_rate,
-                            repeat_offset + repeat_rate.half(),
-                            self.align_offset,
-                        );
+                        let next_on = next_repeat(position, repeat_rate, repeat_offset);
+                        let next_off =
+                            next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half());
                         let to = position + length;
 
                         if next_on >= position && next_on < to {
@@ -2473,14 +2404,9 @@ impl LoopGridLaunchpad {
                         offset: repeat_offset,
                         value,
                     } => {
-                        let next_on =
-                            next_repeat(position, repeat_rate, repeat_offset, self.align_offset);
-                        let next_off = next_repeat(
-                            position,
-                            repeat_rate,
-                            repeat_offset + repeat_rate.half(),
-                            self.align_offset,
-                        );
+                        let next_on = next_repeat(position, repeat_rate, repeat_offset);
+                        let next_off =
+                            next_repeat(position, repeat_rate, repeat_offset + repeat_rate.half());
                         let to = position + length;
 
                         if next_off >= position && next_off < to {
@@ -2728,21 +2654,11 @@ enum LaunchpadLight {
     Pulsing(Light),
 }
 
-fn next_repeat(
-    pos: MidiTime,
-    rate: MidiTime,
-    offset: MidiTime,
-    align_offset: MidiTime,
-) -> MidiTime {
-    let pos_with_align_offset = pos - align_offset;
-    let root = pos_with_align_offset.quantize(rate) + (offset % rate);
-    let result = if root < pos_with_align_offset {
-        root + rate
-    } else {
-        root
-    };
+fn next_repeat(pos: MidiTime, rate: MidiTime, offset: MidiTime) -> MidiTime {
+    let root = pos.quantize(rate) + (offset % rate);
+    let result = if root < pos { root + rate } else { root };
 
-    result + align_offset
+    result
 }
 
 fn get_half_loop_length(time: MidiTime) -> MidiTime {
