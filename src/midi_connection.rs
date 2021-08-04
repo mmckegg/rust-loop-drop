@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 
 use std::thread;
+use std::time::Duration;
 pub use std::time::SystemTime;
-use std::time::{Duration, Instant};
 type Listener = Box<dyn Fn(&mut MidiOutputConnection) + Send + 'static>;
 
 const APP_NAME: &str = "Loop Drop";

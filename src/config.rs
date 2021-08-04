@@ -1,4 +1,4 @@
-use chunk::{ChunkMap, Coords, RepeatMode, Shape};
+use chunk::{Coords, RepeatMode, Shape};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_writer_pretty};
 use std::error::Error;
@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 impl Config {
-    pub fn read(filepath: &str) -> Result<Self, Box<Error>> {
+    pub fn read(filepath: &str) -> Result<Self, Box<dyn Error>> {
         let file = File::open(filepath)?;
         let reader = BufReader::new(file);
 

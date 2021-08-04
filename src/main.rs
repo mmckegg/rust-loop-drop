@@ -92,12 +92,7 @@ fn main() {
         ))
     }
 
-    let mut launchpad = LoopGridLaunchpad::new(
-        launchpad_io_name,
-        chunks,
-        Arc::clone(&scale),
-        Arc::clone(&params),
-    );
+    let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, chunks, Arc::clone(&params));
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();
 
@@ -231,7 +226,7 @@ fn get_port(
 
 fn get_offset(offset_lookup: &mut OffsetLookup, id: &str) -> Arc<Mutex<Offset>> {
     if !offset_lookup.contains_key(id) {
-        offset_lookup.insert(String::from(id), Offset::new(0, 0));
+        offset_lookup.insert(String::from(id), Offset::new(0));
     }
 
     offset_lookup.get(id).unwrap().clone()

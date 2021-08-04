@@ -18,7 +18,6 @@ use chunk::{ChunkMap, Coords, LatchMode, MidiMap, RepeatMode, ScheduleMode, Trig
 use loop_recorder::{LoopEvent, LoopRecorder};
 use loop_state::{LoopCollection, LoopState, LoopStateChange, LoopTransform};
 use output_value::OutputValue;
-use scale::Scale;
 
 const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
 const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
@@ -231,7 +230,7 @@ pub struct LoopGridLaunchpad {
     input_queue: mpsc::Receiver<LaunchpadEvent>,
 
     mapping: HashMap<Coords, MidiMap>,
-    chunks: Vec<Box<Triggerable>>,
+    chunks: Vec<Box<dyn Triggerable>>,
     chunk_colors: Vec<Light>,
     chunk_channels: HashMap<usize, u32>,
     chunk_trigger_ids: Vec<Vec<u32>>,
@@ -243,7 +242,6 @@ pub struct LoopGridLaunchpad {
     trigger_latch_for: HashMap<usize, u32>,
     loop_length: MidiTime,
 
-    repeating: bool,
     repeat_off_beat: bool,
 
     // selection
@@ -299,7 +297,6 @@ pub struct LoopGridLaunchpad {
     trigger_mode: TriggerMode,
     chunk_cycle_step: HashMap<usize, CycleStep>,
     chunk_cycle_next_pos: HashMap<usize, MidiTime>,
-    cycle_off_next_pos: HashMap<u32, MidiTime>,
     cycle_groups: HashMap<usize, Vec<CycleStep>>,
 
     // display state
@@ -316,7 +313,6 @@ impl LoopGridLaunchpad {
     pub fn new(
         launchpad_port_name: &str,
         chunk_map: Vec<Box<ChunkMap>>,
-        scale: Arc<Mutex<Scale>>,
         params: Arc<Mutex<LoopGridParams>>,
     ) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
@@ -397,7 +393,7 @@ impl LoopGridLaunchpad {
         });
 
         let (_midi_to_id, id_to_midi) = get_grid_map();
-        let mut loop_length = MidiTime::from_beats(8);
+        let loop_length = MidiTime::from_beats(8);
         let mut base_loop = LoopCollection::new(loop_length);
 
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
@@ -428,7 +424,6 @@ impl LoopGridLaunchpad {
             trigger_mode: TriggerMode::Immediate,
             chunk_cycle_step: HashMap::new(),
             chunk_cycle_next_pos: HashMap::new(),
-            cycle_off_next_pos: HashMap::new(),
             cycle_groups: HashMap::new(),
 
             // channels
@@ -447,7 +442,6 @@ impl LoopGridLaunchpad {
             no_suppress_held: HashSet::new(),
             trigger_latch_for: HashMap::new(),
 
-            repeating: false,
             repeat_off_beat: false,
 
             // selection
@@ -1200,7 +1194,7 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_input(&mut self, id: u32) {
-        let mut value = self.input_values.get(&id).unwrap_or(&OutputValue::Off);
+        let value = self.input_values.get(&id).unwrap_or(&OutputValue::Off);
         let original_value = self.override_values.get(&id).cloned();
         let transform = match value {
             &OutputValue::On(velocity) => {
@@ -1353,12 +1347,7 @@ impl LoopGridLaunchpad {
 
             if get_schedule_mode(id, &self.chunks, &self.mapping) == ScheduleMode::Monophonic {
                 // refresh all in this chunk if monophonic
-                for id in get_all_ids_in_this_chunk(
-                    id,
-                    &self.chunks,
-                    &self.mapping,
-                    &self.chunk_trigger_ids,
-                ) {
+                for id in get_all_ids_in_this_chunk(id, &self.mapping, &self.chunk_trigger_ids) {
                     self.refresh_override(id);
                 }
             } else if self.selection.contains(&id) {
@@ -1425,12 +1414,7 @@ impl LoopGridLaunchpad {
                 .is_active()
             {
                 // now check to see if any other triggers in the chunk have overrides
-                let ids = get_all_ids_in_this_chunk(
-                    id,
-                    &self.chunks,
-                    &self.mapping,
-                    &self.chunk_trigger_ids,
-                );
+                let ids = get_all_ids_in_this_chunk(id, &self.mapping, &self.chunk_trigger_ids);
                 let chunk_has_override = ids.iter().any(|id| {
                     self.override_values
                         .get(id)
@@ -1999,7 +1983,7 @@ impl LoopGridLaunchpad {
         let mut new_loop = self.loop_state.get().clone();
 
         for id in 0..136 {
-            let mut transform = self
+            let transform = self
                 .out_transforms
                 .get(&id)
                 .unwrap_or(&LoopTransform::None)
@@ -2744,16 +2728,6 @@ enum LaunchpadLight {
     Pulsing(Light),
 }
 
-fn launchpad_text(text: &str) -> Vec<u8> {
-    let prefix = [0xF0, 0x00, 0x20, 0x29, 0x02, 0x18, 0x14, 0x7C, 0x00];
-    let suffix = [0xF7, 7];
-    let mut result = Vec::new();
-    result.extend_from_slice(&prefix);
-    result.extend(String::from(text).into_bytes());
-    result.extend_from_slice(&suffix);
-    result
-}
-
 fn next_repeat(
     pos: MidiTime,
     rate: MidiTime,
@@ -2801,7 +2775,7 @@ fn prev_power_of_two(a: u32) -> u32 {
 
 fn get_schedule_mode(
     id: u32,
-    chunks: &Vec<Box<Triggerable>>,
+    chunks: &Vec<Box<dyn Triggerable>>,
     mapping: &HashMap<Coords, MidiMap>,
 ) -> ScheduleMode {
     if let Some(mapping) = mapping.get(&Coords::from(id)) {
@@ -2813,7 +2787,6 @@ fn get_schedule_mode(
 
 fn get_all_ids_in_this_chunk<'a>(
     id: u32,
-    chunks: &Vec<Box<Triggerable>>,
     mapping: &HashMap<Coords, MidiMap>,
     chunk_trigger_ids: &'a Vec<Vec<u32>>,
 ) -> Vec<u32> {
@@ -2822,14 +2795,6 @@ fn get_all_ids_in_this_chunk<'a>(
     } else {
         Vec::new()
     }
-}
-
-fn pos_with_latency_compensation(
-    tick_duration: Duration,
-    pos: MidiTime,
-    offset: Duration,
-) -> MidiTime {
-    pos - MidiTime::from_float(offset.subsec_nanos() as f64 / tick_duration.subsec_nanos() as f64)
 }
 
 fn is_active(transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) -> bool {

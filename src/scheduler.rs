@@ -47,7 +47,6 @@ impl RemoteSchedulerState {
     fn tick(&mut self, stamp: u64) {
         if let Some(last_tick_stamp) = self.last_tick_stamp {
             let duration = Duration::from_micros(stamp - last_tick_stamp);
-            let d = duration.as_millis();
 
             if duration < Duration::from_millis(500) {
                 self.tick_durations
