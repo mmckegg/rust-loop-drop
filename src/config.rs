@@ -24,12 +24,11 @@ impl Config {
     pub fn default() -> Self {
         let tr6s_port_name = "TR-6S"; // drums
         let micromonsta_port_name = "MicroMonsta 2"; // synth
-        let geode_port_name = "USB MIDI"; // ext synth
 
         let blackbox_output_name = "RK006 PORT 2"; // output 1
         let bluebox_output_name = "RK006 PORT 3"; // output 2
-        let typhon_output_name = "RK006 PORT 4"; // output 3
-        let nts1_output_name = "RK006 PORT 5"; // output 4
+        let typhon_a_output_name = "RK006 PORT 4"; // output 3
+        let typhon_b_output_name = "RK006 PORT 5"; // output 4
         let fx_output_name = "RK006 PORT 6"; // output 5
         let cv1_output_name = "RK006 PORT 7"; // output 6
         let cv2_output_name = "RK006 PORT 9"; // output 8
@@ -46,31 +45,18 @@ impl Config {
                     repeat_mode: RepeatMode::Global,
                     device: DeviceConfig::multi(vec![
                         DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(geode_port_name, 1),
-                            velocity_map: Some(vec![100, 127]),
-                            offset_id: String::from("ext"),
-                            note_offset: -4,
-                            octave_offset: 0,
-                        },
-                        DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(nts1_output_name, 1),
+                            output: MidiPortConfig::new(micromonsta_port_name, 1),
                             velocity_map: None,
                             offset_id: String::from("ext"),
                             note_offset: -4,
                             octave_offset: -1,
                         },
                         DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(blackbox_output_name, 2),
-                            velocity_map: None,
-                            offset_id: String::from("ext"),
-                            note_offset: -4,
-                            octave_offset: -1,
-                        },
-                        DeviceConfig::MidiTriggers {
                             output: MidiPortConfig::new(blackbox_output_name, 3),
                             velocity_map: None,
-                            trigger_ids: (36..60).collect(),
-                            sidechain_output: None,
+                            offset_id: String::from("ext"),
+                            note_offset: -4,
+                            octave_offset: -1,
                         },
                     ]),
                 },
@@ -180,7 +166,7 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::multi(vec![
                         DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(typhon_output_name, 1),
+                            output: MidiPortConfig::new(typhon_a_output_name, 1),
                             velocity_map: None,
                             offset_id: String::from("bass"),
                             note_offset: -4,
@@ -196,7 +182,7 @@ impl Config {
                     ]),
 
                     coords: Coords::new(2, 0),
-                    shape: Shape::new(3, 8),
+                    shape: Shape::new(6, 4),
                     color: 43, // blue
                     channel: Some(4),
                     repeat_mode: RepeatMode::Global,
@@ -205,32 +191,29 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::multi(vec![
                         DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(micromonsta_port_name, 1),
+                            output: MidiPortConfig::new(typhon_b_output_name, 1),
                             velocity_map: None,
                             offset_id: String::from("keys"),
                             note_offset: -4,
                             octave_offset: -1,
                         },
                         DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(blackbox_output_name, 4),
+                            output: MidiPortConfig::new(blackbox_output_name, 2),
                             offset_id: String::from("keys"),
                             velocity_map: None,
                             note_offset: -4,
                             octave_offset: -1,
                         },
                     ]),
-                    coords: Coords::new(5, 0),
-                    shape: Shape::new(3, 8),
+                    coords: Coords::new(2, 4),
+                    shape: Shape::new(6, 4),
                     color: 59, // pink
                     channel: Some(5),
                     repeat_mode: RepeatMode::Global,
                 },
             ],
             clock_input_port_name: String::from(tr6s_port_name),
-            clock_output_port_names: vec![
-                String::from(nts1_output_name),
-                String::from(micromonsta_port_name),
-            ],
+            clock_output_port_names: vec![String::from(micromonsta_port_name)],
             resync_port_names: vec![
                 String::from(blackbox_output_name),
                 String::from(micromonsta_port_name),
@@ -249,25 +232,14 @@ impl Config {
                         ModulatorConfig::new(blackbox_output_name, 1, Modulator::Cc(2, 64)),
                         ModulatorConfig::new(blackbox_output_name, 1, Modulator::Cc(3, 64)),
                         ModulatorConfig::new(blackbox_output_name, 1, Modulator::Cc(4, 64)),
-                        ModulatorConfig::new(typhon_output_name, 1, Modulator::PitchBend(0.0)),
-                        ModulatorConfig::new(typhon_output_name, 1, Modulator::Cc(4, 0)),
+                        ModulatorConfig::new(typhon_a_output_name, 1, Modulator::PitchBend(0.0)),
+                        ModulatorConfig::new(typhon_a_output_name, 1, Modulator::Cc(4, 0)),
+                        ModulatorConfig::new(typhon_b_output_name, 1, Modulator::PitchBend(0.0)),
+                        ModulatorConfig::new(typhon_b_output_name, 1, Modulator::Cc(4, 0)), // filter envelope
                         ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::PitchBend(0.0)),
                         ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::Cc(4, 0)),
-                        ModulatorConfig::rx(geode_port_name, 1, Modulator::PitchBend(0.0)),
-                        ModulatorConfig::rx(geode_port_name, 1, Modulator::Cc(58, 64)), // filter envelope
                         ModulatorConfig::rx(fx_output_name, 1, Modulator::MaxCc(42, 14, 6)),
                         ModulatorConfig::rx(fx_output_name, 1, Modulator::Cc(5, 64)),
-                    ],
-                },
-                ControllerConfig::Init {
-                    modulators: vec![
-                        // default patch for NTS-1
-                        ModulatorConfig::new(nts1_output_name, 1, Modulator::Cc(54, 35)), // Detune
-                        ModulatorConfig::new(nts1_output_name, 1, Modulator::Cc(88, 21)), // MOD TYPE: Chorus
-                        ModulatorConfig::new(nts1_output_name, 1, Modulator::Cc(90, 36)), // REVERB TYPE: Room
-                        ModulatorConfig::new(nts1_output_name, 1, Modulator::Cc(19, 64)), // Release
-                        ModulatorConfig::new(nts1_output_name, 1, Modulator::Cc(53, 64)), // OSC TYPE: Souper
-                        ModulatorConfig::rx(nts1_output_name, 1, Modulator::Cc(43, 0)), // filter out voice
                     ],
                 },
                 ControllerConfig::VT4Key {
