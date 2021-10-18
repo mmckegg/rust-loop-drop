@@ -67,6 +67,7 @@ pub struct LoopGridParams {
     pub bank: u8,
     pub frozen: bool,
     pub cueing: bool,
+    pub duck_triggered: bool,
     pub channel_triggered: HashSet<u32>,
     pub reset_automation: bool,
 }

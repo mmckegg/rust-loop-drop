@@ -1,7 +1,12 @@
 use chunk::{MidiTime, OutputValue, Triggerable};
 use midi_connection;
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use crate::loop_grid_launchpad::LoopGridParams;
 
 pub struct MidiTriggers {
     midi_port: midi_connection::SharedMidiOutputConnection,
@@ -14,9 +19,7 @@ pub struct MidiTriggers {
 }
 
 pub struct SidechainOutput {
-    pub midi_port: midi_connection::SharedMidiOutputConnection,
-    pub midi_channel: u8,
-    pub trigger_id: u8,
+    pub params: Arc<Mutex<LoopGridParams>>,
     pub id: u32,
 }
 
@@ -54,19 +57,6 @@ impl Triggerable for MidiTriggers {
                         .send(&[144 - 1 + channel, note_id, 0])
                         .unwrap();
                     self.output_values.remove(&id);
-
-                    if let Some(sidechain_output) = &mut self.sidechain_output {
-                        if id == sidechain_output.id {
-                            sidechain_output
-                                .midi_port
-                                .send(&[
-                                    128 - 1 + sidechain_output.midi_channel,
-                                    sidechain_output.trigger_id,
-                                    0,
-                                ])
-                                .unwrap();
-                        }
-                    }
                 }
             }
             OutputValue::On(velocity) => {
@@ -82,14 +72,8 @@ impl Triggerable for MidiTriggers {
                 // send sync if kick
                 if let Some(sidechain_output) = &mut self.sidechain_output {
                     if id == sidechain_output.id {
-                        sidechain_output
-                            .midi_port
-                            .send(&[
-                                144 - 1 + sidechain_output.midi_channel,
-                                sidechain_output.trigger_id,
-                                127,
-                            ])
-                            .unwrap();
+                        let mut params = sidechain_output.params.lock().unwrap();
+                        params.duck_triggered = true;
                     }
                 }
 

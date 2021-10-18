@@ -5,12 +5,15 @@ use midi_connection;
 use output_value::OutputValue;
 use std::sync::mpsc;
 use throttled_output::ThrottledOutput;
+use trigger_envelope::TriggerEnvelope;
 use MidiTime;
 
 use controllers::{float_to_midi, midi_ease_out, midi_to_polar, polar_to_midi, Modulator};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
+
+use super::midi_to_float;
 
 pub struct Twister {
     _midi_input: midi_connection::ThreadReference,
@@ -95,8 +98,10 @@ impl Twister {
             let mut triggering_channels: HashSet<u32> = HashSet::new();
 
             let mut lfo_amounts = HashMap::new();
+            let mut duck_amounts = HashMap::new();
 
             let mut lfo = Lfo::new();
+            let mut trigger_envelope = TriggerEnvelope::new(0.9, 0.5);
 
             for channel in 0..8 {
                 last_values.insert(Control::ChannelVolume(channel), 80);
@@ -104,7 +109,7 @@ impl Twister {
                 last_values.insert(Control::ChannelDelay(channel), 0);
                 last_values.insert(Control::ChannelFilterLfoAmount(channel), 64);
                 last_values.insert(Control::ChannelFilter(channel), 64);
-                last_values.insert(Control::ChannelDuck(channel), 20);
+                last_values.insert(Control::ChannelDuck(channel), 64);
             }
 
             last_values.insert(Control::Swing, 64);
@@ -119,6 +124,7 @@ impl Twister {
                         Control::Modulator(index),
                         match modulator.modulator {
                             ::config::Modulator::Cc(_id, value) => value,
+                            ::config::Modulator::PolarCcSwitch { default, .. } => default,
                             ::config::Modulator::MaxCc(_id, max, value) => {
                                 float_to_midi(value.min(max) as f64 / max as f64)
                             }
@@ -198,6 +204,9 @@ impl Twister {
                                 let offset: f64 = lfo_value * (*last_value as f64) * lfo_amount;
                                 (*last_value as f64 + offset).min(127.0).max(0.0) as u8
                             }
+                        } else if let Some(duck_amount) = duck_amounts.get(&control) {
+                            let multiplier = 1.0 - trigger_envelope.value() as f64 * duck_amount;
+                            (*last_value as f64 * multiplier).min(127.0).max(0.0) as u8
                         } else {
                             *last_value
                         };
@@ -256,17 +265,13 @@ impl Twister {
                             }
 
                             Control::ChannelDuck(channel) => {
-                                let cc =
-                                    channel_offsets[channel as usize % channel_offsets.len()] + 5;
-                                throttled_main_output.send(&[
-                                    176 - 1 + main_channel,
-                                    cc as u8,
-                                    value,
-                                ]);
+                                duck_amounts
+                                    .insert(Control::ChannelVolume(channel), midi_to_float(value));
                             }
 
                             Control::DuckRelease => {
-                                throttled_main_output.send(&[176 - 1 + main_channel, 2, value]);
+                                let multiplier = ((midi_to_float(value) / 2.0) * 0.95) + 0.5;
+                                trigger_envelope.tick_multiplier = multiplier as f32;
                             }
 
                             Control::Swing => {
@@ -412,6 +417,9 @@ impl Twister {
 
                         params.channel_triggered.clear();
 
+                        trigger_envelope.tick(params.duck_triggered);
+                        params.duck_triggered = false;
+
                         for (control, id) in control_ids.iter() {
                             let channel = id / 2 % 8;
                             if to_refresh.contains(&channel) {
@@ -506,11 +514,26 @@ impl Twister {
                                 }
                             }
                         }
+
+                        let mut to_refresh = HashSet::new();
+
                         for (control, value) in &lfo_amounts {
                             if value != &0.0 {
-                                tx_feedback.send(TwisterMessage::Send(*control)).unwrap();
+                                to_refresh.insert(control);
                             }
                         }
+
+                        for (control, value) in &duck_amounts {
+                            // only schedule ducks if enabled and trigger has value in midi resolution
+                            if value > &0.0 && float_to_midi(trigger_envelope.value() as f64) > 0 {
+                                to_refresh.insert(control);
+                            }
+                        }
+
+                        for control in to_refresh {
+                            tx_feedback.send(TwisterMessage::Send(*control)).unwrap();
+                        }
+
                         last_pos = pos;
 
                         throttled_main_output.flush();

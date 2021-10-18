@@ -1,3 +1,4 @@
+mod clock_pulse;
 mod init;
 mod twister;
 mod umi3;
@@ -5,6 +6,7 @@ mod vt4_key;
 
 use midi_time::MidiTime;
 
+pub use self::clock_pulse::ClockPulse;
 pub use self::init::Init;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
@@ -36,6 +38,38 @@ impl Modulator {
                     .send(&[176 - 1 + self.channel, id, value])
                     .unwrap();
             }
+            ::config::Modulator::PolarCcSwitch {
+                cc_low,
+                cc_high,
+                cc_switch,
+                ..
+            } => {
+                let polar_value = midi_to_polar(value);
+                if polar_value < 0.0 {
+                    if let Some(cc) = cc_low {
+                        let abs = polar_value * -1.0;
+                        let value = float_to_midi(abs * abs);
+                        self.port
+                            .send(&[176 - 1 + self.channel, cc, value])
+                            .unwrap();
+                    }
+                } else {
+                    if let Some(cc) = cc_high {
+                        let value = float_to_midi(polar_value);
+                        self.port
+                            .send(&[176 - 1 + self.channel, cc, value])
+                            .unwrap();
+                    }
+                }
+
+                if let Some(cc) = cc_switch {
+                    let value = if polar_value < 0.0 { 0 } else { 127 };
+
+                    self.port
+                        .send(&[176 - 1 + self.channel, cc, value])
+                        .unwrap();
+                }
+            }
             ::config::Modulator::MaxCc(id, max, ..) => {
                 let f_value = value as f64 / 127.0 as f64;
                 let u_value = (f_value * max as f64).min(127.0) as u8;
@@ -58,6 +92,9 @@ impl Modulator {
                 self.port
                     .send(&[176 - 1 + self.channel, id, value])
                     .unwrap();
+            }
+            ::config::Modulator::PolarCcSwitch { default, .. } => {
+                self.send(default);
             }
             ::config::Modulator::MaxCc(id, max, value) => {
                 self.port

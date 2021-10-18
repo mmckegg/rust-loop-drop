@@ -26,6 +26,7 @@ mod output_value;
 mod scale;
 mod scheduler;
 mod throttled_output;
+mod trigger_envelope;
 
 use chunk::{ChunkMap, Triggerable};
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
@@ -67,6 +68,7 @@ fn main() {
         bank: 0,
         frozen: false,
         cueing: false,
+        duck_triggered: false,
         channel_triggered: HashSet::new(),
         reset_automation: false,
     }));
@@ -82,7 +84,13 @@ fn main() {
 
     for chunk in myconfig.chunks {
         chunks.push(ChunkMap::new(
-            make_device(chunk.device, &mut output_ports, &mut offset_lookup, &scale),
+            make_device(
+                chunk.device,
+                &mut output_ports,
+                &mut offset_lookup,
+                &scale,
+                &params,
+            ),
             chunk.coords,
             chunk.shape,
             chunk.color,
@@ -120,6 +128,14 @@ fn main() {
                     scale.clone(),
                 ))
             }
+            config::ControllerConfig::ClockPulse { output, divider } => {
+                let device_port = get_port(&mut output_ports, &output.name);
+                Box::new(controllers::ClockPulse::new(
+                    device_port,
+                    output.channel,
+                    divider,
+                ))
+            }
             config::ControllerConfig::Init { modulators } => Box::new(controllers::Init::new(
                 resolve_modulators(&mut output_ports, &modulators),
             )),
@@ -144,7 +160,7 @@ fn main() {
     for range in Scheduler::start(clock_input_name) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
-            if range.tick_pos % MidiTime::from_beats(32) == MidiTime::zero() {
+            if (range.tick_pos - MidiTime::tick()) % MidiTime::from_beats(32) == MidiTime::zero() {
                 for output in &mut resync_outputs {
                     output.send(&[250]).unwrap();
                 }
@@ -242,7 +258,8 @@ fn make_device(
     output_ports: &mut PortLookup,
     offset_lookup: &mut OffsetLookup,
     scale: &Arc<Mutex<Scale>>,
-) -> Box<Triggerable + Send> {
+    params: &Arc<Mutex<LoopGridParams>>,
+) -> Box<dyn Triggerable + Send> {
     let mut output_ports = output_ports;
     let mut offset_lookup = offset_lookup;
 
@@ -250,7 +267,9 @@ fn make_device(
         config::DeviceConfig::Multi { devices } => {
             let instances = devices
                 .iter()
-                .map(|device| make_device(device.clone(), output_ports, offset_lookup, scale))
+                .map(|device| {
+                    make_device(device.clone(), output_ports, offset_lookup, scale, params)
+                })
                 .collect();
             Box::new(devices::MultiChunk::new(instances))
         }
@@ -300,9 +319,7 @@ fn make_device(
 
             let sidechain_output = if let Some(sidechain_output) = sidechain_output {
                 Some(devices::SidechainOutput {
-                    midi_port: get_port(&mut output_ports, &sidechain_output.port.name),
-                    midi_channel: sidechain_output.port.channel,
-                    trigger_id: sidechain_output.trigger_id,
+                    params: Arc::clone(params),
                     id: sidechain_output.id,
                 })
             } else {

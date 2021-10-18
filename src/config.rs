@@ -22,17 +22,18 @@ impl Config {
     }
 
     pub fn default() -> Self {
-        let tr6s_port_name = "TR-6S"; // drums
         let micromonsta_port_name = "MicroMonsta 2"; // synth
 
         let blackbox_output_name = "RK006 PORT 2"; // output 1
         let bluebox_output_name = "RK006 PORT 3"; // output 2
         let typhon_a_output_name = "RK006 PORT 4"; // output 3
         let typhon_b_output_name = "RK006 PORT 5"; // output 4
-        let fx_output_name = "RK006 PORT 6"; // output 5
+        let zero_one_four_output_name = "RK006 PORT 6"; // output 5
         let cv1_output_name = "RK006 PORT 7"; // output 6
         let cv2_output_name = "RK006 PORT 9"; // output 8
         let cv3_output_name = "RK006 PORT 10"; // output 9
+
+        let clock_pulse_output_name = "RK006 PORT 8"; // output 7
 
         Config {
             chunks: vec![
@@ -119,32 +120,27 @@ impl Config {
                 // DRUMS
                 ChunkConfig {
                     device: DeviceConfig::MidiTriggers {
-                        output: MidiPortConfig::new(tr6s_port_name, 10),
+                        output: MidiPortConfig::new(zero_one_four_output_name, 1),
                         velocity_map: Some(vec![80, 80, 127]),
-                        trigger_ids: vec![36, 38, 43, 39, 42, 46],
-                        sidechain_output: Some(SidechainOutput {
-                            id: 0,
-                            port: MidiPortConfig::new(bluebox_output_name, 1),
-                            trigger_id: 36,
-                        }),
+                        trigger_ids: vec![36, 38, 40, 41],
+                        sidechain_output: Some(SidechainOutput { id: 0 }),
                     },
                     coords: Coords::new(0, 0),
-                    shape: Shape::new(1, 6),
-                    color: 15, // yellow
+                    shape: Shape::new(1, 4),
+                    color: 8, // warm white
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // EXTRA PERC (to fill in for only 6 triggers on cycles)
                 ChunkConfig {
                     device: DeviceConfig::MidiTriggers {
                         output: MidiPortConfig::new(blackbox_output_name, 10),
                         velocity_map: Some(vec![100, 127]),
-                        trigger_ids: vec![40, 41],
+                        trigger_ids: vec![36, 37, 38, 39],
                         sidechain_output: None,
                     },
-                    coords: Coords::new(0, 6),
-                    shape: Shape::new(1, 2),
-                    color: 9, // orange
+                    coords: Coords::new(1, 0),
+                    shape: Shape::new(1, 4),
+                    color: 15, // yellow
                     channel: Some(3),
                     repeat_mode: RepeatMode::NoCycle,
                 },
@@ -156,8 +152,8 @@ impl Config {
                         trigger_ids: vec![48, 49, 50, 51, 44, 45, 46, 47],
                         sidechain_output: None,
                     },
-                    coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 8),
+                    coords: Coords::new(0, 4),
+                    shape: Shape::new(2, 4),
                     color: 9, // orange
                     channel: Some(2),
                     repeat_mode: RepeatMode::OnlyQuant,
@@ -212,20 +208,24 @@ impl Config {
                     repeat_mode: RepeatMode::Global,
                 },
             ],
-            clock_input_port_name: String::from(tr6s_port_name),
+            clock_input_port_name: String::from("RK006"),
             clock_output_port_names: vec![String::from(micromonsta_port_name)],
             resync_port_names: vec![
                 String::from(blackbox_output_name),
                 String::from(micromonsta_port_name),
             ],
-            keep_alive_port_names: vec![String::from(tr6s_port_name)],
+            keep_alive_port_names: vec![],
             controllers: vec![
                 ControllerConfig::Twister {
                     port_name: String::from("Midi Fighter Twister"),
                     mixer_port: MidiPortConfig::new(bluebox_output_name, 1),
                     modulators: vec![
-                        ModulatorConfig::rx(tr6s_port_name, 10, Modulator::Cc(46, 64)), // LT tune
-                        ModulatorConfig::rx(tr6s_port_name, 10, Modulator::Cc(62, 64)), // CH decay
+                        ModulatorConfig::rx(
+                            zero_one_four_output_name,
+                            1,
+                            Modulator::MaxCc(66, 24, 12),
+                        ), // LT tune
+                        ModulatorConfig::rx(zero_one_four_output_name, 1, Modulator::Cc(54, 0)), // CH decay
                         ModulatorConfig::new(cv1_output_name, 1, Modulator::Cc(1, 64)),
                         ModulatorConfig::new(cv2_output_name, 1, Modulator::Cc(1, 64)),
                         ModulatorConfig::new(blackbox_output_name, 1, Modulator::Cc(1, 64)),
@@ -237,10 +237,23 @@ impl Config {
                         ModulatorConfig::new(typhon_b_output_name, 1, Modulator::PitchBend(0.0)),
                         ModulatorConfig::new(typhon_b_output_name, 1, Modulator::Cc(4, 0)), // filter envelope
                         ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::PitchBend(0.0)),
-                        ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::Cc(4, 0)),
-                        ModulatorConfig::rx(fx_output_name, 1, Modulator::MaxCc(42, 14, 6)),
-                        ModulatorConfig::rx(fx_output_name, 1, Modulator::Cc(5, 64)),
+                        ModulatorConfig::rx(micromonsta_port_name, 1, Modulator::Cc(74, 64)),
+                        ModulatorConfig::rx(
+                            bluebox_output_name,
+                            1,
+                            Modulator::PolarCcSwitch {
+                                cc_low: Some(1),
+                                cc_high: Some(2),
+                                cc_switch: Some(3),
+                                default: 96,
+                            },
+                        ),
+                        ModulatorConfig::rx(bluebox_output_name, 1, Modulator::Cc(4, 64)),
                     ],
+                },
+                ControllerConfig::ClockPulse {
+                    output: MidiPortConfig::new(clock_pulse_output_name, 1),
+                    divider: 6,
                 },
                 ControllerConfig::VT4Key {
                     output: MidiPortConfig::new("VT-4", 1),
@@ -281,8 +294,6 @@ pub struct MidiPortConfig {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SidechainOutput {
-    pub port: MidiPortConfig,
-    pub trigger_id: u8,
     pub id: u32,
 }
 
@@ -350,6 +361,10 @@ pub enum ControllerConfig {
     VT4Key {
         output: MidiPortConfig,
     },
+    ClockPulse {
+        output: MidiPortConfig,
+        divider: i32,
+    },
     Init {
         modulators: Vec<Option<ModulatorConfig>>,
     },
@@ -366,6 +381,12 @@ pub struct ModulatorConfig {
 pub enum Modulator {
     Cc(u8, u8),
     MaxCc(u8, u8, u8),
+    PolarCcSwitch {
+        cc_low: Option<u8>,
+        cc_high: Option<u8>,
+        cc_switch: Option<u8>,
+        default: u8,
+    },
     PitchBend(f64),
 }
 
