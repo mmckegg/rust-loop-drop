@@ -176,9 +176,14 @@ impl Config {
             clock_output_port_names: vec![String::from(poly_port_name)],
             resync_port_names: vec![],
             keep_alive_port_names: vec![],
-            controllers: vec![ControllerConfig::Umi3 {
-                port_name: String::from("Logidy UMI3"),
-            }],
+            controllers: vec![
+                ControllerConfig::Umi3 {
+                    port_name: String::from("Logidy UMI3"),
+                },
+                ControllerConfig::LaunchpadTempo {
+                    daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
+                },
+            ],
         }
     }
 }
@@ -287,6 +292,9 @@ pub enum ControllerConfig {
     ClockPulse {
         output: MidiPortConfig,
         divider: i32,
+    },
+    LaunchpadTempo {
+        daw_port_name: String,
     },
     Init {
         modulators: Vec<Option<ModulatorConfig>>,

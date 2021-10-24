@@ -1,5 +1,6 @@
 mod clock_pulse;
 mod init;
+mod launchpad_tempo;
 mod twister;
 mod umi3;
 mod vt4_key;
@@ -8,6 +9,7 @@ use midi_time::MidiTime;
 
 pub use self::clock_pulse::ClockPulse;
 pub use self::init::Init;
+pub use self::launchpad_tempo::LaunchpadTempo;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
 pub use self::vt4_key::VT4Key;

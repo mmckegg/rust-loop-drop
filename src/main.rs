@@ -136,6 +136,9 @@ fn main() {
                     divider,
                 ))
             }
+            config::ControllerConfig::LaunchpadTempo { daw_port_name } => {
+                Box::new(controllers::LaunchpadTempo::new(&daw_port_name))
+            }
             config::ControllerConfig::Init { modulators } => Box::new(controllers::Init::new(
                 resolve_modulators(&mut output_ports, &modulators),
             )),
