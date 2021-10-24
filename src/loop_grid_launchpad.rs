@@ -804,7 +804,6 @@ impl LoopGridLaunchpad {
 
             self.refresh_side_buttons();
             self.refresh_recording();
-            self.chunk_tick();
         }
 
         // consume launchpad and other controllers
@@ -894,8 +893,21 @@ impl LoopGridLaunchpad {
             a.id.cmp(&b.id)
         });
 
+        let mut chunks_needing_tick: HashSet<usize> = if range.ticked {
+            HashSet::from((0..self.chunks.len()).collect())
+        } else {
+            HashSet::new()
+        };
+
         for event in events {
-            if let Some(mapping) = self.mapping.get(&Coords::from(event.id)) {
+            if let Some(mapping) = self.mapping.get(&Coords::from(event.id)).cloned() {
+                // we run the chunk tick just before scheduling begins for that chunk
+                // since chunks are scheduled in the order that they are added via config, this means that modulator
+                // chunks can be scheduled before the triggers and the modulations for the same tick will be sent immediately
+                if chunks_needing_tick.contains(&mapping.chunk_index) {
+                    self.chunk_tick(mapping.chunk_index);
+                    chunks_needing_tick.remove(&mapping.chunk_index);
+                }
                 if event.value.is_on() {
                     self.last_triggered
                         .entry(mapping.chunk_index)
@@ -907,6 +919,11 @@ impl LoopGridLaunchpad {
         }
 
         self.update_cycle_steps();
+
+        // schedule any remaining chunk ticks
+        for index in chunks_needing_tick {
+            self.chunk_tick(index);
+        }
     }
 
     fn refresh_selected_bank(&mut self) {
@@ -2200,8 +2217,8 @@ impl LoopGridLaunchpad {
         }
     }
 
-    fn chunk_tick(&mut self) {
-        for chunk in &mut self.chunks {
+    fn chunk_tick(&mut self, chunk_index: usize) {
+        if let Some(chunk) = self.chunks.get_mut(chunk_index) {
             chunk.on_tick(self.last_raw_pos);
         }
     }

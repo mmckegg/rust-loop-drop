@@ -334,5 +334,30 @@ fn make_device(
                 velocity_map,
             ))
         }
+        config::DeviceConfig::CcTriggers {
+            output,
+            sidechain_output,
+            trigger_ids,
+            velocity_map,
+        } => {
+            let device_port = get_port(&mut output_ports, &output.name);
+
+            let sidechain_output = if let Some(sidechain_output) = sidechain_output {
+                Some(devices::SidechainOutput {
+                    params: Arc::clone(params),
+                    id: sidechain_output.id,
+                })
+            } else {
+                None
+            };
+
+            Box::new(devices::CcTriggers::new(
+                device_port,
+                output.channel,
+                sidechain_output,
+                trigger_ids,
+                velocity_map,
+            ))
+        }
     }
 }
