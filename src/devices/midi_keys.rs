@@ -73,7 +73,7 @@ impl Triggerable for MidiKeys {
                     let (note_id, _) = *self.output_values.get(&id).unwrap();
 
                     self.midi_port
-                        .send(&[144 + self.midi_channel - 1, note_id, 0])
+                        .send(&[128 + self.midi_channel - 1, note_id, 0])
                         .unwrap();
                     self.output_values.remove(&id);
                 }

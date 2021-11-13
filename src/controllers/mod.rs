@@ -1,6 +1,7 @@
 mod clock_pulse;
 mod init;
 mod launchpad_tempo;
+mod mod_twister;
 mod twister;
 mod umi3;
 mod vt4_key;
@@ -10,6 +11,7 @@ use midi_time::MidiTime;
 pub use self::clock_pulse::ClockPulse;
 pub use self::init::Init;
 pub use self::launchpad_tempo::LaunchpadTempo;
+pub use self::mod_twister::ModTwister;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
 pub use self::vt4_key::VT4Key;
@@ -23,13 +25,16 @@ pub struct Modulator {
 
 impl Modulator {
     pub fn send_polar(&mut self, value: f64) {
-        if let ::config::Modulator::PitchBend(..) = self.modulator {
-            let value = polar_to_msb_lsb(value);
-            self.port
-                .send(&[224 - 1 + self.channel, value.0, value.1])
-                .unwrap();
-        } else {
-            self.send(polar_to_midi(value));
+        match self.modulator {
+            ::config::Modulator::PitchBend(..) | ::config::Modulator::PositivePitchBend(..) => {
+                let value = polar_to_msb_lsb(value);
+                self.port
+                    .send(&[224 - 1 + self.channel, value.0, value.1])
+                    .unwrap();
+            }
+            _ => {
+                self.send(polar_to_midi(value));
+            }
         }
     }
 
@@ -85,6 +90,12 @@ impl Modulator {
                     .send(&[224 - 1 + self.channel, value.0, value.1])
                     .unwrap();
             }
+            ::config::Modulator::PositivePitchBend(..) => {
+                let value = polar_to_msb_lsb(midi_to_float(value));
+                self.port
+                    .send(&[224 - 1 + self.channel, value.0, value.1])
+                    .unwrap();
+            }
         }
     }
 
@@ -103,7 +114,8 @@ impl Modulator {
                     .send(&[176 - 1 + self.channel, id, value.min(max)])
                     .unwrap();
             }
-            ::config::Modulator::PitchBend(value) => {
+            ::config::Modulator::PitchBend(value)
+            | ::config::Modulator::PositivePitchBend(value) => {
                 let value = ::controllers::polar_to_msb_lsb(value);
                 self.port
                     .send(&[224 - 1 + self.channel, value.0, value.1])

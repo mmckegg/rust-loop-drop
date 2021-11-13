@@ -1,3 +1,4 @@
+use crate::devices::MidiTrigger;
 use chunk::{Coords, RepeatMode, Shape};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_writer_pretty};
@@ -22,8 +23,8 @@ impl Config {
     }
 
     pub fn default() -> Self {
-        let micromonsta_port_name = "MicroMonsta 2"; // synth
         let poly_port_name = "POLY2"; // output 3
+        let launchpad_midi_output_name = "Launchpad Pro MK3 PORT 2"; // output 3
 
         Config {
             chunks: vec![
@@ -79,9 +80,16 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::CcTriggers {
                         output: MidiPortConfig::new(poly_port_name, 1),
-                        velocity_map: Some(vec![80, 80, 127]),
-                        trigger_ids: vec![36, 37, 38, 39, 40, 41, 42, 43],
-                        sidechain_output: None,
+                        triggers: vec![
+                            MidiTrigger::Note(1, 0, 127),  // kick (g1)
+                            MidiTrigger::Cc(1, 1, 127),    // clap (1)
+                            MidiTrigger::Note(2, 0, 127),  // hat (g2)
+                            MidiTrigger::Cc(1, 3, 127),    // cym a (3)
+                            MidiTrigger::Note(1, 64, 127), // step (12)
+                            MidiTrigger::Cc(1, 2, 127),    // tick (2)
+                            MidiTrigger::Note(2, 20, 127), // open hat (g2p2)
+                            MidiTrigger::Cc(1, 4, 127),    // cym b (4)
+                        ],
                     },
                     coords: Coords::new(0, 0),
                     shape: Shape::new(2, 4),
@@ -116,60 +124,50 @@ impl Config {
                     channel: Some(2),
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
-                // BASS
+                // BASSLINE
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(poly_port_name, 2),
+                        output: MidiPortConfig::new(poly_port_name, 3),
                         velocity_map: None,
                         offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -2,
                     },
-
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
                     color: 43, // blue
                     channel: Some(4),
                     repeat_mode: RepeatMode::Global,
                 },
-                // SYNTH
+                // PLAITS
                 ChunkConfig {
-                    device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(poly_port_name, 3),
+                    device: DeviceConfig::MidiKeys {
+                        output: MidiPortConfig::new(poly_port_name, 4),
                         velocity_map: None,
                         offset_id: String::from("keys"),
                         note_offset: -4,
-                        octave_offset: -1,
-                    }]),
+                        octave_offset: -2,
+                    },
                     coords: Coords::new(2, 4),
                     shape: Shape::new(6, 4),
                     color: 59, // pink
                     channel: Some(5),
                     repeat_mode: RepeatMode::Global,
                 },
-                // EXT SYNTH
+                // POLY CINEMATIC
                 ChunkConfig {
                     coords: Coords::new(0 + 8, 0),
                     shape: Shape::new(3, 8),
                     color: 125, // gross
                     channel: Some(6),
                     repeat_mode: RepeatMode::Global,
-                    device: DeviceConfig::multi(vec![
-                        DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(micromonsta_port_name, 1),
-                            velocity_map: None,
-                            offset_id: String::from("ext"),
-                            note_offset: -4,
-                            octave_offset: -1,
-                        },
-                        DeviceConfig::MidiKeys {
-                            output: MidiPortConfig::new(poly_port_name, 4),
-                            velocity_map: None,
-                            offset_id: String::from("ext"),
-                            note_offset: -4,
-                            octave_offset: -1,
-                        },
-                    ]),
+                    device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
+                        output: MidiPortConfig::new(launchpad_midi_output_name, 5),
+                        velocity_map: None,
+                        offset_id: String::from("ext"),
+                        note_offset: -4,
+                        octave_offset: -1,
+                    }]),
                 },
             ],
             clock_input_port_name: String::from("Launchpad Pro MK3"),
@@ -179,6 +177,23 @@ impl Config {
             controllers: vec![
                 ControllerConfig::Umi3 {
                     port_name: String::from("Logidy UMI3"),
+                },
+                ControllerConfig::ModTwister {
+                    port_name: String::from("Midi Fighter Twister"),
+                    modulators: vec![
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::Cc(5, 64)), // drum filter (5)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::MaxCc(6, 64, 0)), // bass filter (6)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::Cc(7, 64)), // plaits filter (7)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::MaxCc(8, 64, 0)), // poly filter (8)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::PitchBend(0.0)), // kick pitch (p1)
+                        ModulatorConfig::new(poly_port_name, 3, Modulator::PitchBend(0.0)), // bass pitch (p3)
+                        ModulatorConfig::new(poly_port_name, 4, Modulator::PitchBend(0.0)), // plaits pitch (p4)
+                        ModulatorConfig::new(poly_port_name, 5, Modulator::PitchBend(0.0)), // poly pitch (midi)
+                        ModulatorConfig::new(poly_port_name, 2, Modulator::PositivePitchBend(0.0)), // hihat mod (p2)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::MaxCc(10, 64, 0)), // mod a (10)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::MaxCc(11, 64, 0)), // mod b (11)
+                        ModulatorConfig::new(poly_port_name, 1, Modulator::Cc(9, 64)), // bus filter (12)
+                    ],
                 },
                 ControllerConfig::LaunchpadTempo {
                     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
@@ -258,9 +273,7 @@ pub enum DeviceConfig {
     },
     CcTriggers {
         output: MidiPortConfig,
-        trigger_ids: Vec<u8>,
-        velocity_map: Option<Vec<u8>>,
-        sidechain_output: Option<SidechainOutput>,
+        triggers: Vec<MidiTrigger>,
     },
 }
 
@@ -281,6 +294,10 @@ pub enum ControllerConfig {
     Twister {
         port_name: String,
         mixer_port: MidiPortConfig,
+        modulators: Vec<Option<ModulatorConfig>>,
+    },
+    ModTwister {
+        port_name: String,
         modulators: Vec<Option<ModulatorConfig>>,
     },
     Umi3 {
@@ -319,6 +336,7 @@ pub enum Modulator {
         default: u8,
     },
     PitchBend(f64),
+    PositivePitchBend(f64),
 }
 
 impl ModulatorConfig {

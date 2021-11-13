@@ -57,7 +57,7 @@ pub fn get_shared_output(port_name: &str) -> SharedMidiOutputConnection {
     let rx_state = state.clone();
 
     // midi send queue
-    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(256);
+    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(512);
     thread::spawn(move || {
         for message in rx {
             let mut state = rx_state.lock().unwrap();

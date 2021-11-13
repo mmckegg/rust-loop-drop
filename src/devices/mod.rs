@@ -10,6 +10,7 @@ mod scale_offset_chunk;
 mod scale_select;
 
 pub use self::cc_triggers::CcTriggers;
+pub use self::cc_triggers::MidiTrigger;
 pub use self::midi_triggers::MidiTriggers;
 pub use self::midi_triggers::SidechainOutput;
 pub use self::multi::MultiChunk;

@@ -1,38 +1,80 @@
 use chunk::{MidiTime, OutputValue, Triggerable};
-use devices::midi_triggers::SidechainOutput;
 use midi_connection;
+use serde::{Deserialize, Serialize};
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 
 pub struct CcTriggers {
     midi_port: midi_connection::SharedMidiOutputConnection,
-    midi_channel: u8,
-    sidechain_output: Option<SidechainOutput>,
     last_pos: MidiTime,
-    velocity_map: Option<Vec<u8>>,
-    output_values: HashMap<u32, (u8, u8, u8)>,
-    trigger_ids: Vec<u8>,
+    output_values: HashMap<u32, MidiTrigger>,
+    triggers: Vec<MidiTrigger>,
 }
 
 impl CcTriggers {
     pub fn new(
         midi_port: midi_connection::SharedMidiOutputConnection,
-        channel: u8,
-        sidechain_output: Option<SidechainOutput>,
-        trigger_ids: Vec<u8>,
-        velocity_map: Option<Vec<u8>>,
+        triggers: Vec<MidiTrigger>,
     ) -> Self {
         CcTriggers {
             midi_port,
             last_pos: MidiTime::zero(),
-            sidechain_output,
-            midi_channel: channel,
             output_values: HashMap::new(),
-            velocity_map,
-            trigger_ids,
+            triggers,
+        }
+    }
+
+    fn trigger_on(&mut self, trigger: &MidiTrigger, velocity: u8) {
+        match trigger {
+            MidiTrigger::Cc(channel, cc, value) => {
+                self.midi_port
+                    .send(&[176 - 1 + channel, *cc, *value])
+                    .unwrap();
+            }
+            MidiTrigger::Note(channel, note, velocity) => {
+                self.midi_port
+                    .send(&[144 - 1 + channel, *note, *velocity])
+                    .unwrap();
+            }
+            MidiTrigger::CcVelocity(channel, cc) => {
+                self.midi_port
+                    .send(&[176 - 1 + channel, *cc, velocity])
+                    .unwrap();
+            }
+            MidiTrigger::NoteVelocity(channel, note) => {
+                self.midi_port
+                    .send(&[144 - 1 + channel, *note, velocity])
+                    .unwrap();
+            }
+            MidiTrigger::Multi(triggers) => {
+                for trigger in triggers {
+                    self.trigger_on(trigger, velocity)
+                }
+            }
+            MidiTrigger::None => {}
+        }
+    }
+
+    fn trigger_off(&mut self, trigger: &MidiTrigger) {
+        match trigger {
+            MidiTrigger::Cc(channel, cc, _value) => {
+                self.midi_port.send(&[176 - 1 + channel, *cc, 0]).unwrap();
+            }
+            MidiTrigger::Note(channel, note, _velocity) => {
+                self.midi_port.send(&[144 - 1 + channel, *note, 0]).unwrap();
+            }
+            MidiTrigger::CcVelocity(channel, cc) => {
+                self.midi_port.send(&[176 - 1 + channel, *cc, 0]).unwrap();
+            }
+            MidiTrigger::NoteVelocity(channel, note) => {
+                self.midi_port.send(&[144 - 1 + channel, *note, 0]).unwrap();
+            }
+            MidiTrigger::Multi(triggers) => {
+                for trigger in triggers {
+                    self.trigger_off(trigger)
+                }
+            }
+            MidiTrigger::None => {}
         }
     }
 }
@@ -46,33 +88,25 @@ impl Triggerable for CcTriggers {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
-                    let (channel, note_id, _) = *self.output_values.get(&id).unwrap();
-                    self.midi_port
-                        .send(&[176 - 1 + channel, note_id, 0])
-                        .unwrap();
+                    let trigger = self.output_values.get(&id).unwrap().clone();
+                    self.trigger_off(&trigger);
                     self.output_values.remove(&id);
                 }
             }
             OutputValue::On(velocity) => {
-                let channel = self.midi_channel;
-                let note_id = self.trigger_ids[id as usize % self.trigger_ids.len()];
-                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
-
-                // send note
-                self.midi_port
-                    .send(&[176 - 1 + channel, note_id, velocity])
-                    .unwrap();
-
-                // send sync if kick
-                if let Some(sidechain_output) = &mut self.sidechain_output {
-                    if id == sidechain_output.id {
-                        let mut params = sidechain_output.params.lock().unwrap();
-                        params.duck_triggered = true;
-                    }
-                }
-
-                self.output_values.insert(id, (channel, note_id, velocity));
+                let trigger = self.triggers[id as usize % self.triggers.len()].clone();
+                self.trigger_on(&trigger, velocity);
+                self.output_values.insert(id, trigger);
             }
         }
     }
+}
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
+pub enum MidiTrigger {
+    Cc(u8, u8, u8),
+    CcVelocity(u8, u8),
+    Note(u8, u8, u8),
+    NoteVelocity(u8, u8),
+    Multi(Vec<MidiTrigger>),
+    None,
 }
