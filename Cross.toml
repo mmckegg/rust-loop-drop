@@ -1,0 +1,3 @@
+[target.armv7-unknown-linux-gnueabihf]
+# The tag name from the `docker build` command
+image = "crossbuild:local"

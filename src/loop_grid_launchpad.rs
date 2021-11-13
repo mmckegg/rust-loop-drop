@@ -894,7 +894,11 @@ impl LoopGridLaunchpad {
         });
 
         let mut chunks_needing_tick: HashSet<usize> = if range.ticked {
-            HashSet::from((0..self.chunks.len()).collect())
+            let mut ids = HashSet::new();
+            for id in 0..self.chunks.len() {
+                ids.insert(id);
+            }
+            ids
         } else {
             HashSet::new()
         };

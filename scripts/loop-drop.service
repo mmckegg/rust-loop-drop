@@ -1,0 +1,10 @@
+[Unit]
+Description=Loop Drop
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/home/pi/loop-drop
+
+[Install]
+WantedBy=multi-user.target
