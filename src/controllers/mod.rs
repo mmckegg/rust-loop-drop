@@ -45,6 +45,11 @@ impl Modulator {
                     .send(&[176 - 1 + self.channel, id, value])
                     .unwrap();
             }
+            ::config::Modulator::InvertCc(id, ..) => {
+                self.port
+                    .send(&[176 - 1 + self.channel, id, 127 - value])
+                    .unwrap();
+            }
             ::config::Modulator::PolarCcSwitch {
                 cc_low,
                 cc_high,
@@ -104,6 +109,11 @@ impl Modulator {
             ::config::Modulator::Cc(id, value) => {
                 self.port
                     .send(&[176 - 1 + self.channel, id, value])
+                    .unwrap();
+            }
+            ::config::Modulator::InvertCc(id, value) => {
+                self.port
+                    .send(&[176 - 1 + self.channel, id, 127 - value])
                     .unwrap();
             }
             ::config::Modulator::PolarCcSwitch { default, .. } => {

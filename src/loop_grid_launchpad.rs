@@ -194,6 +194,8 @@ enum LaunchpadEvent {
     SuppressButton(bool),
     ScaleButton(bool),
     ShiftButton(bool),
+    SustainButton(bool),
+
     None,
     LengthButton { id: usize, pressed: bool },
     RateButton { id: usize, pressed: bool },
@@ -376,6 +378,11 @@ impl LoopGridLaunchpad {
                 {
                     input_queue_tx
                         .send(LaunchpadEvent::TriggerModeButton { id, pressed })
+                        .unwrap();
+                } else if message[1] == 90 {
+                    // Shift Button
+                    input_queue_tx
+                        .send(LaunchpadEvent::SustainButton(pressed))
                         .unwrap();
                 }
             }
@@ -716,6 +723,9 @@ impl LoopGridLaunchpad {
                 } else {
                     self.grid_input(id, OutputValue::Off);
                 }
+            }
+            LaunchpadEvent::SustainButton(pressed) => {
+                self.sustain_button(pressed);
             }
             LaunchpadEvent::None => (),
         }

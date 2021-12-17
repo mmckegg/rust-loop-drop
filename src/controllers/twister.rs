@@ -124,6 +124,7 @@ impl Twister {
                         Control::Modulator(index),
                         match modulator.modulator {
                             ::config::Modulator::Cc(_id, value) => value,
+                            ::config::Modulator::InvertCc(_id, value) => value,
                             ::config::Modulator::PolarCcSwitch { default, .. } => default,
                             ::config::Modulator::MaxCc(_id, max, value) => {
                                 float_to_midi(value.min(max) as f64 / max as f64)

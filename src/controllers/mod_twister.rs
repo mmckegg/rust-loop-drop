@@ -22,8 +22,6 @@ enum EventSource {
     Loop,
 }
 
-const DIVIDERS: [i32; 6] = [1, 3, 6, 8, 12, 24];
-
 impl ModTwister {
     pub fn new(
         port_name: &str,
@@ -96,6 +94,7 @@ impl ModTwister {
                         Control::Modulator(index),
                         match modulator.modulator {
                             ::config::Modulator::Cc(_id, value) => value,
+                            ::config::Modulator::InvertCc(_id, value) => value,
                             ::config::Modulator::PolarCcSwitch { default, .. } => default,
                             ::config::Modulator::MaxCc(_id, max, value) => {
                                 float_to_midi(value.min(max) as f64 / max as f64)

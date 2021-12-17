@@ -1,10 +1,10 @@
 [Unit]
 Description=Loop Drop
-After=multi-user.target
+After=local-fs.target
 
 [Service]
 Type=idle
 ExecStart=/home/pi/loop-drop
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=local-fs.target

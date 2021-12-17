@@ -1,8 +1,9 @@
 # flash raspberry pi with latest raspbian lite
-# setup ssh access
+# setup network access and ssh (https://desertbot.io/blog/headless-raspberry-pi-4-ssh-wifi-setup)
 # then run this script!
 
 scripts/build && \
+ssh pi@raspberrypi.local "sudo systemctl stop loop-drop"; \
 scp target/armv7-unknown-linux-gnueabihf/release/loop-drop pi@raspberrypi.local:loop-drop && \
 scp ./scripts/loop-drop.service pi@raspberrypi.local:loop-drop.service && \
 ssh pi@raspberrypi.local "sudo cp loop-drop.service /lib/systemd/system/loop-drop.service && sudo chmod 644 /lib/systemd/system/loop-drop.service && sudo systemctl daemon-reload && sudo systemctl enable loop-drop.service && sudo reboot"
