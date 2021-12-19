@@ -194,8 +194,8 @@ impl Config {
                             Modulator::MaxCc(10, 64, 0),
                         ),
                         // row 2
-                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(62, 10)), // hat decay
-                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(46, 64)), // rd pitch
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(23, 32)), // bd decay
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(62, 32)), // ch decay
                         ModulatorConfig::new(launchpad_midi_output_name, 10, Modulator::Cc(1, 64)), // sampler filter
                         ModulatorConfig::new(
                             launchpad_midi_output_name,
@@ -213,14 +213,14 @@ impl Config {
                         ModulatorConfig::new(
                             launchpad_midi_output_name,
                             2,
-                            Modulator::InvertCc(2, 0),
+                            Modulator::InvertCc(2, 16),
                         ), // plaits fx
                         // row 4
                         ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(7, 64)), // poly filter
                         ModulatorConfig::new(
                             launchpad_midi_output_name,
                             2,
-                            Modulator::InvertCc(3, 0),
+                            Modulator::InvertCc(3, 16),
                         ), // poly fx
                         ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(8, 64)), // main filter
                         ModulatorConfig::new(
