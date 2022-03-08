@@ -22,6 +22,7 @@ struct RemoteSchedulerState {
     last_tick_stamp: Option<u64>,
     tick_start_at: Instant,
     stamp_offset: u64,
+    jumped: bool,
     started: bool,
     last_tick_at: Option<Instant>,
 }
@@ -31,6 +32,7 @@ impl RemoteSchedulerState {
         self.stamp_offset = offset;
         self.last_tick_stamp = None;
         self.tick_start_at = Instant::now();
+        self.started = true;
     }
 
     fn tick_duration(&self) -> Duration {
@@ -69,6 +71,7 @@ impl Scheduler {
             last_tick_at: None,
             started: false,
             last_tick_stamp: None,
+            jumped: false,
             tick_start_at: Instant::now(),
             stamp_offset: 0,
         }));
@@ -85,18 +88,22 @@ impl Scheduler {
                     let mut state: std::sync::MutexGuard<RemoteSchedulerState> =
                         state_m.lock().unwrap();
 
-                    // if we get a tick before clock start, treat as clock start
                     if !state.started {
-                        state.restart(stamp);
+                        return;
                     }
 
+                    let restarted = state.jumped;
+                    state.jumped = false;
+
                     state.tick(stamp);
-                    tx_clock.send(ScheduleTick::MidiTick).unwrap();
+                    tx_clock.send(ScheduleTick::MidiTick(restarted)).unwrap();
                 } else if message[0] == 250 {
                     // play
+                    println!("restart clock");
                     let mut state: std::sync::MutexGuard<RemoteSchedulerState> =
                         state_m.lock().unwrap();
                     state.restart(stamp);
+                    state.jumped = true;
                 }
             },
         ));
@@ -127,10 +134,16 @@ impl Scheduler {
             let from = self.next_pos;
 
             match msg {
-                ScheduleTick::MidiTick => {
+                ScheduleTick::MidiTick(jumped) => {
                     self.last_tick_at = Instant::now();
                     self.sub_ticks = 0;
-                    self.ticks += 1;
+
+                    if jumped {
+                        self.ticks = self.ticks / 768 * 768 + 768 + 1;
+                    } else {
+                        self.ticks += 1;
+                    }
+
                     self.next_pos = MidiTime::new(self.ticks, self.sub_ticks);
 
                     return ScheduleRange {
@@ -138,7 +151,7 @@ impl Scheduler {
                         to: self.next_pos,
                         tick_pos: MidiTime::from_ticks(self.ticks),
                         ticked: true,
-                        jumped: false,
+                        jumped,
                     };
                 }
                 ScheduleTick::SubTick(duration) => {
@@ -179,6 +192,6 @@ pub struct ScheduleRange {
 }
 
 enum ScheduleTick {
-    MidiTick,
+    MidiTick(bool),
     SubTick(Duration),
 }

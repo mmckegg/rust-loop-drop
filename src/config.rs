@@ -24,7 +24,10 @@ impl Config {
 
     pub fn default() -> Self {
         let tr6s_port_name = "TR-6S"; // drums
-        let launchpad_midi_output_name = "Launchpad Pro MK3 PORT 2";
+        let bbx_port_name = tr6s_port_name; // sampler
+        let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
+        let rig_port_name = launchpad_output_name;
+        let launchpad_clock_out = "Launchpad Pro MK3";
 
         Config {
             chunks: vec![
@@ -59,7 +62,11 @@ impl Config {
                 // ROOT NOTE SELECTOR
                 ChunkConfig {
                     device: DeviceConfig::RootSelect {
-                        output_modulators: vec![],
+                        output_modulators: vec![ModulatorConfig::rx(
+                            bbx_port_name,
+                            12,
+                            Modulator::PitchBend(0.0),
+                        )],
                     },
                     coords: Coords::new(6 + 8, 0),
                     shape: Shape::new(2, 8),
@@ -80,7 +87,7 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::MidiTriggers {
                         output: MidiPortConfig::new(tr6s_port_name, 10),
-                        velocity_map: Some(vec![80, 80, 127]),
+                        velocity_map: Some(vec![60, 80, 80, 80, 80, 127]),
                         trigger_ids: vec![36, 38, 43, 39, 42, 46],
                         sidechain_output: None,
                     },
@@ -93,7 +100,7 @@ impl Config {
                 // DFAM
                 ChunkConfig {
                     device: DeviceConfig::CcTriggers {
-                        output: MidiPortConfig::new(launchpad_midi_output_name, 2),
+                        output: MidiPortConfig::new(rig_port_name, 2),
                         triggers: vec![
                             MidiTrigger::Note(2, 0, 127),
                             MidiTrigger::Note(2, 127, 127),
@@ -108,8 +115,8 @@ impl Config {
                 // SAMPLER
                 ChunkConfig {
                     device: DeviceConfig::MidiTriggers {
-                        output: MidiPortConfig::new(launchpad_midi_output_name, 10),
-                        velocity_map: Some(vec![100, 127]),
+                        output: MidiPortConfig::new(bbx_port_name, 11),
+                        velocity_map: Some(vec![80, 100, 100, 100, 100, 127]),
                         trigger_ids: vec![48, 49, 50, 51, 44, 45, 46, 47],
                         sidechain_output: None,
                     },
@@ -121,8 +128,8 @@ impl Config {
                 },
                 // BASSLINE
                 ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(launchpad_midi_output_name, 3),
+                    device: DeviceConfig::MonoMidiKeys {
+                        output: MidiPortConfig::new(rig_port_name, 3),
                         velocity_map: None,
                         offset_id: String::from("bass"),
                         note_offset: -4,
@@ -136,8 +143,8 @@ impl Config {
                 },
                 // PLAITS
                 ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(launchpad_midi_output_name, 4),
+                    device: DeviceConfig::MonoMidiKeys {
+                        output: MidiPortConfig::new(rig_port_name, 4),
                         velocity_map: None,
                         offset_id: String::from("keys"),
                         note_offset: -4,
@@ -157,7 +164,7 @@ impl Config {
                     channel: Some(6),
                     repeat_mode: RepeatMode::Global,
                     device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(launchpad_midi_output_name, 5),
+                        output: MidiPortConfig::new(launchpad_output_name, 5),
                         velocity_map: Some(vec![90, 100, 127]),
                         offset_id: String::from("ext"),
                         note_offset: -4,
@@ -166,8 +173,8 @@ impl Config {
                 },
             ],
             clock_input_port_name: String::from(tr6s_port_name),
-            clock_output_port_names: vec![String::from(launchpad_midi_output_name)],
-            resync_port_names: vec![String::from(launchpad_midi_output_name)],
+            clock_output_port_names: vec![String::from(launchpad_clock_out)],
+            resync_port_names: vec![String::from(launchpad_output_name)],
             keep_alive_port_names: vec![],
             controllers: vec![
                 ControllerConfig::Umi3 {
@@ -177,57 +184,25 @@ impl Config {
                     port_name: String::from("Midi Fighter Twister"),
                     modulators: vec![
                         // row 1
-                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(19, 64)), // drum filter (5)
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::InvertCc(11, 0),
-                        ), // drum fx
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::MaxCc(9, 64, 0),
-                        ),
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::MaxCc(10, 64, 0),
-                        ),
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(19, 64)), // drum filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(11, 0)), // drum fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(9, 64, 0)), // mod a
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(10, 64, 0)), // mod b
                         // row 2
                         ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(23, 32)), // bd decay
                         ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(62, 32)), // ch decay
-                        ModulatorConfig::new(launchpad_midi_output_name, 10, Modulator::Cc(1, 64)), // sampler filter
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            10,
-                            Modulator::InvertCc(2, 0),
-                        ), // sampler fx
+                        ModulatorConfig::new(bbx_port_name, 11, Modulator::Cc(1, 64)), // sampler filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(12, 16)), // sampler fx
                         // row 3
-                        ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(5, 64)), // bass filter
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::InvertCc(1, 0),
-                        ), // bass fx
-                        ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(6, 64)), // plaits filter
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::InvertCc(2, 16),
-                        ), // plaits fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(5, 64)), // bass filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(1, 0)), // bass fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(6, 64)), // plaits filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(2, 16)), // plaits fx
                         // row 4
-                        ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(7, 64)), // poly filter
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::InvertCc(3, 16),
-                        ), // poly fx
-                        ModulatorConfig::new(launchpad_midi_output_name, 2, Modulator::Cc(8, 64)), // main filter
-                        ModulatorConfig::new(
-                            launchpad_midi_output_name,
-                            2,
-                            Modulator::InvertCc(4, 0),
-                        ), // main fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(7, 64)), // poly filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(3, 16)), // poly fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(8, 64)), // main filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(4, 0)), // main fx
                     ],
                 },
                 // ControllerConfig::LaunchpadTempo {
@@ -284,6 +259,13 @@ pub enum DeviceConfig {
         devices: Vec<DeviceConfig>,
     },
     MidiKeys {
+        output: MidiPortConfig,
+        offset_id: String,
+        note_offset: i32,
+        velocity_map: Option<Vec<u8>>,
+        octave_offset: i32,
+    },
+    MonoMidiKeys {
         output: MidiPortConfig,
         offset_id: String,
         note_offset: i32,

@@ -304,6 +304,26 @@ fn make_device(
                 velocity_map,
             ))
         }
+        config::DeviceConfig::MonoMidiKeys {
+            output,
+            offset_id,
+            note_offset,
+            octave_offset,
+            velocity_map,
+        } => {
+            let device_port = get_port(&mut output_ports, &output.name);
+            let offset = get_offset(&mut offset_lookup, &offset_id);
+            set_offset(offset.clone(), &note_offset);
+
+            Box::new(devices::MonoMidiKeys::new(
+                device_port,
+                output.channel,
+                scale.clone(),
+                offset,
+                octave_offset,
+                velocity_map,
+            ))
+        }
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
             get_offset(&mut offset_lookup, &id),
         )),
