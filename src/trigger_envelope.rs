@@ -1,12 +1,12 @@
 pub struct TriggerEnvelope {
-    pub tick_multiplier: f32,
-    pub max_tick_change: f32,
-    value: f32,
-    out_value: f32,
+    pub tick_multiplier: f64,
+    pub max_tick_change: f64,
+    value: f64,
+    out_value: f64,
 }
 
 impl TriggerEnvelope {
-    pub fn new(tick_multiplier: f32, max_tick_change: f32) -> Self {
+    pub fn new(tick_multiplier: f64, max_tick_change: f64) -> Self {
         TriggerEnvelope {
             tick_multiplier,
             max_tick_change,
@@ -15,13 +15,13 @@ impl TriggerEnvelope {
         }
     }
 
-    pub fn value(&self) -> f32 {
+    pub fn value(&self) -> f64 {
         self.out_value.max(0.0).min(1.0)
     }
 
     pub fn tick(&mut self, triggered: bool) {
         // decay
-        self.value = if triggered {
+        self.value = if triggered && self.tick_multiplier > 0.0 {
             1.0
         } else if self.value > 0.0 {
             self.value * self.tick_multiplier

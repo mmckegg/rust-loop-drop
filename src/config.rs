@@ -1,4 +1,6 @@
+use crate::controllers::ClockPulse;
 use crate::devices::MidiTrigger;
+use crate::scale::Scale;
 use chunk::{Coords, RepeatMode, Shape};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_writer_pretty};
@@ -26,11 +28,25 @@ impl Config {
         let tr6s_port_name = "TR-6S"; // drums
         let bbx_port_name = tr6s_port_name; // sampler
         let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
-        let rig_port_name = launchpad_output_name;
+        let rig_port_name = tr6s_port_name;
         let launchpad_clock_out = "Launchpad Pro MK3";
 
         Config {
             chunks: vec![
+                // BITBOX MICRO (schedule first to try and get in before tick threshold has passed for synched clips)
+                ChunkConfig {
+                    device: DeviceConfig::MidiTriggers {
+                        output: MidiPortConfig::new(bbx_port_name, 11),
+                        velocity_map: Some(vec![80, 100, 100, 100, 100, 127]),
+                        trigger_ids: vec![40, 41, 42, 43, 36, 37, 38, 39],
+                        sidechain_output: None,
+                    },
+                    coords: Coords::new(1, 0),
+                    shape: Shape::new(1, 8),
+                    color: 9, // orange
+                    channel: Some(2),
+                    repeat_mode: RepeatMode::OnlyQuant,
+                },
                 // EXT SYNTH OFFSET
                 // (also sends pitch mod on channel 2 for slicer)
                 ChunkConfig {
@@ -76,10 +92,34 @@ impl Config {
                 },
                 // SCALE MODE SELECTOR
                 ChunkConfig {
-                    device: DeviceConfig::ScaleSelect,
+                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Second),
                     coords: Coords::new(16, 0),
-                    shape: Shape::new(1, 8),
-                    color: 0, // black
+                    shape: Shape::new(1, 2),
+                    color: 95, // purple
+                    channel: None,
+                    repeat_mode: RepeatMode::OnlyQuant,
+                },
+                ChunkConfig {
+                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
+                    coords: Coords::new(16, 2),
+                    shape: Shape::new(1, 2),
+                    color: 95, // black
+                    channel: None,
+                    repeat_mode: RepeatMode::OnlyQuant,
+                },
+                ChunkConfig {
+                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
+                    coords: Coords::new(16, 4),
+                    shape: Shape::new(1, 2),
+                    color: 95, // purple
+                    channel: None,
+                    repeat_mode: RepeatMode::OnlyQuant,
+                },
+                ChunkConfig {
+                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
+                    coords: Coords::new(16, 6),
+                    shape: Shape::new(1, 2),
+                    color: 95, // purple
                     channel: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
@@ -87,9 +127,9 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::MidiTriggers {
                         output: MidiPortConfig::new(tr6s_port_name, 10),
-                        velocity_map: Some(vec![60, 80, 80, 80, 80, 127]),
+                        velocity_map: Some(vec![40, 80, 80, 80, 80, 127]),
                         trigger_ids: vec![36, 38, 43, 39, 42, 46],
-                        sidechain_output: None,
+                        sidechain_output: Some(SidechainOutput { id: 0 }),
                     },
                     coords: Coords::new(0, 0),
                     shape: Shape::new(1, 6),
@@ -97,14 +137,15 @@ impl Config {
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // DFAM
+                // MD + BIA
                 ChunkConfig {
                     device: DeviceConfig::CcTriggers {
+                        velocity_map: None,
+                        // Some(vec![
+                        //     40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 50, 50, 50, 50, 50, 50, 50, 127,
+                        // ]),
                         output: MidiPortConfig::new(rig_port_name, 2),
-                        triggers: vec![
-                            MidiTrigger::Note(2, 0, 127),
-                            MidiTrigger::Note(2, 127, 127),
-                        ],
+                        triggers: vec![MidiTrigger::Note(2, 32, 1), MidiTrigger::Note(2, 0, 127)],
                     },
                     coords: Coords::new(0, 6),
                     shape: Shape::new(1, 2),
@@ -112,28 +153,16 @@ impl Config {
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // SAMPLER
+                // WESTON B2
                 ChunkConfig {
-                    device: DeviceConfig::MidiTriggers {
-                        output: MidiPortConfig::new(bbx_port_name, 11),
-                        velocity_map: Some(vec![80, 100, 100, 100, 100, 127]),
-                        trigger_ids: vec![48, 49, 50, 51, 44, 45, 46, 47],
-                        sidechain_output: None,
-                    },
-                    coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 8),
-                    color: 9, // orange
-                    channel: Some(2),
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // BASSLINE
-                ChunkConfig {
-                    device: DeviceConfig::MonoMidiKeys {
+                    device: DeviceConfig::MidiKeys {
                         output: MidiPortConfig::new(rig_port_name, 3),
                         velocity_map: None,
+                        offset_wrap: false,
+                        monophonic: true,
                         offset_id: String::from("bass"),
                         note_offset: -4,
-                        octave_offset: -2,
+                        octave_offset: -3,
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -143,10 +172,12 @@ impl Config {
                 },
                 // PLAITS
                 ChunkConfig {
-                    device: DeviceConfig::MonoMidiKeys {
+                    device: DeviceConfig::MidiKeys {
                         output: MidiPortConfig::new(rig_port_name, 4),
                         velocity_map: None,
+                        offset_wrap: false,
                         offset_id: String::from("keys"),
+                        monophonic: true,
                         note_offset: -4,
                         octave_offset: -2,
                     },
@@ -160,12 +191,14 @@ impl Config {
                 ChunkConfig {
                     coords: Coords::new(0 + 8, 0),
                     shape: Shape::new(3, 8),
-                    color: 125, // gross
+                    color: 51,
                     channel: Some(6),
                     repeat_mode: RepeatMode::Global,
                     device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(launchpad_output_name, 5),
-                        velocity_map: Some(vec![90, 100, 127]),
+                        offset_wrap: true,
+                        output: MidiPortConfig::new(rig_port_name, 5),
+                        velocity_map: None,
+                        monophonic: false,
                         offset_id: String::from("ext"),
                         note_offset: -4,
                         octave_offset: -1,
@@ -182,29 +215,78 @@ impl Config {
                 },
                 ControllerConfig::ModTwister {
                     port_name: String::from("Midi Fighter Twister"),
+                    continuously_send: vec![0,1,3, 4,5,6,7, 9,10, 12,13,14,15],
                     modulators: vec![
                         // row 1
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 64)), // main filter
                         ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(19, 64)), // drum filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(11, 0)), // drum fx
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(9, 64, 0)), // mod a
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(10, 64, 0)), // mod b
-                        // row 2
-                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(23, 32)), // bd decay
-                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(62, 32)), // ch decay
                         ModulatorConfig::new(bbx_port_name, 11, Modulator::Cc(1, 64)), // sampler filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(12, 16)), // sampler fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(5, 64, 32)),  // bia filter
+                        // row 2
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(2, 0)), // main fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(6, 64, 32)), // bass filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(7, 64, 32)), // plaits filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(8, 64, 32)), // poly filter
                         // row 3
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(5, 64)), // bass filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(1, 0)), // bass fx
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(6, 64)), // plaits filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(2, 16)), // plaits fx
+                        ModulatorConfig::DuckDecay(10), // duck decay
+                        ModulatorConfig::new(rig_port_name, 3, Modulator::PitchBend(0.0)), // bass pitch
+                        ModulatorConfig::new(rig_port_name, 4, Modulator::PitchBend(0.0)), // plaits pitch
+                        ModulatorConfig::ResetBeat(0), // reset tick
                         // row 4
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(7, 64)), // poly filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(3, 16)), // poly fx
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(8, 64)), // main filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::InvertCc(4, 0)), // main fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(9, 0)), // mod a
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(10, 0)), // mod b
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(11, 0)), // mod c
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(12, 0)), // mod d
+                        ////////////////////////
+                        // DRUMS
+                        // row 1
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(23, 20)), // bd decay
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(28, 10)), // sd decay
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(47, 10)), // lt decay
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(59, 32)), // hc decay
+                        // row 2
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(96, 0)), // bd ctrl
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(97, 0)), // sd ctrl
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(102, 0)), // lt ctrl
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(106, 0)), // hc ctrl
+                        // row 3
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(20, 64)), // bd pitch
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(17, 64)), // delay time
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(62, 32)), // ch decay
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(81, 64)), // oh decay
+                        // row 4
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(91, 0)), // reverb amount
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(18, 40)), // delay feedback
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(107, 0)), // ch ctrl
+                        ModulatorConfig::new(tr6s_port_name, 10, Modulator::Cc(108, 0)), // oh ctrl
+                        // ////////////////////////
+                        // // Poly Wavetable
+                        // // row 1
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(12, 10)), // A
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(13, 30)), // D
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(14, 64)), // S
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(15, 50)), // R
+                        // // row 2
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(25, 32)), // Filter
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(26, 10)), // Res
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(33, 96)), // Env -> Filter
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(38, 64)), // LFO -> Filter
+                        // // row 3
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(8, 64)), // Wave Offset
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(9, 64)), // Wave Spread
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(32, 64)), // Env -> Wave
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(37, 64)), // LFO -> Wave
+                        // // row 4
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(57, 0)), // Chorus
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(29, 64)), // Velocity Filter
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(40, 64)), // LFO Speed
+                        // ModulatorConfig::new(rig_port_name, 5, Modulator::Cc(39, 64)), // LFO -> Pitch
                     ],
                 },
+                ControllerConfig::DuckOutput {
+                    modulators: vec![ModulatorConfig::new(rig_port_name, 2, Modulator::InvertMaxCc(1, 100, 0))]
+                },
+                ControllerConfig::ClockPulse { output: MidiPortConfig::new(rig_port_name, 6), divider: 12 }
                 // ControllerConfig::LaunchpadTempo {
                 //     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
                 // },
@@ -261,16 +343,11 @@ pub enum DeviceConfig {
     MidiKeys {
         output: MidiPortConfig,
         offset_id: String,
+        offset_wrap: bool,
         note_offset: i32,
         velocity_map: Option<Vec<u8>>,
         octave_offset: i32,
-    },
-    MonoMidiKeys {
-        output: MidiPortConfig,
-        offset_id: String,
-        note_offset: i32,
-        velocity_map: Option<Vec<u8>>,
-        octave_offset: i32,
+        monophonic: bool,
     },
     OffsetChunk {
         id: String,
@@ -279,9 +356,9 @@ pub enum DeviceConfig {
         output: MidiPortConfig,
     },
     RootSelect {
-        output_modulators: Vec<Option<ModulatorConfig>>,
+        output_modulators: Vec<ModulatorConfig>,
     },
-    ScaleSelect,
+    ScaleDegreeToggle(ScaleDegree),
     MidiTriggers {
         output: MidiPortConfig,
         trigger_ids: Vec<u8>,
@@ -290,6 +367,7 @@ pub enum DeviceConfig {
     },
     CcTriggers {
         output: MidiPortConfig,
+        velocity_map: Option<Vec<u8>>,
         triggers: Vec<MidiTrigger>,
     },
 }
@@ -311,17 +389,15 @@ pub enum ControllerConfig {
     Twister {
         port_name: String,
         mixer_port: MidiPortConfig,
-        modulators: Vec<Option<ModulatorConfig>>,
+        modulators: Vec<ModulatorConfig>,
     },
     ModTwister {
         port_name: String,
-        modulators: Vec<Option<ModulatorConfig>>,
+        continuously_send: Vec<usize>,
+        modulators: Vec<ModulatorConfig>,
     },
     Umi3 {
         port_name: String,
-    },
-    VT4Key {
-        output: MidiPortConfig,
     },
     ClockPulse {
         output: MidiPortConfig,
@@ -331,21 +407,30 @@ pub enum ControllerConfig {
         daw_port_name: String,
     },
     Init {
-        modulators: Vec<Option<ModulatorConfig>>,
+        modulators: Vec<ModulatorConfig>,
+    },
+    DuckOutput {
+        modulators: Vec<ModulatorConfig>,
     },
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ModulatorConfig {
-    pub port: MidiPortConfig,
-    pub rx_port: Option<MidiPortConfig>,
-    pub modulator: Modulator,
+pub enum ModulatorConfig {
+    None,
+    Midi {
+        port: MidiPortConfig,
+        rx_port: Option<MidiPortConfig>,
+        modulator: Modulator,
+    },
+    DuckDecay(u8),
+    ResetBeat(u8),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Modulator {
     Cc(u8, u8),
     InvertCc(u8, u8),
+    InvertMaxCc(u8, u8, u8),
     MaxCc(u8, u8, u8),
     PolarCcSwitch {
         cc_low: Option<u8>,
@@ -358,18 +443,41 @@ pub enum Modulator {
 }
 
 impl ModulatorConfig {
-    pub fn new(port_name: &str, port_number: u8, modulator: Modulator) -> Option<Self> {
-        Some(ModulatorConfig {
+    pub fn new(port_name: &str, port_number: u8, modulator: Modulator) -> ModulatorConfig {
+        ModulatorConfig::Midi {
             port: MidiPortConfig::new(port_name, port_number),
             rx_port: None,
             modulator,
-        })
+        }
     }
-    pub fn rx(port_name: &str, port_number: u8, modulator: Modulator) -> Option<Self> {
-        Some(ModulatorConfig {
+    pub fn rx(port_name: &str, port_number: u8, modulator: Modulator) -> ModulatorConfig {
+        ModulatorConfig::Midi {
             port: MidiPortConfig::new(port_name, port_number),
             rx_port: Some(MidiPortConfig::new(port_name, port_number)),
             modulator,
-        })
+        }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum ScaleDegree {
+    Second,
+    Third,
+    Fourth,
+    Fifth,
+    Sixth,
+    Seventh,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub enum Quality {
+    Major = 0,
+    Minor = -1,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+pub enum PerfectQuality {
+    Diminished = -1,
+    Perfect = 0,
+    Augmented = 1,
 }

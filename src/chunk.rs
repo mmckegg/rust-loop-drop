@@ -8,14 +8,22 @@ pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger(&mut self, id: u32, value: OutputValue);
     fn on_tick(&mut self, _time: MidiTime) {}
-    fn get_active(&self) -> Option<HashSet<u32>> {
+    fn check_triggering(&self, _id: u32) -> Option<bool> {
         None
     }
+
+    fn get_notes(&self) -> Option<HashSet<u8>> {
+        None
+    }
+
     fn latch_mode(&self) -> LatchMode {
         LatchMode::None
     }
     fn schedule_mode(&self) -> ScheduleMode {
         ScheduleMode::MostRecent
+    }
+    fn check_lit(&self, _id: u32) -> bool {
+        true
     }
 }
 
@@ -104,7 +112,7 @@ pub enum RepeatMode {
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 pub enum LatchMode {
     None,
-    LatchSingle,
+    //LatchSingle,
     LatchSuppress,
     NoSuppress,
 }

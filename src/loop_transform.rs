@@ -1,55 +1,81 @@
-use ::output_value::OutputValue;
-use ::midi_time::MidiTime;
-
+use midi_time::MidiTime;
+use output_value::OutputValue;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum LoopTransform {
     Value(OutputValue),
-    Repeat { rate: MidiTime, offset: MidiTime, value: OutputValue },
-    Cycle { rate: MidiTime, offset: MidiTime, value: OutputValue },
-    Range { pos: MidiTime, length: MidiTime },
-    None
+    Repeat {
+        rate: MidiTime,
+        offset: MidiTime,
+        value: OutputValue,
+    },
+    Cycle {
+        rate: MidiTime,
+        offset: MidiTime,
+        value: OutputValue,
+    },
+    Range {
+        pos: MidiTime,
+        length: MidiTime,
+    },
+    None,
 }
 
 impl LoopTransform {
-    pub fn apply (&self, previous: &LoopTransform) -> LoopTransform {
+    pub fn apply(&self, previous: &LoopTransform) -> LoopTransform {
         match self {
-            &LoopTransform::Range {pos, length} => {
-                match previous {
-                    &LoopTransform::Repeat {rate, offset, value} => {
-                        LoopTransform::Repeat {
-                            rate: rate.min(length), offset, value
-                        }
-                    },
-                    &LoopTransform::Cycle {rate, offset, value} => {
-                        LoopTransform::Cycle {
-                            rate: rate.min(length), offset, value
-                        }
-                    },
-                    &LoopTransform::Range {pos: previous_pos, length: previous_length} => {
-                        let playback_offset = previous_pos % previous_length;
-                        let playback_pos = previous_pos + ((pos - playback_offset) % previous_length);
-                        LoopTransform::Range {
-                            pos: playback_pos,
-                            length: length.min(previous_length)
-                        }
-                    },
-                    _ => self.clone()
+            &LoopTransform::Range { pos, length } => match previous {
+                &LoopTransform::Repeat {
+                    rate,
+                    offset,
+                    value,
+                } => LoopTransform::Repeat {
+                    rate: rate.min(length),
+                    offset,
+                    value,
+                },
+                &LoopTransform::Cycle {
+                    rate,
+                    offset,
+                    value,
+                } => LoopTransform::Cycle {
+                    rate: rate.min(length),
+                    offset,
+                    value,
+                },
+                &LoopTransform::Range {
+                    pos: previous_pos,
+                    length: previous_length,
+                } => {
+                    let playback_offset = previous_pos % previous_length;
+                    let playback_pos = previous_pos + ((pos - playback_offset) % previous_length);
+                    LoopTransform::Range {
+                        pos: playback_pos,
+                        length: length.min(previous_length),
+                    }
                 }
+                _ => self.clone(),
             },
             &LoopTransform::None => previous.clone(),
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
 
-    pub fn is_active (&self) -> bool {
+    pub fn is_active(&self) -> bool {
         match self {
             &LoopTransform::Value(OutputValue::Off) | &LoopTransform::None => false,
-            _ => true
+            _ => true,
         }
     }
 
-    pub fn unwrap_or<'a> (&'a self, or_value: &'a LoopTransform) -> &'a LoopTransform {
+    pub fn has_sequence(&self) -> bool {
+        match self {
+            &LoopTransform::Value(..) | &LoopTransform::None => false,
+            _ => true,
+        }
+    }
+
+    pub fn unwrap_or<'a>(&'a self, or_value: &'a LoopTransform) -> &'a LoopTransform {
         if self == &LoopTransform::None {
             or_value
         } else {

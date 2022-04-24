@@ -8,6 +8,7 @@ pub struct CcTriggers {
     midi_port: midi_connection::SharedMidiOutputConnection,
     last_pos: MidiTime,
     output_values: HashMap<u32, MidiTrigger>,
+    velocity_map: Option<Vec<u8>>,
     triggers: Vec<MidiTrigger>,
 }
 
@@ -15,16 +16,20 @@ impl CcTriggers {
     pub fn new(
         midi_port: midi_connection::SharedMidiOutputConnection,
         triggers: Vec<MidiTrigger>,
+        velocity_map: Option<Vec<u8>>,
     ) -> Self {
         CcTriggers {
             midi_port,
             last_pos: MidiTime::zero(),
             output_values: HashMap::new(),
+            velocity_map,
             triggers,
         }
     }
 
     fn trigger_on(&mut self, trigger: &MidiTrigger, velocity: u8) {
+        let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+
         match trigger {
             MidiTrigger::Cc(channel, cc, value) => {
                 self.midi_port

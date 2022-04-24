@@ -31,7 +31,7 @@ impl Twister {
         port_name: &str,
         main_output: midi_connection::SharedMidiOutputConnection,
         main_channel: u8,
-        modulators: Vec<Option<Modulator>>,
+        modulators: Vec<Modulator>,
         params: Arc<Mutex<LoopGridParams>>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
@@ -119,12 +119,15 @@ impl Twister {
 
             // default values for modulators
             for (index, modulator) in modulators.iter().enumerate() {
-                if let Some(modulator) = modulator {
+                if let Modulator::MidiModulator(instance) = modulator {
                     last_values.insert(
                         Control::Modulator(index),
-                        match modulator.modulator {
+                        match instance.modulator {
                             ::config::Modulator::Cc(_id, value) => value,
                             ::config::Modulator::InvertCc(_id, value) => value,
+                            ::config::Modulator::InvertMaxCc(_id, max, value) => {
+                                float_to_midi(value.min(max) as f64 / max as f64)
+                            }
                             ::config::Modulator::PolarCcSwitch { default, .. } => default,
                             ::config::Modulator::MaxCc(_id, max, value) => {
                                 float_to_midi(value.min(max) as f64 / max as f64)
@@ -273,7 +276,7 @@ impl Twister {
 
                             Control::DuckRelease => {
                                 let multiplier = ((midi_to_float(value) / 2.0) * 0.95) + 0.5;
-                                trigger_envelope.tick_multiplier = multiplier as f32;
+                                trigger_envelope.tick_multiplier = multiplier;
                             }
 
                             Control::Swing => {
@@ -294,8 +297,10 @@ impl Twister {
                                 lfo.skew = value;
                             }
                             Control::Modulator(index) => {
-                                if let Some(Some(modulator)) = modulators.get_mut(index) {
-                                    modulator.send(value);
+                                if let Some(Modulator::MidiModulator(instance)) =
+                                    modulators.get_mut(index)
+                                {
+                                    instance.send(value);
                                 }
                             }
                             Control::ChannelFilterLfoAmount(channel) => {
@@ -420,7 +425,6 @@ impl Twister {
                         params.channel_triggered.clear();
 
                         trigger_envelope.tick(params.duck_triggered);
-                        params.duck_triggered = false;
 
                         for (control, id) in control_ids.iter() {
                             let channel = id / 2 % 8;
@@ -527,7 +531,7 @@ impl Twister {
 
                         for (control, value) in &duck_amounts {
                             // only schedule ducks if enabled and trigger has value in midi resolution
-                            if value > &0.0 && float_to_midi(trigger_envelope.value() as f64) > 0 {
+                            if value > &0.0 && float_to_midi(trigger_envelope.value()) > 0 {
                                 to_refresh.insert(control);
                             }
                         }

@@ -1,13 +1,11 @@
 mod cc_triggers;
 mod midi_keys;
 mod midi_triggers;
-mod mono_midi_keys;
 mod multi;
 mod offset;
 mod pitch_offset_chunk;
 mod root_offset_chunk;
 mod root_select;
-mod scale_offset_chunk;
 mod scale_select;
 
 pub use self::cc_triggers::CcTriggers;
@@ -17,13 +15,11 @@ pub use self::midi_triggers::SidechainOutput;
 pub use self::multi::MultiChunk;
 
 pub use self::midi_keys::MidiKeys;
-pub use self::mono_midi_keys::MonoMidiKeys;
 pub use self::offset::OffsetChunk;
 pub use self::pitch_offset_chunk::PitchOffsetChunk;
 pub use self::root_offset_chunk::RootOffsetChunk;
 pub use self::root_select::RootSelect;
-pub use self::scale_offset_chunk::ScaleOffsetChunk;
-pub use self::scale_select::ScaleSelect;
+pub use self::scale_select::ScaleDegreeToggle;
 
 pub fn map_velocity(velocity_map: &Option<Vec<u8>>, velocity: u8) -> u8 {
     if let Some(velocity_map) = velocity_map {

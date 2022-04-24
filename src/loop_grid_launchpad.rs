@@ -1,5 +1,6 @@
 extern crate circular_queue;
 extern crate midir;
+
 use self::circular_queue::CircularQueue;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -68,8 +69,11 @@ pub struct LoopGridParams {
     pub frozen: bool,
     pub cueing: bool,
     pub duck_triggered: bool,
+    pub duck_tick_multiplier: f64,
     pub channel_triggered: HashSet<u32>,
     pub reset_automation: bool,
+    pub reset_beat: u32,
+    pub active_notes: HashSet<u8>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -186,6 +190,8 @@ impl Light {
 }
 
 enum LaunchpadEvent {
+    Connected,
+
     LoopButton(bool),
     FlattenButton(bool),
     UndoButton(bool),
@@ -231,7 +237,6 @@ pub struct LoopGridLaunchpad {
     no_suppress: HashSet<u32>,
     no_suppress_held: HashSet<u32>,
     chunk_repeat_mode: HashMap<usize, RepeatMode>,
-    trigger_latch_for: HashMap<usize, u32>,
     loop_length: MidiTime,
 
     repeat_off_beat: bool,
@@ -310,6 +315,8 @@ impl LoopGridLaunchpad {
 
         let (input_queue_tx, input_queue) = mpsc::channel();
         let (remote_tx, remote_queue) = mpsc::channel();
+
+        let input_queue_connect_tx = input_queue_tx.clone();
 
         let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message| {
             if message[0] == 144 || message[0] == 128 {
@@ -394,20 +401,12 @@ impl LoopGridLaunchpad {
 
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
         launchpad_output.on_connect(move |port| {
-            // send sysex message to put launchpad into live mode
-            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x10, 0x40, 0x2F, 0x6D, 0x3E, 0x0A, 0xF7]).unwrap();
-
-            // 00  F0 00 20 29 02 0E 10 00  F7
-            // 00  F0 00 20 29 02 0E 00 04  00 00 F7
-            // 00  F0 00 20 29 02 0E 18 00  F7
-
-            // 00  F0 00 20 29 02 0E 10 01  F7
-            // 00  F0 00 20 29 02 0E 00 00  00 00 F7
             port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x0E, 0x01, 0xF7])
                 .unwrap();
 
-            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x10, 0x01, 0xF7]).unwrap();
-            // port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x00, 0x00, 0x00, 0x00, 0xF7]).unwrap();
+            input_queue_connect_tx
+                .send(LaunchpadEvent::Connected)
+                .unwrap();
         });
 
         let mut instance = LoopGridLaunchpad {
@@ -436,7 +435,6 @@ impl LoopGridLaunchpad {
 
             no_suppress: HashSet::new(),
             no_suppress_held: HashSet::new(),
-            trigger_latch_for: HashMap::new(),
 
             repeat_off_beat: false,
 
@@ -534,20 +532,6 @@ impl LoopGridLaunchpad {
                 }
             }
 
-            if let Some(active) = item.chunk.get_active() {
-                for id in active {
-                    if let Some(trigger_id) = trigger_ids.get(id as usize) {
-                        if item.chunk.latch_mode() == LatchMode::LatchSingle {
-                            instance.trigger_latch_for.insert(chunk_index, *trigger_id);
-                        } else {
-                            base_loop
-                                .transforms
-                                .insert(*trigger_id, LoopTransform::Value(OutputValue::On(100)));
-                        }
-                    }
-                }
-            }
-
             instance.chunk_trigger_ids.push(trigger_ids);
             instance.chunk_colors.push(Light::Value(item.color));
             instance
@@ -565,31 +549,33 @@ impl LoopGridLaunchpad {
         instance.loop_state.set(base_loop);
 
         instance
-            .launchpad_output
-            .send(&[176, HOLD_BUTTON, 32])
-            .unwrap();
-        instance
-            .launchpad_output
-            .send(&[176, SUPPRESS_BUTTON, 57])
-            .unwrap();
-        instance
-            .launchpad_output
-            .send(&[176, SESSION_BUTTON, 45])
-            .unwrap();
-        instance.refresh_loop_button();
-        instance.refresh_undo_redo_lights();
-        instance.refresh_selected_bank();
-        instance.refresh_selected_trigger_mode();
+    }
 
+    fn refresh_grid_buttons(&mut self) {
         for id in 0..136 {
-            instance.refresh_grid_button(id);
+            self.refresh_grid_button(id);
         }
-
-        instance
     }
 
     fn launchpad_input_event(&mut self, event: LaunchpadEvent) {
         match event {
+            LaunchpadEvent::Connected => {
+                println!("Launchpad Connected");
+                self.grid_out.clear();
+                self.bottom_button_out.clear();
+                self.refresh_grid_buttons();
+                self.launchpad_output.send(&[176, HOLD_BUTTON, 32]).unwrap();
+                self.launchpad_output
+                    .send(&[176, SUPPRESS_BUTTON, 57])
+                    .unwrap();
+                self.launchpad_output
+                    .send(&[176, SESSION_BUTTON, 45])
+                    .unwrap();
+                self.refresh_loop_button();
+                self.refresh_undo_redo_lights();
+                self.refresh_selected_bank();
+                self.refresh_selected_trigger_mode();
+            }
             LaunchpadEvent::LoopButton(pressed) => {
                 if self.selecting_scale && self.shift_held {
                     if pressed {
@@ -861,7 +847,6 @@ impl LoopGridLaunchpad {
 
         for id in to_refresh {
             self.refresh_override(id);
-            self.refresh_grid_button(id);
         }
 
         let mut events = self.get_events();
@@ -937,6 +922,27 @@ impl LoopGridLaunchpad {
         // schedule any remaining chunk ticks
         for index in chunks_needing_tick {
             self.chunk_tick(index);
+        }
+
+        self.refresh_active_notes();
+
+        // refresh grid lights
+        for id in 0..136 {
+            self.refresh_grid_button(id);
+        }
+    }
+
+    fn refresh_active_notes(&mut self) {
+        let mut params = self.params.lock().unwrap();
+        params.active_notes.clear();
+
+        for chunk in &self.chunks {
+            let notes = chunk.get_notes();
+            if let Some(notes) = notes {
+                for note in notes {
+                    params.active_notes.insert(note);
+                }
+            }
         }
     }
 
@@ -1147,12 +1153,9 @@ impl LoopGridLaunchpad {
                             let row_offset = if self.selecting_scale { 8 } else { 0 };
                             let id = Coords::id_from(row + row_offset, col);
                             self.selection.insert(id);
-                            self.refresh_grid_button(id);
                         }
                     }
                 }
-
-                self.refresh_grid_button(id);
             }
         } else {
             // HACK: filter out aftertouch if that key wasn't already pressed (e.g. after releasing shift while still holding keys)
@@ -1502,34 +1505,33 @@ impl LoopGridLaunchpad {
         let id = base_id + 128;
 
         let mapped = self.mapping.get(&Coords::from(id));
+        let chunk_triggering_override = if let Some(mapped) = mapped {
+            let chunk = &self.chunks[mapped.chunk_index];
+            chunk.check_triggering(mapped.id)
+        } else {
+            None
+        };
 
-        let triggering = if self
+        let loop_triggering = self
             .out_values
             .get(&id)
             .unwrap_or(&OutputValue::Off)
-            .is_on()
-        {
-            true
-        } else if mapped.is_some()
-            && self
-                .trigger_latch_for
-                .contains_key(&mapped.unwrap().chunk_index)
-        {
-            self.trigger_latch_for
-                .get(&mapped.unwrap().chunk_index)
-                .unwrap()
-                == &id
-        } else {
-            false
+            .is_on();
+
+        let triggering = match chunk_triggering_override {
+            None => loop_triggering,
+            Some(value) => value,
         };
 
-        let old_value = self
-            .bottom_button_out
-            .remove(&base_id)
-            .unwrap_or(LaunchpadLight::Constant(Light::Off));
+        let old_value = self.bottom_button_out.remove(&base_id);
 
         let color = if let Some(mapped) = mapped {
-            self.chunk_colors[mapped.chunk_index]
+            let chunk = &self.chunks[mapped.chunk_index];
+            if chunk.check_lit(mapped.id) {
+                self.chunk_colors[mapped.chunk_index]
+            } else {
+                Light::Off
+            }
         } else {
             Light::Off
         };
@@ -1539,7 +1541,19 @@ impl LoopGridLaunchpad {
         let new_value = if triggering && self.selection.contains(&id) {
             LaunchpadLight::Pulsing(Light::White)
         } else if triggering {
-            LaunchpadLight::Constant(Light::White)
+            let trigger_color = if color == Light::Off {
+                Light::Value(1)
+            } else {
+                Light::Value(3)
+            };
+
+            if self.active.contains(&id)
+                || loop_triggering && chunk_triggering_override == Some(true)
+            {
+                LaunchpadLight::Pulsing(trigger_color)
+            } else {
+                LaunchpadLight::Constant(trigger_color)
+            }
         } else if self.selection.contains(&id) {
             LaunchpadLight::Pulsing(selection_color)
         } else if self.recording.contains(&id) {
@@ -1552,7 +1566,7 @@ impl LoopGridLaunchpad {
             LaunchpadLight::Constant(color)
         };
 
-        if new_value != old_value {
+        if Some(new_value.clone()) != old_value {
             let midi_id = BOTTOM_BUTTONS.get(base_id as usize);
             let message = match new_value {
                 LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
@@ -1585,24 +1599,22 @@ impl LoopGridLaunchpad {
         let mapped = self.mapping.get(&Coords::from(id));
         let background_mapped = self.mapping.get(&Coords::from(background_id));
 
-        let triggering = if self
+        let chunk_triggering_override = if let Some(mapped) = mapped {
+            let chunk = &self.chunks[mapped.chunk_index];
+            chunk.check_triggering(mapped.id)
+        } else {
+            None
+        };
+
+        let loop_triggering = self
             .out_values
             .get(&id)
             .unwrap_or(&OutputValue::Off)
-            .is_on()
-        {
-            true
-        } else if mapped.is_some()
-            && self
-                .trigger_latch_for
-                .contains_key(&mapped.unwrap().chunk_index)
-        {
-            self.trigger_latch_for
-                .get(&mapped.unwrap().chunk_index)
-                .unwrap()
-                == &id
-        } else {
-            false
+            .is_on();
+
+        let triggering = match chunk_triggering_override {
+            None => loop_triggering,
+            Some(value) => value,
         };
 
         let background_triggering = if self
@@ -1612,26 +1624,19 @@ impl LoopGridLaunchpad {
             .is_on()
         {
             true
-        } else if background_mapped.is_some()
-            && self
-                .trigger_latch_for
-                .contains_key(&background_mapped.unwrap().chunk_index)
-        {
-            self.trigger_latch_for
-                .get(&background_mapped.unwrap().chunk_index)
-                .unwrap()
-                == &background_id
         } else {
             false
         };
 
-        let old_value = self
-            .grid_out
-            .remove(&base_id)
-            .unwrap_or(LaunchpadLight::Constant(Light::Off));
+        let old_value = self.grid_out.remove(&base_id);
 
         let color = if let Some(mapped) = mapped {
-            self.chunk_colors[mapped.chunk_index]
+            let chunk = &self.chunks[mapped.chunk_index];
+            if chunk.check_lit(mapped.id) {
+                self.chunk_colors[mapped.chunk_index]
+            } else {
+                Light::Off
+            }
         } else {
             Light::Off
         };
@@ -1657,15 +1662,31 @@ impl LoopGridLaunchpad {
         };
 
         let new_value = if triggering && self.selection.contains(&id) {
-            LaunchpadLight::Pulsing(Light::White)
+            LaunchpadLight::Pulsing(Light::Value(28))
         } else if triggering {
-            LaunchpadLight::Constant(Light::White)
+            let trigger_color = if color == Light::Off {
+                Light::Value(1)
+            } else {
+                Light::Value(3)
+            };
+
+            if self.active.contains(&id)
+                || loop_triggering && chunk_triggering_override == Some(true)
+            {
+                LaunchpadLight::Pulsing(trigger_color)
+            } else {
+                LaunchpadLight::Constant(trigger_color)
+            }
         } else if self.selection.contains(&id) {
             LaunchpadLight::Pulsing(selection_color)
         } else if frozen_differs {
             LaunchpadLight::Pulsing(Light::White)
         } else if self.recording.contains(&id) {
-            LaunchpadLight::Pulsing(Light::RedLow)
+            if color == Light::Off {
+                LaunchpadLight::Pulsing(Light::Value(7))
+            } else {
+                LaunchpadLight::Pulsing(Light::Value(5))
+            }
         } else if background_triggering {
             LaunchpadLight::Constant(background_color)
         } else if self.active.contains(&id) {
@@ -1674,7 +1695,7 @@ impl LoopGridLaunchpad {
             LaunchpadLight::Constant(color)
         };
 
-        if new_value != old_value {
+        if Some(new_value.clone()) != old_value {
             let midi_id = self.id_to_midi.get(&base_id);
             let message = match new_value {
                 LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
@@ -1738,14 +1759,6 @@ impl LoopGridLaunchpad {
         }
 
         let (added, removed) = update_ids(&ids, &mut self.active);
-
-        for id in added {
-            self.refresh_grid_button(id);
-        }
-
-        for id in removed {
-            self.refresh_grid_button(id);
-        }
     }
 
     fn refresh_recording(&mut self) {
@@ -1770,14 +1783,6 @@ impl LoopGridLaunchpad {
         // }
 
         let (added, removed) = update_ids(&ids, &mut self.recording);
-
-        for id in added {
-            self.refresh_grid_button(id);
-        }
-
-        for id in removed {
-            self.refresh_grid_button(id);
-        }
     }
 
     fn refresh_select_state(&mut self) {
@@ -1806,19 +1811,6 @@ impl LoopGridLaunchpad {
             // }
             match maybe_update(&mut self.out_values, event.id, new_value) {
                 Some(_) => {
-                    if let Some(chunk) = self.chunks.get(mapped.chunk_index) {
-                        if chunk.latch_mode() == LatchMode::LatchSingle && new_value.is_on() {
-                            // track last triggered, refresh previous latch
-                            let last_id = self.trigger_latch_for.get(&mapped.chunk_index).copied();
-                            self.trigger_latch_for.insert(mapped.chunk_index, event.id);
-
-                            if let Some(id) = last_id {
-                                self.refresh_grid_button(id);
-                            }
-                        }
-                    }
-
-                    self.refresh_grid_button(event.id);
                     self.trigger_chunk(mapped, new_value);
 
                     self.handle_repeat_trigger(event.id, new_value);
@@ -1884,6 +1876,13 @@ impl LoopGridLaunchpad {
             }
         }
 
+        // make sure we include any currently held triggers
+        for (id, value) in &self.input_values {
+            if value.is_on() {
+                recording_ids.insert(*id);
+            }
+        }
+
         for (id, value) in &self.override_values {
             if value != &LoopTransform::None {
                 recording_ids.insert(*id);
@@ -1937,10 +1936,6 @@ impl LoopGridLaunchpad {
 
         let selection = self.selection.clone();
         self.selection.clear();
-
-        for id in selection {
-            self.refresh_grid_button(id);
-        }
 
         self.refresh_select_state();
         self.refresh_selection_override();
@@ -2105,10 +2100,6 @@ impl LoopGridLaunchpad {
                 .send(&[176, SESSION_BUTTON, 45])
                 .unwrap();
         };
-
-        for id in 0..64 {
-            self.refresh_grid_button(id);
-        }
     }
 
     fn set_rate(&mut self, value: MidiTime) {
@@ -2757,7 +2748,7 @@ fn is_active(transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) 
 
             has_events || has_start_value
         }
-        _ => transform.is_active(),
+        _ => transform.has_sequence(),
     }
 }
 

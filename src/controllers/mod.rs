@@ -1,29 +1,36 @@
 mod clock_pulse;
+mod duck_output;
 mod init;
 mod launchpad_tempo;
 mod mod_twister;
 mod twister;
 mod umi3;
-mod vt4_key;
 
 use midi_time::MidiTime;
 
 pub use self::clock_pulse::ClockPulse;
+pub use self::duck_output::DuckOutput;
 pub use self::init::Init;
 pub use self::launchpad_tempo::LaunchpadTempo;
 pub use self::mod_twister::ModTwister;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
-pub use self::vt4_key::VT4Key;
 
-pub struct Modulator {
+pub enum Modulator {
+    None,
+    MidiModulator(MidiModulator),
+    DuckDecay(u8),
+    ResetBeat(u8),
+}
+
+pub struct MidiModulator {
     pub port: ::midi_connection::SharedMidiOutputConnection,
     pub channel: u8,
     pub modulator: ::config::Modulator,
     pub rx_port: Option<::config::MidiPortConfig>,
 }
 
-impl Modulator {
+impl MidiModulator {
     pub fn send_polar(&mut self, value: f64) {
         match self.modulator {
             ::config::Modulator::PitchBend(..) | ::config::Modulator::PositivePitchBend(..) => {
@@ -48,6 +55,13 @@ impl Modulator {
             ::config::Modulator::InvertCc(id, ..) => {
                 self.port
                     .send(&[176 - 1 + self.channel, id, 127 - value])
+                    .unwrap();
+            }
+            ::config::Modulator::InvertMaxCc(id, max, ..) => {
+                let f_value = value as f64 / 127.0 as f64;
+                let u_value = (f_value * max as f64).min(127.0) as u8;
+                self.port
+                    .send(&[176 - 1 + self.channel, id, max - u_value])
                     .unwrap();
             }
             ::config::Modulator::PolarCcSwitch {
@@ -122,6 +136,11 @@ impl Modulator {
             ::config::Modulator::MaxCc(id, max, value) => {
                 self.port
                     .send(&[176 - 1 + self.channel, id, value.min(max)])
+                    .unwrap();
+            }
+            ::config::Modulator::InvertMaxCc(id, max, value) => {
+                self.port
+                    .send(&[176 - 1 + self.channel, id, max - value.min(max)])
                     .unwrap();
             }
             ::config::Modulator::PitchBend(value)

@@ -84,8 +84,8 @@ pub fn get_shared_output(port_name: &str) -> SharedMidiOutputConnection {
             if current_port_id.is_some() != has_port {
                 let mut state = state_l.lock().unwrap();
                 state.port = get_output(&port_name_msg);
-                state.notify_listeners();
                 state.resend();
+                state.notify_listeners();
                 has_port = state.port.is_some();
             }
             thread::sleep(Duration::from_secs(1));
@@ -100,6 +100,7 @@ where
     F: FnMut(u64, &[u8]) + Send + 'static,
 {
     let port_name_notify = String::from(port_name);
+    let port_name_notify2 = String::from(port_name);
     let (tx, rx) = mpsc::channel::<MidiInputMessage>();
 
     thread::spawn(move || {

@@ -3,10 +3,9 @@ use loop_recorder::{LoopEvent, LoopRecorder};
 use midi_connection;
 use output_value::OutputValue;
 use std::sync::mpsc;
-use throttled_output::ThrottledOutput;
 use MidiTime;
 
-use controllers::{float_to_midi, polar_to_midi, Modulator};
+use controllers::{float_to_midi, midi_to_float, polar_to_midi, Modulator};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -25,8 +24,9 @@ enum EventSource {
 impl ModTwister {
     pub fn new(
         port_name: &str,
-        modulators: Vec<Option<Modulator>>,
+        modulators: Vec<Modulator>,
         params: Arc<Mutex<LoopGridParams>>,
+        continuously_send: Vec<usize>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
@@ -35,6 +35,7 @@ impl ModTwister {
         let tx_input = tx.clone();
         let tx_feedback = tx.clone();
         let tx_clock = tx.clone();
+        let mut continuously_send_step = 0;
 
         let mut output = midi_connection::get_shared_output(port_name);
 
@@ -89,20 +90,35 @@ impl ModTwister {
 
             // default values for modulators
             for (index, modulator) in modulators.iter().enumerate() {
-                if let Some(modulator) = modulator {
-                    last_values.insert(
-                        Control::Modulator(index),
-                        match modulator.modulator {
-                            ::config::Modulator::Cc(_id, value) => value,
-                            ::config::Modulator::InvertCc(_id, value) => value,
-                            ::config::Modulator::PolarCcSwitch { default, .. } => default,
-                            ::config::Modulator::MaxCc(_id, max, value) => {
-                                float_to_midi(value.min(max) as f64 / max as f64)
-                            }
-                            ::config::Modulator::PitchBend(value) => polar_to_midi(value),
-                            ::config::Modulator::PositivePitchBend(value) => polar_to_midi(value),
-                        },
-                    );
+                match modulator {
+                    Modulator::MidiModulator(instance) => {
+                        last_values.insert(
+                            Control::Modulator(index),
+                            match instance.modulator {
+                                ::config::Modulator::Cc(_id, value) => value,
+                                ::config::Modulator::InvertCc(_id, value) => value,
+                                ::config::Modulator::InvertMaxCc(_id, max, value) => {
+                                    float_to_midi(value.min(max) as f64 / max as f64)
+                                }
+                                ::config::Modulator::PolarCcSwitch { default, .. } => default,
+                                ::config::Modulator::MaxCc(_id, max, value) => {
+                                    float_to_midi(value.min(max) as f64 / max as f64)
+                                }
+                                ::config::Modulator::PitchBend(value) => polar_to_midi(value),
+                                ::config::Modulator::PositivePitchBend(value) => {
+                                    polar_to_midi(value)
+                                }
+                            },
+                        );
+                    }
+                    Modulator::DuckDecay(default) => {
+                        last_values.insert(Control::Modulator(index), *default);
+                    }
+                    Modulator::ResetBeat(default) => {
+                        let value = ((*default.min(&8) as f32 / 8.0) * 127.0) as u8;
+                        last_values.insert(Control::Modulator(index), value);
+                    }
+                    Modulator::None => (),
                 }
             }
 
@@ -167,8 +183,21 @@ impl ModTwister {
 
                         match control {
                             Control::Modulator(index) => {
-                                if let Some(Some(modulator)) = modulators.get_mut(index) {
-                                    modulator.send(*value);
+                                match modulators.get_mut(index).unwrap_or(&mut Modulator::None) {
+                                    Modulator::None => (),
+                                    Modulator::MidiModulator(instance) => {
+                                        instance.send(*value);
+                                    }
+                                    Modulator::DuckDecay(..) => {
+                                        let mut params = params.lock().unwrap();
+                                        let multiplier = midi_to_float(*value) * 0.96;
+                                        params.duck_tick_multiplier = multiplier;
+                                    }
+                                    Modulator::ResetBeat(..) => {
+                                        let mut params = params.lock().unwrap();
+                                        let value = (midi_to_float(*value) * 8.0) as u32;
+                                        params.reset_beat = value;
+                                    }
                                 }
                             }
 
@@ -361,6 +390,17 @@ impl ModTwister {
                                     }
                                 }
                             }
+                        }
+
+                        // to avoid overwhelming the midi bus, only send one value per tick
+                        if continuously_send.len() > 0 {
+                            let control = Control::Modulator(continuously_send_step);
+
+                            if !scheduled.contains(&control) {
+                                tx_feedback.send(ModTwisterMessage::Send(control)).unwrap();
+                            }
+                            continuously_send_step =
+                                (continuously_send_step + 1) % continuously_send.len();
                         }
 
                         last_pos = pos;

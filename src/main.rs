@@ -29,6 +29,7 @@ mod throttled_output;
 mod trigger_envelope;
 
 use chunk::{ChunkMap, Triggerable};
+use controllers::Modulator;
 use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
 use midi_time::MidiTime;
 use scale::{Offset, Scale};
@@ -61,7 +62,7 @@ fn main() {
 
     let clock_input_name = &myconfig.clock_input_port_name;
 
-    let scale = Scale::new(60, 0);
+    let scale = Scale::new(60);
 
     let params = Arc::new(Mutex::new(LoopGridParams {
         swing: 0.0,
@@ -69,8 +70,11 @@ fn main() {
         frozen: false,
         cueing: false,
         duck_triggered: false,
+        duck_tick_multiplier: 0.1,
         channel_triggered: HashSet::new(),
         reset_automation: false,
+        reset_beat: 0,
+        active_notes: HashSet::new(),
     }));
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
@@ -119,29 +123,24 @@ fn main() {
             config::ControllerConfig::ModTwister {
                 port_name,
                 modulators,
+                continuously_send,
             } => Box::new(controllers::ModTwister::new(
                 &port_name,
                 resolve_modulators(&mut output_ports, &modulators),
                 Arc::clone(&params),
+                continuously_send,
             )),
             config::ControllerConfig::Umi3 { port_name } => Box::new(controllers::Umi3::new(
                 &port_name,
                 launchpad.remote_tx.clone(),
             )),
-            config::ControllerConfig::VT4Key { output } => {
-                let device_port = get_port(&mut output_ports, &output.name);
-                Box::new(controllers::VT4Key::new(
-                    device_port,
-                    output.channel,
-                    scale.clone(),
-                ))
-            }
             config::ControllerConfig::ClockPulse { output, divider } => {
                 let device_port = get_port(&mut output_ports, &output.name);
                 Box::new(controllers::ClockPulse::new(
                     device_port,
                     output.channel,
                     divider,
+                    Arc::clone(&params),
                 ))
             }
             config::ControllerConfig::LaunchpadTempo { daw_port_name } => {
@@ -150,6 +149,12 @@ fn main() {
             config::ControllerConfig::Init { modulators } => Box::new(controllers::Init::new(
                 resolve_modulators(&mut output_ports, &modulators),
             )),
+            config::ControllerConfig::DuckOutput { modulators } => {
+                Box::new(controllers::DuckOutput::new(
+                    resolve_modulators(&mut output_ports, &modulators),
+                    Arc::clone(&params),
+                ))
+            }
         })
     }
 
@@ -169,6 +174,12 @@ fn main() {
     }
 
     for range in Scheduler::start(clock_input_name) {
+        {
+            // reset duck_triggered on every tick
+            let mut params = params.lock().unwrap();
+            params.duck_triggered = false;
+        }
+
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if (range.tick_pos - MidiTime::tick()) % MidiTime::from_beats(32) == MidiTime::zero() {
@@ -217,21 +228,24 @@ fn main() {
 // Helper functions
 fn resolve_modulators(
     output_ports: &mut PortLookup,
-    modulators: &Vec<Option<config::ModulatorConfig>>,
-) -> Vec<Option<controllers::Modulator>> {
+    modulators: &Vec<config::ModulatorConfig>,
+) -> Vec<controllers::Modulator> {
     modulators
         .iter()
-        .map(|modulator| {
-            if let Some(modulator) = modulator {
-                Some(controllers::Modulator {
-                    port: get_port(output_ports, &modulator.port.name),
-                    channel: modulator.port.channel,
-                    rx_port: modulator.rx_port.clone(),
-                    modulator: modulator.modulator.clone(),
-                })
-            } else {
-                None
-            }
+        .map(|modulator| match modulator {
+            config::ModulatorConfig::None => Modulator::None,
+            config::ModulatorConfig::Midi {
+                port,
+                rx_port,
+                modulator,
+            } => Modulator::MidiModulator(controllers::MidiModulator {
+                port: get_port(output_ports, &port.name),
+                channel: port.channel,
+                rx_port: rx_port.clone(),
+                modulator: modulator.clone(),
+            }),
+            &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
+            &config::ModulatorConfig::ResetBeat(default) => Modulator::ResetBeat(default),
         })
         .collect()
 }
@@ -290,6 +304,8 @@ fn make_device(
             note_offset,
             octave_offset,
             velocity_map,
+            offset_wrap,
+            monophonic,
         } => {
             let device_port = get_port(&mut output_ports, &output.name);
             let offset = get_offset(&mut offset_lookup, &offset_id);
@@ -302,26 +318,8 @@ fn make_device(
                 offset,
                 octave_offset,
                 velocity_map,
-            ))
-        }
-        config::DeviceConfig::MonoMidiKeys {
-            output,
-            offset_id,
-            note_offset,
-            octave_offset,
-            velocity_map,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
-            let offset = get_offset(&mut offset_lookup, &offset_id);
-            set_offset(offset.clone(), &note_offset);
-
-            Box::new(devices::MonoMidiKeys::new(
-                device_port,
-                output.channel,
-                scale.clone(),
-                offset,
-                octave_offset,
-                velocity_map,
+                offset_wrap,
+                monophonic,
             ))
         }
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
@@ -333,7 +331,9 @@ fn make_device(
                 resolve_modulators(&mut output_ports, &output_modulators),
             ))
         }
-        config::DeviceConfig::ScaleSelect => Box::new(devices::ScaleSelect::new(scale.clone())),
+        config::DeviceConfig::ScaleDegreeToggle(degree) => Box::new(
+            devices::ScaleDegreeToggle::new(scale.clone(), degree, params.clone()),
+        ),
         config::DeviceConfig::PitchOffsetChunk { output } => {
             Box::new(devices::PitchOffsetChunk::new(
                 get_port(&mut output_ports, &output.name),
@@ -365,9 +365,17 @@ fn make_device(
                 velocity_map,
             ))
         }
-        config::DeviceConfig::CcTriggers { output, triggers } => {
+        config::DeviceConfig::CcTriggers {
+            output,
+            triggers,
+            velocity_map,
+        } => {
             let device_port = get_port(&mut output_ports, &output.name);
-            Box::new(devices::CcTriggers::new(device_port, triggers))
+            Box::new(devices::CcTriggers::new(
+                device_port,
+                triggers,
+                velocity_map,
+            ))
         }
     }
 }
