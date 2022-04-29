@@ -7,12 +7,14 @@ mod pitch_offset_chunk;
 mod root_offset_chunk;
 mod root_select;
 mod scale_select;
+mod sp404mk2;
 
 pub use self::cc_triggers::CcTriggers;
 pub use self::cc_triggers::MidiTrigger;
 pub use self::midi_triggers::MidiTriggers;
 pub use self::midi_triggers::SidechainOutput;
 pub use self::multi::MultiChunk;
+pub use self::sp404mk2::Sp404Mk2;
 
 pub use self::midi_keys::MidiKeys;
 pub use self::offset::OffsetChunk;

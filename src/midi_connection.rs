@@ -100,7 +100,6 @@ where
     F: FnMut(u64, &[u8]) + Send + 'static,
 {
     let port_name_notify = String::from(port_name);
-    let port_name_notify2 = String::from(port_name);
     let (tx, rx) = mpsc::channel::<MidiInputMessage>();
 
     thread::spawn(move || {

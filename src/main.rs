@@ -7,6 +7,7 @@ extern crate serde_json;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -44,6 +45,7 @@ type OffsetLookup = HashMap<String, Arc<Mutex<Offset>>>;
 fn main() {
     let mut chunks = Vec::new();
     let mut myconfig = config::Config::default();
+    let use_internal_clock = Arc::new(AtomicBool::new(false));
 
     // TODO: enable config persistence when loaded with filepath
     // if Path::new(CONFIG_FILEPATH).exists() {
@@ -103,7 +105,12 @@ fn main() {
         ))
     }
 
-    let mut launchpad = LoopGridLaunchpad::new(launchpad_io_name, chunks, Arc::clone(&params));
+    let mut launchpad = LoopGridLaunchpad::new(
+        launchpad_io_name,
+        chunks,
+        Arc::clone(&params),
+        Arc::clone(&use_internal_clock),
+    );
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();
 
@@ -140,7 +147,6 @@ fn main() {
                     device_port,
                     output.channel,
                     divider,
-                    Arc::clone(&params),
                 ))
             }
             config::ControllerConfig::LaunchpadTempo { daw_port_name } => {
@@ -173,7 +179,7 @@ fn main() {
         resync_outputs.push(get_port(&mut output_ports, &name))
     }
 
-    for range in Scheduler::start(clock_input_name) {
+    for range in Scheduler::start(clock_input_name, use_internal_clock) {
         {
             // reset duck_triggered on every tick
             let mut params = params.lock().unwrap();
@@ -245,7 +251,7 @@ fn resolve_modulators(
                 modulator: modulator.clone(),
             }),
             &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
-            &config::ModulatorConfig::ResetBeat(default) => Modulator::ResetBeat(default),
+            &config::ModulatorConfig::Swing(default) => Modulator::Swing(default),
         })
         .collect()
 }
@@ -325,12 +331,7 @@ fn make_device(
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
             get_offset(&mut offset_lookup, &id),
         )),
-        config::DeviceConfig::RootSelect { output_modulators } => {
-            Box::new(devices::RootSelect::new(
-                scale.clone(),
-                resolve_modulators(&mut output_ports, &output_modulators),
-            ))
-        }
+        config::DeviceConfig::RootSelect => Box::new(devices::RootSelect::new(scale.clone())),
         config::DeviceConfig::ScaleDegreeToggle(degree) => Box::new(
             devices::ScaleDegreeToggle::new(scale.clone(), degree, params.clone()),
         ),
@@ -375,6 +376,29 @@ fn make_device(
                 device_port,
                 triggers,
                 velocity_map,
+            ))
+        }
+        config::DeviceConfig::Sp404Mk2 {
+            port_name,
+            velocity_map,
+            instance,
+            default_offset,
+            sidechain_output,
+        } => {
+            let sidechain_output = if let Some(sidechain_output) = sidechain_output {
+                Some(devices::SidechainOutput {
+                    params: Arc::clone(params),
+                    id: sidechain_output.id,
+                })
+            } else {
+                None
+            };
+            Box::new(devices::Sp404Mk2::new(
+                &port_name,
+                instance,
+                default_offset,
+                velocity_map,
+                sidechain_output,
             ))
         }
     }

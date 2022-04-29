@@ -1,6 +1,6 @@
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
-pub const SUB_TICKS: u8 = 8;
+pub const SUB_TICKS: u8 = 4;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]
 pub struct MidiTime {

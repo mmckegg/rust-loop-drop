@@ -7,6 +7,7 @@ use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::atomic::{self, AtomicBool};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -224,6 +225,7 @@ pub struct LoopGridLaunchpad {
 
     _input: midi_connection::ThreadReference,
     params: Arc<Mutex<LoopGridParams>>,
+    use_internal_clock: Arc<AtomicBool>,
 
     input_queue: mpsc::Receiver<LaunchpadEvent>,
 
@@ -276,8 +278,6 @@ pub struct LoopGridLaunchpad {
     currently_held_rates: Vec<usize>,
     last_changed_triggers: HashMap<u32, MidiTime>,
 
-    frozen_loop: Option<LoopCollection>,
-
     // out state
     current_swing: f64,
     out_transforms: HashMap<u32, LoopTransform>,
@@ -310,6 +310,7 @@ impl LoopGridLaunchpad {
         launchpad_port_name: &str,
         chunk_map: Vec<Box<ChunkMap>>,
         params: Arc<Mutex<LoopGridParams>>,
+        use_internal_clock: Arc<AtomicBool>,
     ) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
@@ -414,6 +415,7 @@ impl LoopGridLaunchpad {
             launchpad_output,
             loop_length,
             params,
+            use_internal_clock,
             id_to_midi,
 
             trigger_mode: TriggerMode::Immediate,
@@ -471,8 +473,6 @@ impl LoopGridLaunchpad {
             currently_held_inputs: Vec::new(),
             currently_held_rates: Vec::new(),
             last_changed_triggers: HashMap::new(),
-
-            frozen_loop: None,
 
             // out state
             current_swing: 0.0,
@@ -695,7 +695,11 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::BankButton { id, pressed } => {
                 if pressed {
-                    self.set_bank(id as u8)
+                    if id == 3 && self.shift_held {
+                        self.toggle_internal_clock();
+                    } else {
+                        self.set_bank(id as u8);
+                    }
                 }
             }
             LaunchpadEvent::GridInput {
@@ -711,7 +715,7 @@ impl LoopGridLaunchpad {
                 }
             }
             LaunchpadEvent::SustainButton(pressed) => {
-                self.sustain_button(pressed);
+                self.freeze_button(pressed);
             }
             LaunchpadEvent::None => (),
         }
@@ -732,7 +736,7 @@ impl LoopGridLaunchpad {
                 }
             }
             LoopGridRemoteEvent::SustainButton(pressed) => {
-                self.sustain_button(pressed);
+                self.freeze_button(pressed);
             }
         }
     }
@@ -947,6 +951,11 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_selected_bank(&mut self) {
+        let bank_color = if self.use_internal_clock.load(atomic::Ordering::Relaxed) {
+            95
+        } else {
+            17
+        };
         for (index, id) in BANK_BUTTONS.iter().enumerate() {
             if self.current_bank == index as u8 {
                 self.launchpad_output
@@ -954,7 +963,7 @@ impl LoopGridLaunchpad {
                     .unwrap();
             } else {
                 self.launchpad_output
-                    .send(&[176, *id as u8, BANK_COLORS[index]])
+                    .send(&[176, *id as u8, bank_color])
                     .unwrap();
             }
         }
@@ -1016,6 +1025,12 @@ impl LoopGridLaunchpad {
             Light::None
         };
 
+        let beat_light = if self.use_internal_clock.load(atomic::Ordering::Relaxed) {
+            Light::Purple
+        } else {
+            Light::GreenLow
+        };
+
         if current_beat_light != self.last_beat_light {
             self.launchpad_output
                 .send(&[
@@ -1029,7 +1044,7 @@ impl LoopGridLaunchpad {
                     .send(&[
                         144,
                         current_beat_light,
-                        base_beat_light.unwrap_or(Light::GreenLow).value(),
+                        base_beat_light.unwrap_or(beat_light).value(),
                     ])
                     .unwrap();
             }
@@ -1044,7 +1059,7 @@ impl LoopGridLaunchpad {
                 .send(&[
                     144,
                     current_beat_light,
-                    base_beat_light.unwrap_or(Light::GreenLow).value(),
+                    base_beat_light.unwrap_or(beat_light).value(),
                 ])
                 .unwrap();
         }
@@ -1102,6 +1117,15 @@ impl LoopGridLaunchpad {
                 .send(&[176, *id, result.value()])
                 .unwrap();
         }
+    }
+
+    fn toggle_internal_clock(&mut self) {
+        let value = self
+            .use_internal_clock
+            .load(std::sync::atomic::Ordering::Relaxed);
+        self.use_internal_clock
+            .store(!value, std::sync::atomic::Ordering::Relaxed);
+        self.refresh_selected_bank();
     }
 
     fn set_bank(&mut self, id: u8) {
@@ -1384,19 +1408,14 @@ impl LoopGridLaunchpad {
     fn refresh_override(&mut self, id: u32) {
         // use frozen loop if present
 
-        let loop_collection = if let Some(frozen_loop) = &self.frozen_loop {
-            frozen_loop
-        } else {
-            self.loop_state.get()
-        };
+        let loop_collection = self.loop_state.get();
 
-        let selection_override_loop_collection = if self.frozen_loop.is_some() {
-            None
-        } else if let Some(offset) = self.selection_override_offset {
-            self.loop_state.retrieve(offset)
-        } else {
-            None
-        };
+        let selection_override_loop_collection =
+            if let Some(offset) = self.selection_override_offset {
+                self.loop_state.retrieve(offset)
+            } else {
+                None
+            };
 
         let mut transform =
             self.get_transform(id, &loop_collection, selection_override_loop_collection);
@@ -1560,7 +1579,7 @@ impl LoopGridLaunchpad {
             LaunchpadLight::Pulsing(Light::RedLow)
         } else if self.active.contains(&id) {
             LaunchpadLight::Pulsing(color)
-        } else if self.frozen_loop.is_some() {
+        } else if self.loop_state.is_frozen() {
             LaunchpadLight::Pulsing(Light::Orange)
         } else {
             LaunchpadLight::Constant(color)
@@ -1654,12 +1673,6 @@ impl LoopGridLaunchpad {
         };
 
         let current_loop = self.loop_state.get();
-        let frozen_differs = if let Some(frozen_loop) = &self.frozen_loop {
-            frozen_loop.transforms.contains_key(&id)
-                && frozen_loop.transforms.get(&id) != current_loop.transforms.get(&id)
-        } else {
-            false
-        };
 
         let new_value = if triggering && self.selection.contains(&id) {
             LaunchpadLight::Pulsing(Light::Value(28))
@@ -1679,8 +1692,6 @@ impl LoopGridLaunchpad {
             }
         } else if self.selection.contains(&id) {
             LaunchpadLight::Pulsing(selection_color)
-        } else if frozen_differs {
-            LaunchpadLight::Pulsing(Light::White)
         } else if self.recording.contains(&id) {
             if color == Light::Off {
                 LaunchpadLight::Pulsing(Light::Value(7))
@@ -1726,13 +1737,12 @@ impl LoopGridLaunchpad {
 
     fn refresh_active(&mut self) {
         let current_loop = self.loop_state.get();
-        let selection_override_loop_collection = if self.frozen_loop.is_some() {
-            None
-        } else if let Some(offset) = self.selection_override_offset {
-            self.loop_state.retrieve(offset)
-        } else {
-            None
-        };
+        let selection_override_loop_collection =
+            if let Some(offset) = self.selection_override_offset {
+                self.loop_state.retrieve(offset)
+            } else {
+                None
+            };
 
         let mut ids = HashSet::new();
         for (id, transform) in &current_loop.transforms {
@@ -2059,19 +2069,18 @@ impl LoopGridLaunchpad {
         self.refresh_loop_length();
     }
 
-    fn sustain_button(&mut self, pressed: bool) {
+    fn freeze_button(&mut self, pressed: bool) {
         // send frozen to twister
         if pressed {
-            let current_loop = self.loop_state.get();
-            self.frozen_loop = Some(current_loop.clone());
+            self.loop_state.freeze();
 
-            for (id, value) in &self.out_transforms {
+            for (id, value) in &self.override_values {
                 if value != &LoopTransform::None {
                     self.sustained_values.insert(*id, value.clone());
                 }
             }
         } else {
-            self.frozen_loop = None;
+            self.loop_state.unfreeze();
             self.sustained_values.clear();
         }
 
@@ -2179,11 +2188,7 @@ impl LoopGridLaunchpad {
 
     fn initial_loop(&mut self) {
         for id in 0..136 {
-            let loop_collection = if let Some(frozen_loop) = &self.frozen_loop {
-                frozen_loop
-            } else {
-                self.loop_state.get()
-            };
+            let loop_collection = self.loop_state.get();
 
             let selection_override_loop_collection =
                 if let Some(offset) = self.selection_override_offset {

@@ -114,9 +114,8 @@ impl ModTwister {
                     Modulator::DuckDecay(default) => {
                         last_values.insert(Control::Modulator(index), *default);
                     }
-                    Modulator::ResetBeat(default) => {
-                        let value = ((*default.min(&8) as f32 / 8.0) * 127.0) as u8;
-                        last_values.insert(Control::Modulator(index), value);
+                    Modulator::Swing(default) => {
+                        last_values.insert(Control::Modulator(index), *default);
                     }
                     Modulator::None => (),
                 }
@@ -193,10 +192,10 @@ impl ModTwister {
                                         let multiplier = midi_to_float(*value) * 0.96;
                                         params.duck_tick_multiplier = multiplier;
                                     }
-                                    Modulator::ResetBeat(..) => {
+                                    Modulator::Swing(..) => {
                                         let mut params = params.lock().unwrap();
-                                        let value = (midi_to_float(*value) * 8.0) as u32;
-                                        params.reset_beat = value;
+                                        let value = midi_to_float(*value) * 0.5;
+                                        params.swing = value;
                                     }
                                 }
                             }
@@ -394,7 +393,8 @@ impl ModTwister {
 
                         // to avoid overwhelming the midi bus, only send one value per tick
                         if continuously_send.len() > 0 {
-                            let control = Control::Modulator(continuously_send_step);
+                            let control =
+                                Control::Modulator(continuously_send[continuously_send_step]);
 
                             if !scheduled.contains(&control) {
                                 tx_feedback.send(ModTwisterMessage::Send(control)).unwrap();
