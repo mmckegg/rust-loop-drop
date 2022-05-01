@@ -3,63 +3,22 @@ use midi_connection;
 use serde::{Deserialize, Serialize};
 
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    collections::{HashMap, HashSet},
+    sync::{atomic, Arc},
 };
 
-use super::{midi_keys::Offset, SidechainOutput};
+use super::SidechainOutput;
 
-const SUB_NOTES: [u8; 7] = [4, 5, 6, 7, 0, 1, 2];
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum OffsetPress {
-    None,
-    Pressed {
-        instant: Instant,
-        value: u8,
-        count: usize,
-    },
-}
-
-impl OffsetPress {
-    fn value_count(&self, value: u8) -> usize {
-        if let OffsetPress::Pressed {
-            value: v, count, ..
-        } = self
-        {
-            if v == &value {
-                return *count;
-            }
-        }
-
-        0
-    }
-
-    fn get_before(&self, instant: Instant) -> Option<(u8, usize)> {
-        if let OffsetPress::Pressed {
-            value,
-            count,
-            instant: i,
-        } = self
-        {
-            if i < &instant {
-                return Some((*value, *count));
-            }
-        }
-
-        None
-    }
-}
+const TRIGGERS: [u8; 16] = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3];
 
 pub struct Sp404Mk2 {
     output: midi_connection::SharedMidiOutputConnection,
     _input: midi_connection::ThreadReference,
-    offset: u8,
-    instance: usize,
+    mappings: HashMap<u32, (u8, u8)>,
+    pending_cue: Arc<(atomic::AtomicU8, atomic::AtomicU8)>,
+    selected: HashSet<u32>,
     output_values: HashMap<u32, (u8, u8, u8)>,
     velocity_map: Option<Vec<u8>>,
-    offset_press: Arc<Mutex<OffsetPress>>,
     sidechain_output: Option<SidechainOutput>,
     updating: bool,
 }
@@ -67,42 +26,51 @@ pub struct Sp404Mk2 {
 impl Sp404Mk2 {
     pub fn new(
         port_name: &str,
-        instance: usize,
-        default_offset: u8,
+        default_mapping: Vec<(u8, u8, u8)>,
         velocity_map: Option<Vec<u8>>,
         sidechain_output: Option<SidechainOutput>,
     ) -> Self {
+        let pending_cue = Arc::new((atomic::AtomicU8::new(0), atomic::AtomicU8::new(0)));
+        let pending_cue_input = pending_cue.clone();
+        let mut mappings = HashMap::new();
+
+        for (i, (bank, row, col)) in default_mapping.iter().enumerate() {
+            let position = row * 4 + col;
+            if let Some(trigger) = TRIGGERS.get(position as usize) {
+                let note = trigger + 36;
+                mappings.insert(i as u32, (bank + 1, note));
+            }
+        }
+
         let output = midi_connection::get_shared_output(port_name);
-        let offset_press = Arc::new(Mutex::new(OffsetPress::None));
-        let input_offset_press = offset_press.clone();
+        let mut note_down = HashSet::new();
 
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
+            // detect triggered from CUE mode on SP-404 (in cue mode, only note off events are sent)
             if message[0] >= 144 && message[0] < 154 {
-                let bank = message[0] - 144;
-                let pad = message[1] - 36;
-                let sub_bank = pad / 8;
-                let value = bank * 2 + sub_bank;
-
-                if pad == 3 || pad == 11 {
-                    let mut offset_press = input_offset_press.lock().unwrap();
-
-                    let count = offset_press.value_count(value) + 1;
-
-                    *offset_press = OffsetPress::Pressed {
-                        instant: Instant::now(),
-                        value,
-                        count,
-                    };
+                let channel = message[0] - 144 + 1;
+                note_down.insert((channel, message[1]));
+            } else if message[0] >= 128 && message[0] < 138 {
+                let channel = message[0] - 128 + 1;
+                if note_down.contains(&(channel, message[1])) {
+                    note_down.remove(&(channel, message[1]));
+                } else {
+                    pending_cue_input
+                        .0
+                        .store(channel, atomic::Ordering::Relaxed);
+                    pending_cue_input
+                        .1
+                        .store(message[1], atomic::Ordering::Relaxed);
                 }
             }
         });
 
         Sp404Mk2 {
             output,
-            instance,
+            selected: HashSet::new(),
+            mappings,
             output_values: HashMap::new(),
-            offset: default_offset,
-            offset_press,
+            pending_cue,
             velocity_map,
             sidechain_output,
             _input: input,
@@ -113,58 +81,89 @@ impl Sp404Mk2 {
 
 impl Triggerable for Sp404Mk2 {
     fn on_tick(&mut self, _time: MidiTime) {
+        // reset updating (stop light from flashing)
         self.updating = false;
-        let mut offset_press = self.offset_press.lock().unwrap();
 
-        // update the offset if the number of presses match the instance ID after 200ms
-        if let Some((value, count)) =
-            offset_press.get_before(Instant::now() - Duration::from_millis(200))
-        {
-            if self.instance == count - 1 {
-                self.offset = value;
-                // make the lights flash off for a tick
-                self.updating = true
+        // detect cue triggers
+        let channel = self.pending_cue.0.load(atomic::Ordering::Relaxed);
+        let note = self.pending_cue.1.load(atomic::Ordering::Relaxed);
+        if channel > 0 && note >= 36 {
+            let trigger = note - 36;
+            let position = TRIGGERS.iter().position(|v| v == &trigger).unwrap_or(0) as i32;
+            let row = position / 4;
+            let col = position % 4;
+
+            let start_col = if col == 1 && self.selected.len() == 2 {
+                0
+            } else {
+                let offset = self.selected.len() as i32;
+                let overflow = (col + offset - 4).max(0);
+                (col - overflow).max(0)
+            };
+
+            let start_position = (row * 4 + start_col) as usize;
+
+            let mut selected: Vec<u32> = self.selected.iter().cloned().collect();
+            selected.sort();
+
+            for (i, id) in selected.iter().enumerate() {
+                let position = start_position + i;
+                if let Some(trigger) = TRIGGERS.get(position) {
+                    let note = trigger + 36;
+                    self.mappings.insert(*id, (channel, note));
+                    self.updating = true;
+                }
             }
 
-            *offset_press = OffsetPress::None;
+            // clear them out for next press
+            self.pending_cue.0.store(0, atomic::Ordering::Relaxed);
+            self.pending_cue.1.store(0, atomic::Ordering::Relaxed);
         }
     }
 
     fn check_lit(&self, id: u32) -> bool {
-        !self.updating
+        if self.updating && self.selected.contains(&id) {
+            false
+        } else {
+            self.mappings.contains_key(&id)
+        }
+    }
+
+    fn select(&mut self, id: u32, selected: bool) {
+        if selected {
+            self.selected.insert(id);
+        } else {
+            self.selected.remove(&id);
+        }
     }
 
     fn trigger(&mut self, id: u32, value: OutputValue) {
         match value {
             OutputValue::Off => {
                 if self.output_values.contains_key(&id) {
-                    let (channel_offset, note, _velocity) =
-                        self.output_values.get(&id).unwrap().clone();
+                    let (channel, note, _velocity) = self.output_values.get(&id).unwrap().clone();
 
-                    self.output.send(&[128 + channel_offset, note, 0]).unwrap();
+                    self.output.send(&[128 + channel - 1, note, 0]).unwrap();
                     self.output_values.remove(&id);
                 }
             }
             OutputValue::On(velocity) => {
                 let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
-                let channel_offset = self.offset / 2;
-                let sub_bank = self.offset % 2;
-                let note = SUB_NOTES[id as usize % SUB_NOTES.len()] + 36 + (8 * sub_bank);
+                if let Some((channel, note)) = self.mappings.get(&id) {
+                    self.output
+                        .send(&[144 + channel - 1, *note, velocity])
+                        .unwrap();
 
-                self.output
-                    .send(&[144 + channel_offset, note, velocity])
-                    .unwrap();
-
-                // send sync if kick
-                if let Some(sidechain_output) = &mut self.sidechain_output {
-                    if id == sidechain_output.id {
-                        let mut params = sidechain_output.params.lock().unwrap();
-                        params.duck_triggered = true;
+                    // send sync if kick
+                    if let Some(sidechain_output) = &mut self.sidechain_output {
+                        if id == sidechain_output.id {
+                            let mut params = sidechain_output.params.lock().unwrap();
+                            params.duck_triggered = true;
+                        }
                     }
-                }
 
-                self.output_values
-                    .insert(id, (channel_offset, note, velocity));
+                    self.output_values.insert(id, (*channel, *note, velocity));
+                }
             }
         }
     }

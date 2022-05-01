@@ -1151,14 +1151,14 @@ impl LoopGridLaunchpad {
         if self.shift_held && value.is_on() {
             if fresh_trigger {
                 if self.selection.contains(&id) {
-                    self.selection.remove(&scale_id);
-                    self.selection.remove(&id);
+                    self.unselect(scale_id);
+                    self.unselect(id);
                 } else {
                     if self.selecting_scale {
                         // hack to avoid including drums/vox
-                        self.selection.insert(scale_id);
+                        self.select(scale_id);
                     } else {
-                        self.selection.insert(id);
+                        self.select(id);
                     }
                 }
 
@@ -1176,7 +1176,7 @@ impl LoopGridLaunchpad {
                         for col in from_col..to_col {
                             let row_offset = if self.selecting_scale { 8 } else { 0 };
                             let id = Coords::id_from(row + row_offset, col);
-                            self.selection.insert(id);
+                            self.select(id);
                         }
                     }
                 }
@@ -1663,7 +1663,11 @@ impl LoopGridLaunchpad {
         let selection_color = if in_scale_view {
             Light::Purple
         } else {
-            Light::Green
+            if color == Light::Off {
+                Light::GreenDark
+            } else {
+                Light::Green
+            }
         };
 
         let background_color = if let Some(background_mapped) = background_mapped {
@@ -1671,8 +1675,6 @@ impl LoopGridLaunchpad {
         } else {
             Light::Off
         };
-
-        let current_loop = self.loop_state.get();
 
         let new_value = if triggering && self.selection.contains(&id) {
             LaunchpadLight::Pulsing(Light::Value(28))
@@ -1936,6 +1938,22 @@ impl LoopGridLaunchpad {
         self.clear_selection();
     }
 
+    fn select(&mut self, id: u32) {
+        self.selection.insert(id);
+        if let Some(mapped) = self.mapping.get(&Coords::from(id)) {
+            let chunk = &mut self.chunks[mapped.chunk_index];
+            chunk.select(mapped.id, true)
+        }
+    }
+
+    fn unselect(&mut self, id: u32) {
+        self.selection.remove(&id);
+        if let Some(mapped) = self.mapping.get(&Coords::from(id)) {
+            let chunk = &mut self.chunks[mapped.chunk_index];
+            chunk.select(mapped.id, false)
+        }
+    }
+
     fn clear_selection(&mut self) {
         self.commit_selection_override();
 
@@ -1944,7 +1962,13 @@ impl LoopGridLaunchpad {
             self.refresh_selecting_scale();
         }
 
-        let selection = self.selection.clone();
+        for id in &self.selection {
+            if let Some(mapped) = self.mapping.get(&Coords::from(*id)) {
+                let chunk = &mut self.chunks[mapped.chunk_index];
+                chunk.select(mapped.id, false)
+            }
+        }
+
         self.selection.clear();
 
         self.refresh_select_state();

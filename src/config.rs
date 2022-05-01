@@ -4,6 +4,7 @@ use crate::scale::Scale;
 use chunk::{Coords, RepeatMode, Shape};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_writer_pretty};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
@@ -25,9 +26,9 @@ impl Config {
     }
 
     pub fn default() -> Self {
-        let sp404_port_name = "SP-404MKII"; // drums
+        let tr6s_port_name = "TR-6S"; // drums
         let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
-        let rig_port_name = sp404_port_name;
+        let rig_port_name = launchpad_output_name;
         let launchpad_clock_out = "Launchpad Pro MK3";
 
         Config {
@@ -102,32 +103,30 @@ impl Config {
                     channel: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
-                // SP404 drums
+                // TR-6S
                 ChunkConfig {
-                    device: DeviceConfig::Sp404Mk2 {
-                        port_name: String::from(sp404_port_name),
-                        velocity_map: Some(vec![10, 50, 50, 50, 50, 127]),
-                        instance: 2,
-                        default_offset: 1,
+                    device: DeviceConfig::MidiTriggers {
+                        output: MidiPortConfig::new(tr6s_port_name, 12),
+                        velocity_map: Some(vec![40, 80, 80, 80, 80, 127]),
+                        trigger_ids: vec![36, 38, 43, 39, 42, 46],
                         sidechain_output: Some(SidechainOutput { id: 0 }),
                     },
                     coords: Coords::new(0, 0),
-                    shape: Shape::new(1, 7),
+                    shape: Shape::new(1, 6),
                     color: 8, // warm white
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // SP404 samples
+                // SP-404mk2 samples
                 ChunkConfig {
                     device: DeviceConfig::Sp404Mk2 {
-                        port_name: String::from(sp404_port_name),
+                        port_name: String::from(tr6s_port_name),
+                        default_mapping: vec![],
                         velocity_map: Some(vec![10, 20, 30, 40, 50, 60, 70, 70, 70, 70, 80]),
-                        instance: 1,
-                        default_offset: 0,
                         sidechain_output: None,
                     },
                     coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 7),
+                    shape: Shape::new(1, 8),
                     color: 9, // orange
                     channel: Some(2),
                     repeat_mode: RepeatMode::OnlyQuant,
@@ -144,8 +143,8 @@ impl Config {
                             MidiTrigger::Note(13, 127, 127),
                         ],
                     },
-                    coords: Coords::new(0, 7),
-                    shape: Shape::new(2, 1),
+                    coords: Coords::new(0, 6),
+                    shape: Shape::new(1, 2),
                     color: 15, // yellow
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
@@ -159,7 +158,7 @@ impl Config {
                         monophonic: true,
                         offset_id: String::from("bass"),
                         note_offset: -4,
-                        octave_offset: -3,
+                        octave_offset: -4,
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -202,7 +201,7 @@ impl Config {
                     }]),
                 },
             ],
-            clock_input_port_name: String::from(sp404_port_name),
+            clock_input_port_name: String::from(tr6s_port_name),
             clock_output_port_names: vec![String::from(launchpad_clock_out)],
             resync_port_names: vec![String::from(launchpad_output_name)],
             keep_alive_port_names: vec![],
@@ -220,10 +219,10 @@ impl Config {
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(7, 0)), // main fx mod
                         ModulatorConfig::Swing(0),
                         // row 2
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(1, 127)),  // dfam mod
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(19, 64)), // drum filter                        
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 32)), // bass mod
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 127)), // synth mod
-                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(74, 32)), // poly filter
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(1, 0)), // poly filter
                         // row 3
                         ModulatorConfig::DuckDecay(10), // duck decay
                         ModulatorConfig::new(rig_port_name, 14, Modulator::PitchBend(0.0)), // bass pitch
@@ -234,6 +233,28 @@ impl Config {
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(10, 0)), // mod b
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(11, 0)), // mod c
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(12, 0)), // mod d
+                        ////////////////////////
+                        // DRUMS
+                        // row 1
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(23, 20)), // bd decay
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(28, 10)), // sd decay
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(47, 10)), // lt decay
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(59, 32)), // hc decay
+                        // row 2
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(96, 0)), // bd ctrl
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(97, 0)), // sd ctrl
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(102, 0)), // lt ctrl
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(106, 0)), // hc ctrl
+                        // row 3
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(20, 64)), // bd pitch
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(17, 64)), // delay time
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(62, 32)), // ch decay
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(81, 64)), // oh decay
+                        // row 4
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(91, 0)), // reverb amount
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(18, 40)), // delay feedback
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(107, 0)), // ch ctrl
+                        ModulatorConfig::new(tr6s_port_name, 12, Modulator::Cc(108, 0)), // oh ctrl
                     ],
                 },
                 ControllerConfig::DuckOutput {
@@ -324,8 +345,7 @@ pub enum DeviceConfig {
     Sp404Mk2 {
         port_name: String,
         velocity_map: Option<Vec<u8>>,
-        instance: usize,
-        default_offset: u8,
+        default_mapping: Vec<(u8, u8, u8)>,
         sidechain_output: Option<SidechainOutput>,
     },
 }

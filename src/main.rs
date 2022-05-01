@@ -180,12 +180,6 @@ fn main() {
     }
 
     for range in Scheduler::start(clock_input_name, use_internal_clock) {
-        {
-            // reset duck_triggered on every tick
-            let mut params = params.lock().unwrap();
-            params.duck_triggered = false;
-        }
-
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if (range.tick_pos - MidiTime::tick()) % MidiTime::from_beats(32) == MidiTime::zero() {
@@ -199,23 +193,11 @@ fn main() {
             }
         }
 
-        // if range.ticked && range.from.ticks() != range.to.ticks() {
-        //     // HACK: straighten out missing sub ticks into separate schedules
-        //     let mut a = range.clone();
-        //     a.to = MidiTime::new(a.to.ticks(), 0);
-        //     a.tick_pos = MidiTime::new(a.from.ticks(), 0);
-        //     a.ticked = false;
-        //     let mut b = range.clone();
-        //     b.from = MidiTime::new(b.to.ticks(), 0);
-        //     launchpad.schedule(a);
-        //     launchpad.schedule(b);
-        // } else {
         let start = Instant::now();
         launchpad.schedule(range);
         if start.elapsed() > Duration::from_millis(15) {
             println!("[WARN] SCHEDULE TIME {:?}", start.elapsed());
         }
-        // }
 
         // now for the lower priority stuff
         if range.ticked {
@@ -227,6 +209,10 @@ fn main() {
             for output in &mut keep_alive_outputs {
                 output.send(&[254]).unwrap();
             }
+
+            // reset duck_triggered on every tick
+            let mut params = params.lock().unwrap();
+            params.duck_triggered = false;
         }
     }
 }
@@ -381,8 +367,7 @@ fn make_device(
         config::DeviceConfig::Sp404Mk2 {
             port_name,
             velocity_map,
-            instance,
-            default_offset,
+            default_mapping,
             sidechain_output,
         } => {
             let sidechain_output = if let Some(sidechain_output) = sidechain_output {
@@ -395,8 +380,7 @@ fn make_device(
             };
             Box::new(devices::Sp404Mk2::new(
                 &port_name,
-                instance,
-                default_offset,
+                default_mapping,
                 velocity_map,
                 sidechain_output,
             ))

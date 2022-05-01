@@ -7,6 +7,8 @@ pub use std::time::{Duration, SystemTime};
 pub trait Triggerable {
     // TODO: or should this be MidiTime??
     fn trigger(&mut self, id: u32, value: OutputValue);
+    fn select(&mut self, _id: u32, _selected: bool) {}
+
     fn on_tick(&mut self, _time: MidiTime) {}
     fn check_triggering(&self, _id: u32) -> Option<bool> {
         None
