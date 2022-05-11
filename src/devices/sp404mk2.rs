@@ -9,7 +9,9 @@ use std::{
 
 use super::SidechainOutput;
 
-const TRIGGERS: [u8; 16] = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3];
+const TRIGGERS: [u8; 24] = [
+    20, 21, 22, 23, 16, 17, 18, 19, 12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3,
+];
 
 pub struct Sp404Mk2 {
     output: midi_connection::SharedMidiOutputConnection,
@@ -50,17 +52,19 @@ impl Sp404Mk2 {
             if message[0] >= 144 && message[0] < 154 {
                 let channel = message[0] - 144 + 1;
                 note_down.insert((channel, message[1]));
-            } else if message[0] >= 128 && message[0] < 138 {
+            } else if message[0] >= 128 && message[0] < 144 {
                 let channel = message[0] - 128 + 1;
-                if note_down.contains(&(channel, message[1])) {
-                    note_down.remove(&(channel, message[1]));
-                } else {
-                    pending_cue_input
-                        .0
-                        .store(channel, atomic::Ordering::Relaxed);
-                    pending_cue_input
-                        .1
-                        .store(message[1], atomic::Ordering::Relaxed);
+                if channel <= 10 || channel == 16 {
+                    if note_down.contains(&(channel, message[1])) {
+                        note_down.remove(&(channel, message[1]));
+                    } else {
+                        pending_cue_input
+                            .0
+                            .store(channel, atomic::Ordering::Relaxed);
+                        pending_cue_input
+                            .1
+                            .store(message[1], atomic::Ordering::Relaxed);
+                    }
                 }
             }
         });
@@ -89,7 +93,7 @@ impl Triggerable for Sp404Mk2 {
         let note = self.pending_cue.1.load(atomic::Ordering::Relaxed);
         if channel > 0 && note >= 36 {
             let trigger = note - 36;
-            let position = TRIGGERS.iter().position(|v| v == &trigger).unwrap_or(0) as i32;
+            let position = TRIGGERS.iter().position(|v| v == &trigger).unwrap_or(24) as i32;
             let row = position / 4;
             let col = position % 4;
 
@@ -108,11 +112,10 @@ impl Triggerable for Sp404Mk2 {
 
             for (i, id) in selected.iter().enumerate() {
                 let position = start_position + i;
-                if let Some(trigger) = TRIGGERS.get(position) {
-                    let note = trigger + 36;
-                    self.mappings.insert(*id, (channel, note));
-                    self.updating = true;
-                }
+                let trigger = TRIGGERS.get(position).unwrap_or(&24);
+                let note = trigger + 36;
+                self.mappings.insert(*id, (channel, note));
+                self.updating = true;
             }
 
             // clear them out for next press

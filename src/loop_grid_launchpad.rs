@@ -2104,8 +2104,25 @@ impl LoopGridLaunchpad {
                 }
             }
         } else {
+            let frozen_state = self.loop_state.get().clone();
             self.loop_state.unfreeze();
             self.sustained_values.clear();
+
+            // preserve any changes made that are currently selected
+            let mut new_state = self.loop_state.get().clone();
+            let mut updated = false;
+            for id in &self.selection {
+                let value = frozen_state.transforms.get(&id);
+                if value != new_state.transforms.get(&id) {
+                    if let Some(value) = value {
+                        new_state.transforms.insert(*id, value.clone());
+                        updated = true;
+                    }
+                }
+            }
+            if updated {
+                self.loop_state.set(new_state);
+            }
         }
 
         for id in 0..136 {

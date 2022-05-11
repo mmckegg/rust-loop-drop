@@ -195,7 +195,6 @@ impl Triggerable for MidiKeys {
 
         let mut note_ids = HashSet::new();
         let mut next_output_values = HashMap::new();
-        self.current_tick = pos.ticks();
 
         for (id, (note_id, velocity)) in &self.output_values {
             let new_note_id = get_note_id(
@@ -246,6 +245,7 @@ impl Triggerable for MidiKeys {
         }
 
         self.output_values = next_output_values;
+        self.current_tick = pos.ticks();
     }
 
     fn check_lit(&self, id: u32) -> bool {
