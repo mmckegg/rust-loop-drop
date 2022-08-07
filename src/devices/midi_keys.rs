@@ -16,9 +16,6 @@ pub struct MidiKeys {
     velocity_map: Option<Vec<u8>>,
     octave_offset: i32,
     offset_wrap: bool,
-    current_tick: i32,
-    note_on_tick: HashMap<u8, i32>,
-    off_next_tick: HashSet<u8>,
     trigger_stack: Vec<u32>,
     last_velocity: u8,
     monophonic: bool,
@@ -40,49 +37,26 @@ impl MidiKeys {
             midi_channel,
             velocity_map,
             output_values: HashMap::new(),
-            note_on_tick: HashMap::new(),
             offset,
             octave_offset,
             scale,
             offset_wrap,
-            current_tick: 0,
             last_velocity: 127,
-            off_next_tick: HashSet::new(),
             trigger_stack: Vec::new(),
             monophonic,
         }
     }
 
-    pub fn scale(&self) -> std::sync::MutexGuard<'_, Scale> {
-        self.scale.lock().unwrap()
-    }
-
     fn send_on(&mut self, note_id: u8, velocity: u8) {
-        self.off_next_tick.remove(&note_id);
-        self.note_on_tick.insert(note_id, self.current_tick);
         self.midi_port
             .send(&[144 + self.midi_channel - 1, note_id, velocity])
             .unwrap();
     }
 
-    fn send_off_now(&mut self, note_id: u8) {
-        self.off_next_tick.remove(&note_id);
-        self.note_on_tick.remove(&note_id);
-
+    fn send_off(&mut self, note_id: u8) {
         self.midi_port
             .send(&[128 + self.midi_channel - 1, note_id, 0])
             .unwrap();
-    }
-
-    fn send_off(&mut self, note_id: u8) {
-        // ensure that we never send an off note immediately after an on note, should wait at least one midi tick
-        if let Some(tick) = self.note_on_tick.get(&note_id) {
-            if tick == &self.current_tick {
-                self.off_next_tick.insert(note_id);
-            } else {
-                self.send_off_now(note_id);
-            }
-        }
     }
 
     fn trigger_off(&mut self, id: u32) {
@@ -98,8 +72,6 @@ impl MidiKeys {
             return;
         }
 
-        self.trigger_stack.push(id);
-
         let note_id = get_note_id(
             id,
             &self.scale,
@@ -108,91 +80,11 @@ impl MidiKeys {
             self.offset_wrap,
         );
 
-        // remove any pending off note since we now have an on note to replace
-        self.off_next_tick.remove(&note_id);
-
         self.send_on(note_id, velocity);
         self.output_values.insert(id, (note_id, velocity));
     }
-}
 
-fn get_note_id(
-    id: u32,
-    scale: &Arc<Mutex<Scale>>,
-    offset: &Arc<Mutex<Offset>>,
-    octave_offset: i32,
-    offset_wrap: bool,
-) -> u8 {
-    let scale = scale.lock().unwrap();
-    let offset = offset.lock().unwrap();
-    let mut scale_offset = offset.base + offset.offset;
-
-    let col = (id % 8) as i32;
-
-    if offset_wrap {
-        // hacky chord inversions
-        if offset.offset > -7 && offset.offset < 7 {
-            if col + offset.offset > 8 {
-                scale_offset -= 7
-            } else if col + offset.offset < 0 {
-                scale_offset += 7
-            }
-        }
-    }
-
-    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (octave_offset * 12)) as u8
-}
-
-impl Triggerable for MidiKeys {
-    fn trigger(&mut self, id: u32, value: OutputValue) {
-        match value {
-            OutputValue::Off => {
-                self.trigger_stack.retain(|&x| x != id);
-
-                if !self.monophonic {
-                    self.trigger_off(id);
-                }
-            }
-            OutputValue::On(velocity) => {
-                if self.trigger_stack.contains(&id) {
-                    return;
-                }
-                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
-                self.last_velocity = velocity;
-                self.trigger_on(id, velocity);
-                self.trigger_stack.push(id);
-            }
-        }
-    }
-
-    fn get_notes(&self) -> Option<HashSet<u8>> {
-        Some(HashSet::from_iter(self.output_values.values().filter_map(
-            |(note, velocity)| if velocity > &0 { Some(*note) } else { None },
-        )))
-    }
-
-    fn on_tick(&mut self, pos: MidiTime) {
-        // send off notes scheduled from previous tick
-        for note_id in self.off_next_tick.clone() {
-            self.send_off_now(note_id)
-        }
-
-        if self.monophonic {
-            let top = if let Some(top) = self.trigger_stack.last().cloned() {
-                self.trigger_on(top, self.last_velocity);
-                Some(top)
-            } else {
-                None
-            };
-
-            let ids: Vec<u32> = self.output_values.keys().cloned().collect();
-            for id in ids {
-                if Some(id) != top {
-                    self.trigger_off(id);
-                }
-            }
-        }
-
+    fn refresh_scale(&mut self) {
         let mut note_ids = HashSet::new();
         let mut next_output_values = HashMap::new();
 
@@ -245,7 +137,78 @@ impl Triggerable for MidiKeys {
         }
 
         self.output_values = next_output_values;
-        self.current_tick = pos.ticks();
+    }
+}
+
+fn get_note_id(
+    id: u32,
+    scale: &Arc<Mutex<Scale>>,
+    offset: &Arc<Mutex<Offset>>,
+    octave_offset: i32,
+    offset_wrap: bool,
+) -> u8 {
+    let scale = scale.lock().unwrap();
+    let offset = offset.lock().unwrap();
+    let mut scale_offset = offset.base + offset.offset;
+
+    let col = (id % 8) as i32;
+
+    if offset_wrap {
+        // hacky chord inversions
+        if offset.offset > -7 && offset.offset < 7 {
+            if col + offset.offset > 8 {
+                scale_offset -= 7
+            } else if col + offset.offset < 0 {
+                scale_offset += 7
+            }
+        }
+    }
+
+    (scale.get_note_at((id as i32) + scale_offset) + offset.pitch + (octave_offset * 12)) as u8
+}
+
+impl Triggerable for MidiKeys {
+    fn trigger(&mut self, id: u32, value: OutputValue) {
+        match value {
+            OutputValue::Off => {
+                if self.monophonic {
+                    self.trigger_stack.retain(|&x| x != id);
+                    let top = self.trigger_stack.last().cloned();
+                    if let Some(top) = top {
+                        self.trigger_on(top, self.last_velocity);
+                    }
+                }
+
+                self.trigger_off(id);
+            }
+            OutputValue::On(velocity) => {
+                if self.trigger_stack.contains(&id) {
+                    return;
+                }
+
+                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                self.last_velocity = velocity;
+                self.trigger_on(id, velocity);
+
+                if self.monophonic {
+                    let top = self.trigger_stack.last().cloned();
+                    if let Some(top) = top {
+                        self.trigger_off(top);
+                    }
+                    self.trigger_stack.push(id);
+                }
+            }
+        }
+    }
+
+    fn get_notes(&self) -> Option<HashSet<u8>> {
+        Some(HashSet::from_iter(self.output_values.values().filter_map(
+            |(note, velocity)| if velocity > &0 { Some(*note) } else { None },
+        )))
+    }
+
+    fn on_tick(&mut self, _: MidiTime) {
+        self.refresh_scale();
     }
 
     fn check_lit(&self, id: u32) -> bool {

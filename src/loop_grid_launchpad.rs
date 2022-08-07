@@ -1464,13 +1464,13 @@ impl LoopGridLaunchpad {
             transform = LoopTransform::Value(OutputValue::Off);
         }
 
-        if self
+        let last_value = self
             .out_transforms
             .get(&id)
             .unwrap_or(&LoopTransform::None)
-            .unwrap_or(&LoopTransform::Value(OutputValue::Off))
-            != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off))
-        {
+            .unwrap_or(&LoopTransform::Value(OutputValue::Off));
+
+        if last_value != transform.unwrap_or(&LoopTransform::Value(OutputValue::Off)) {
             let last_transform = self.out_transforms.get(&id).cloned();
 
             // mark all cycles as changed if one changes
@@ -1915,7 +1915,7 @@ impl LoopGridLaunchpad {
                 let has_events =
                     self.recorder
                         .has_events(id, self.loop_from, self.loop_from + self.loop_length);
-                if has_events || current_event.is_some() {
+                if has_events {
                     new_loop.transforms.insert(
                         id,
                         LoopTransform::Range {
@@ -1923,6 +1923,11 @@ impl LoopGridLaunchpad {
                             length: self.loop_length,
                         },
                     );
+                } else if let Some(current_event) = current_event {
+                    // loop contains a single on note
+                    new_loop
+                        .transforms
+                        .insert(id, LoopTransform::Value(current_event.value));
                 } else {
                     new_loop.transforms.insert(id, LoopTransform::None);
                 }

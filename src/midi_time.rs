@@ -83,6 +83,9 @@ impl MidiTime {
     pub fn is_whole_beat(&self) -> bool {
         self.sub_ticks == 0 && self.ticks % 24 == 0
     }
+    pub fn is_whole_tick(&self) -> bool {
+        self.sub_ticks == 0
+    }
 
     pub fn beat_tick(&self) -> i32 {
         self.ticks % 24

@@ -33,7 +33,7 @@ impl LoopRecorder {
 
     pub fn has_events(&self, id: u32, start_pos: MidiTime, end_pos: MidiTime) -> bool {
         if let Some(events) = self.get_range_for(id, start_pos, end_pos) {
-            events.iter().any(|item| item.is_on())
+            events.len() > 0
         } else {
             false
         }

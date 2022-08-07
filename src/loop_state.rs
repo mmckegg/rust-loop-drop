@@ -5,7 +5,7 @@ use std::sync::mpsc;
 pub use loop_transform::LoopTransform;
 use midi_time::MidiTime;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoopCollection {
     pub length: MidiTime,
     pub transforms: HashMap<u32, LoopTransform>,
@@ -60,7 +60,6 @@ impl LoopState {
     }
 
     pub fn retrieve(&self, offset: isize) -> Option<&LoopCollection> {
-        println!("Offset this {}", offset);
         if offset < 0 {
             let resolved_offset = self.undos.len() as isize - 1 + offset;
             if resolved_offset > 0 {
@@ -93,6 +92,10 @@ impl LoopState {
     }
 
     pub fn set(&mut self, value: LoopCollection) {
+        if self.get() == &value {
+            // ignore setting the same value multiple times
+            return;
+        }
         if self.frozen {
             self.override_loop = Some(value);
         } else {

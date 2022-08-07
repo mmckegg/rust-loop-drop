@@ -1,5 +1,7 @@
 use midi_time::MidiTime;
 
+use crate::scheduler::ScheduleRange;
+
 pub struct Init {
     modulators: Vec<::controllers::Modulator>,
     scheduled: bool,
@@ -15,7 +17,7 @@ impl Init {
 }
 
 impl ::controllers::Schedulable for Init {
-    fn schedule(&mut self, _pos: MidiTime, _length: MidiTime) {
+    fn schedule(&mut self, range: ScheduleRange) {
         if !self.scheduled {
             for modulator in &mut self.modulators {
                 if let ::controllers::Modulator::MidiModulator(instance) = modulator {

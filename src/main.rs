@@ -131,11 +131,13 @@ fn main() {
                 port_name,
                 modulators,
                 continuously_send,
+                channel_map,
             } => Box::new(controllers::ModTwister::new(
                 &port_name,
                 resolve_modulators(&mut output_ports, &modulators),
                 Arc::clone(&params),
                 continuously_send,
+                channel_map,
             )),
             config::ControllerConfig::Umi3 { port_name } => Box::new(controllers::Umi3::new(
                 &port_name,
@@ -200,12 +202,11 @@ fn main() {
         }
 
         // now for the lower priority stuff
-        if range.ticked {
-            let length = MidiTime::tick();
-            for controller in &mut controller_references {
-                controller.schedule(range.tick_pos, length)
-            }
+        for controller in &mut controller_references {
+            controller.schedule(range)
+        }
 
+        if range.ticked {
             for output in &mut keep_alive_outputs {
                 output.send(&[254]).unwrap();
             }
@@ -230,14 +231,21 @@ fn resolve_modulators(
                 port,
                 rx_port,
                 modulator,
-            } => Modulator::MidiModulator(controllers::MidiModulator {
-                port: get_port(output_ports, &port.name),
-                channel: port.channel,
-                rx_port: rx_port.clone(),
-                modulator: modulator.clone(),
-            }),
+            } => Modulator::MidiModulator(controllers::MidiModulator::new(
+                get_port(output_ports, &port.name),
+                port.channel,
+                modulator.clone(),
+                rx_port.clone(),
+            )),
             &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
             &config::ModulatorConfig::Swing(default) => Modulator::Swing(default),
+            &config::ModulatorConfig::LfoAmount(modulator_index, default) => {
+                Modulator::LfoAmount(modulator_index, default)
+            }
+            &config::ModulatorConfig::LfoSpeed(default) => Modulator::LfoSpeed(default),
+            &config::ModulatorConfig::LfoHold(default) => Modulator::LfoHold(default),
+            &config::ModulatorConfig::LfoOffset(default) => Modulator::LfoOffset(default),
+            &config::ModulatorConfig::LfoSkew(default) => Modulator::LfoSkew(default),
         })
         .collect()
 }

@@ -2,12 +2,13 @@ use chunk::{MidiTime, OutputValue, Triggerable};
 use midi_connection;
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct CcTriggers {
     midi_port: midi_connection::SharedMidiOutputConnection,
     last_pos: MidiTime,
     output_values: HashMap<u32, MidiTrigger>,
+    choke_notes: HashSet<(u8, u8)>,
     velocity_map: Option<Vec<u8>>,
     triggers: Vec<MidiTrigger>,
 }
@@ -22,6 +23,7 @@ impl CcTriggers {
             midi_port,
             last_pos: MidiTime::zero(),
             output_values: HashMap::new(),
+            choke_notes: HashSet::new(),
             velocity_map,
             triggers,
         }
@@ -40,6 +42,17 @@ impl CcTriggers {
                 self.midi_port
                     .send(&[144 - 1 + channel, *note, *velocity])
                     .unwrap();
+            }
+            MidiTrigger::ChokeNote(channel, note, velocity) => {
+                for (channel, note) in &self.choke_notes {
+                    self.midi_port.send(&[128 - 1 + channel, *note, 0]).unwrap();
+                }
+                self.choke_notes.clear();
+
+                self.midi_port
+                    .send(&[144 - 1 + channel, *note, *velocity])
+                    .unwrap();
+                self.choke_notes.insert((*channel, *note));
             }
             MidiTrigger::CcVelocity(channel, cc) => {
                 self.midi_port
@@ -68,6 +81,7 @@ impl CcTriggers {
             MidiTrigger::Note(channel, note, _velocity) => {
                 self.midi_port.send(&[144 - 1 + channel, *note, 0]).unwrap();
             }
+            MidiTrigger::ChokeNote(_, _, _) => (),
             MidiTrigger::CcVelocity(channel, cc) => {
                 self.midi_port.send(&[176 - 1 + channel, *cc, 0]).unwrap();
             }
@@ -112,6 +126,7 @@ pub enum MidiTrigger {
     CcVelocity(u8, u8),
     Note(u8, u8, u8),
     NoteVelocity(u8, u8),
+    ChokeNote(u8, u8, u8),
     Multi(Vec<MidiTrigger>),
     None,
 }

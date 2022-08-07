@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::scheduler::ScheduleRange;
+
 use super::midi_to_float;
 
 pub struct Twister {
@@ -122,7 +124,7 @@ impl Twister {
                 if let Modulator::MidiModulator(instance) = modulator {
                     last_values.insert(
                         Control::Modulator(index),
-                        match instance.modulator {
+                        match instance.modulator.all()[0] {
                             ::config::Modulator::Cc(_id, value) => value,
                             ::config::Modulator::InvertCc(_id, value) => value,
                             ::config::Modulator::InvertMaxCc(_id, max, value) => {
@@ -133,7 +135,8 @@ impl Twister {
                                 float_to_midi(value.min(max) as f64 / max as f64)
                             }
                             ::config::Modulator::PitchBend(value) => polar_to_midi(value),
-                            ::config::Modulator::PositivePitchBend(value) => float_to_midi(value),
+                            ::config::Modulator::PositivePitchBend(value) => polar_to_midi(value),
+                            _ => 0,
                         },
                     );
                 }
@@ -556,10 +559,15 @@ impl Twister {
 }
 
 impl ::controllers::Schedulable for Twister {
-    fn schedule(&mut self, pos: MidiTime, length: MidiTime) {
-        self.tx
-            .send(TwisterMessage::Schedule { pos, length })
-            .unwrap();
+    fn schedule(&mut self, range: ScheduleRange) {
+        if range.ticked {
+            self.tx
+                .send(TwisterMessage::Schedule {
+                    pos: range.tick_pos,
+                    length: MidiTime::tick(),
+                })
+                .unwrap();
+        }
     }
 }
 

@@ -10,6 +10,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::config;
+use crate::lfo::Lfo;
+use crate::scheduler::ScheduleRange;
+
+use super::midi_to_polar;
+
 pub struct ModTwister {
     _midi_input: midi_connection::ThreadReference,
     tx: mpsc::Sender<ModTwisterMessage>,
@@ -27,6 +33,7 @@ impl ModTwister {
         modulators: Vec<Modulator>,
         params: Arc<Mutex<LoopGridParams>>,
         continuously_send: Vec<usize>,
+        channel_map: HashMap<usize, u32>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
@@ -87,6 +94,10 @@ impl ModTwister {
             let mut frozen_values: Option<HashMap<Control, u8>> = None;
             let mut frozen_loops: Option<HashMap<Control, Loop>> = None;
             let mut cued_values: Option<HashMap<Control, u8>> = None;
+            let mut triggering_channels: HashSet<u32> = HashSet::new();
+
+            let mut lfo_amounts = HashMap::new();
+            let mut lfo = Lfo::new();
 
             // default values for modulators
             for (index, modulator) in modulators.iter().enumerate() {
@@ -94,7 +105,7 @@ impl ModTwister {
                     Modulator::MidiModulator(instance) => {
                         last_values.insert(
                             Control::Modulator(index),
-                            match instance.modulator {
+                            match instance.modulator.all()[0] {
                                 ::config::Modulator::Cc(_id, value) => value,
                                 ::config::Modulator::InvertCc(_id, value) => value,
                                 ::config::Modulator::InvertMaxCc(_id, max, value) => {
@@ -108,15 +119,20 @@ impl ModTwister {
                                 ::config::Modulator::PositivePitchBend(value) => {
                                     polar_to_midi(value)
                                 }
+                                _ => 0,
                             },
                         );
                     }
-                    Modulator::DuckDecay(default) => {
+                    Modulator::DuckDecay(default)
+                    | Modulator::Swing(default)
+                    | Modulator::LfoAmount(_, default)
+                    | Modulator::LfoSkew(default)
+                    | Modulator::LfoOffset(default)
+                    | Modulator::LfoSpeed(default)
+                    | Modulator::LfoHold(default) => {
                         last_values.insert(Control::Modulator(index), *default);
                     }
-                    Modulator::Swing(default) => {
-                        last_values.insert(Control::Modulator(index), *default);
-                    }
+
                     Modulator::None => (),
                 }
             }
@@ -178,24 +194,55 @@ impl ModTwister {
                     }
                     ModTwisterMessage::Send(control) => {
                         let last_value = last_values.get(&control).unwrap_or(&0);
-                        let value = last_value;
+                        let value = if let Some(lfo_amount) = lfo_amounts.get(&control) {
+                            let lfo_value = lfo.get_value_at(last_pos);
+                            if *lfo_amount > 0.0 {
+                                // bipolar modulation (CV style)
+                                let polar = ((lfo_value * 2.0) - 1.0) * lfo_amount;
+                                (*last_value as f64 + (polar * 64.0)).min(127.0).max(0.0) as u8
+                            } else {
+                                // treat current value as max and multiplier (subtract / sidechain style)
+                                let offset: f64 = lfo_value * (*last_value as f64) * lfo_amount;
+                                (*last_value as f64 + offset).min(127.0).max(0.0) as u8
+                            }
+                        } else {
+                            *last_value
+                        };
 
                         match control {
                             Control::Modulator(index) => {
                                 match modulators.get_mut(index).unwrap_or(&mut Modulator::None) {
                                     Modulator::None => (),
                                     Modulator::MidiModulator(instance) => {
-                                        instance.send(*value);
+                                        instance.send(value);
                                     }
                                     Modulator::DuckDecay(..) => {
                                         let mut params = params.lock().unwrap();
-                                        let multiplier = midi_to_float(*value) * 0.96;
+                                        let multiplier = midi_to_float(value) * 0.96;
                                         params.duck_tick_multiplier = multiplier;
                                     }
                                     Modulator::Swing(..) => {
                                         let mut params = params.lock().unwrap();
-                                        let value = midi_to_float(*value) * 0.5;
+                                        let value = midi_to_float(value) * 0.5;
                                         params.swing = value;
+                                    }
+                                    Modulator::LfoAmount(modulator_index, ..) => {
+                                        lfo_amounts.insert(
+                                            Control::Modulator(*modulator_index),
+                                            midi_to_polar(value),
+                                        );
+                                    }
+                                    Modulator::LfoSpeed(..) => {
+                                        lfo.speed = value;
+                                    }
+                                    Modulator::LfoSkew(..) => {
+                                        lfo.skew = value;
+                                    }
+                                    Modulator::LfoHold(..) => {
+                                        lfo.hold = value;
+                                    }
+                                    Modulator::LfoOffset(..) => {
+                                        lfo.offset = value;
                                     }
                                 }
                             }
@@ -267,6 +314,7 @@ impl ModTwister {
 
                         let value = *last_values.get(&control).unwrap_or(&0);
                         if let Some(id) = control_ids.get(&control) {
+                            let channel = channel_map.get(id);
                             output
                                 .send(&[176, id.clone() as u8, *cued_value.unwrap_or(&value)])
                                 .unwrap();
@@ -281,6 +329,9 @@ impl ModTwister {
                             } else if frozen {
                                 output.send(&[181, id.clone() as u8, 59]).unwrap();
                             // Slow Indicator Pulse
+                            } else if triggering_channels.contains(&channel.unwrap_or(&u32::MAX)) {
+                                output.send(&[181, id.clone() as u8, 17]).unwrap();
+                            // Turn off indicator (flash)
                             } else if loops.contains_key(&control) {
                                 // control has loop
                                 output.send(&[181, id.clone() as u8, 13]).unwrap();
@@ -298,8 +349,34 @@ impl ModTwister {
                             params.reset_automation = false;
                             loops.clear();
 
+                            // reset all LFOs
+                            for (index, modulator) in modulators.iter().enumerate() {
+                                if matches!(modulator, Modulator::LfoAmount(..)) {
+                                    last_values.insert(Control::Modulator(index), 64);
+                                }
+                            }
+                            lfo_amounts.clear();
+
                             for control in control_ids.keys() {
                                 tx.send(ModTwisterMessage::Refresh(*control)).unwrap();
+                            }
+                        }
+
+                        let mut to_refresh = triggering_channels.clone();
+                        triggering_channels.clear();
+
+                        for channel in &params.channel_triggered {
+                            triggering_channels.insert(*channel);
+                            to_refresh.insert(*channel);
+                        }
+
+                        params.channel_triggered.clear();
+
+                        for (control, id) in control_ids.iter() {
+                            if let Some(channel) = channel_map.get(id) {
+                                if to_refresh.contains(channel) {
+                                    tx.send(ModTwisterMessage::Refresh(*control)).unwrap();
+                                }
                             }
                         }
 
@@ -337,6 +414,7 @@ impl ModTwister {
 
                                 if let Some(values) = cued_values {
                                     for (key, value) in values {
+                                        loops.remove(&key);
                                         last_values.insert(key, value);
                                         tx.send(ModTwisterMessage::Send(key)).unwrap();
                                     }
@@ -391,16 +469,29 @@ impl ModTwister {
                             }
                         }
 
+                        let mut to_send = HashSet::new();
+
+                        for (control, value) in &lfo_amounts {
+                            if value != &0.0 {
+                                to_send.insert(*control);
+                            }
+                        }
+
                         // to avoid overwhelming the midi bus, only send one value per tick
                         if continuously_send.len() > 0 {
                             let control =
                                 Control::Modulator(continuously_send[continuously_send_step]);
 
+                            to_send.insert(control);
+
+                            continuously_send_step =
+                                (continuously_send_step + 1) % continuously_send.len();
+                        }
+
+                        for control in to_send {
                             if !scheduled.contains(&control) {
                                 tx_feedback.send(ModTwisterMessage::Send(control)).unwrap();
                             }
-                            continuously_send_step =
-                                (continuously_send_step + 1) % continuously_send.len();
                         }
 
                         last_pos = pos;
@@ -417,10 +508,15 @@ impl ModTwister {
 }
 
 impl ::controllers::Schedulable for ModTwister {
-    fn schedule(&mut self, pos: MidiTime, length: MidiTime) {
-        self.tx
-            .send(ModTwisterMessage::Schedule { pos, length })
-            .unwrap();
+    fn schedule(&mut self, range: ScheduleRange) {
+        if range.ticked {
+            self.tx
+                .send(ModTwisterMessage::Schedule {
+                    pos: range.tick_pos,
+                    length: MidiTime::tick(),
+                })
+                .unwrap();
+        }
     }
 }
 
