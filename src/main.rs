@@ -43,8 +43,18 @@ type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
 type OffsetLookup = HashMap<String, Arc<Mutex<Offset>>>;
 
 fn main() {
+    let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
+    let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
+    let inputs = midi_connection::get_inputs(&input);
+    let has_tr6s = inputs.iter().any(|x| x == "TR-6S");
+    let has_sp404 = inputs.iter().any(|x| x == "SP-404MKII");
+
     let mut chunks = Vec::new();
-    let mut myconfig = config::Config::default();
+    let myconfig = if has_sp404 && !has_tr6s {
+        config::Config::minimal()
+    } else {
+        config::Config::default()
+    };
     let use_internal_clock = Arc::new(AtomicBool::new(false));
 
     // TODO: enable config persistence when loaded with filepath
@@ -56,11 +66,9 @@ fn main() {
     //     println!("Wrote config to {}", CONFIG_FILEPATH);
     // }
 
-    let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
-    let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
 
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
-    println!("Midi Inputs: {:?}", midi_connection::get_inputs(&input));
+    println!("Midi Inputs: {:?}", &inputs);
 
     let clock_input_name = &myconfig.clock_input_port_name;
 
@@ -184,9 +192,10 @@ fn main() {
     for range in Scheduler::start(clock_input_name, use_internal_clock) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
-            if (range.tick_pos - MidiTime::tick()) % MidiTime::from_beats(32) == MidiTime::zero() {
+            if (range.tick_pos) % MidiTime::from_beats(32) == MidiTime::zero() {
                 for output in &mut resync_outputs {
                     output.send(&[250]).unwrap();
+                    output.send(&[242, 0, 0]).unwrap();
                 }
             }
 

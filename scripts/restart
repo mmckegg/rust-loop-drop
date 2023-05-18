@@ -1,0 +1,2 @@
+#!/bin/bash
+ssh pi@raspberrypi.local "sudo systemctl restart loop-drop"

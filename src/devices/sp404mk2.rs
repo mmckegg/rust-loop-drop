@@ -45,26 +45,26 @@ impl Sp404Mk2 {
         }
 
         let output = midi_connection::get_shared_output(port_name);
-        let mut note_down = HashSet::new();
+        // let mut note_down = HashSet::new();
 
         let input = midi_connection::get_input(port_name, move |_stamp, message| {
             // detect triggered from CUE mode on SP-404 (in cue mode, only note off events are sent)
             if message[0] >= 144 && message[0] < 154 {
-                let channel = message[0] - 144 + 1;
-                note_down.insert((channel, message[1]));
+                // let channel = message[0] - 144 + 1;
+                // note_down.insert((channel, message[1]));
             } else if message[0] >= 128 && message[0] < 144 {
                 let channel = message[0] - 128 + 1;
                 if channel <= 10 || channel == 16 {
-                    if note_down.contains(&(channel, message[1])) {
-                        note_down.remove(&(channel, message[1]));
-                    } else {
+                    // if note_down.contains(&(channel, message[1])) {
+                    //     note_down.remove(&(channel, message[1]));
+                    // } else {
                         pending_cue_input
                             .0
                             .store(channel, atomic::Ordering::Relaxed);
                         pending_cue_input
                             .1
                             .store(message[1], atomic::Ordering::Relaxed);
-                    }
+                    // }
                 }
             }
         });
