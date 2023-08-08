@@ -199,7 +199,7 @@ enum LaunchpadEvent {
     RedoButton(bool),
     HoldButton(bool),
     SuppressButton(bool),
-    ScaleButton(bool),
+    ViewModeButton(bool),
     ShiftButton(bool),
     SustainButton(bool),
 
@@ -363,7 +363,7 @@ impl LoopGridLaunchpad {
                             3 => LaunchpadEvent::RedoButton(pressed),
                             4 => LaunchpadEvent::HoldButton(pressed),
                             5 => LaunchpadEvent::SuppressButton(pressed),
-                            6 => LaunchpadEvent::ScaleButton(pressed),
+                            6 => LaunchpadEvent::ViewModeButton(pressed),
                             7 => LaunchpadEvent::ShiftButton(pressed),
                             _ => LaunchpadEvent::None,
                         })
@@ -552,8 +552,11 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_grid_buttons(&mut self) {
-        for id in 0..136 {
+        for id in 0..64 {
             self.refresh_grid_button(id);
+        }
+        for id in 0..8 {
+            self.refresh_bottom_button(id);
         }
     }
 
@@ -644,7 +647,7 @@ impl LoopGridLaunchpad {
                 self.refresh_selection_override();
                 self.refresh_should_flatten();
             }
-            LaunchpadEvent::ScaleButton(pressed) => {
+            LaunchpadEvent::ViewModeButton(pressed) => {
                 if pressed {
                     self.last_selecting_scale = Instant::now();
                     self.selecting_scale = !self.selecting_scale;
@@ -929,11 +932,7 @@ impl LoopGridLaunchpad {
         }
 
         self.refresh_active_notes();
-
-        // refresh grid lights
-        for id in 0..136 {
-            self.refresh_grid_button(id);
-        }
+        self.refresh_grid_buttons();
     }
 
     fn refresh_active_notes(&mut self) {
@@ -1597,15 +1596,9 @@ impl LoopGridLaunchpad {
         self.bottom_button_out.insert(base_id, new_value);
     }
 
-    fn refresh_grid_button(&mut self, id: u32) {
-        if id >= 128 {
-            return self.refresh_bottom_button(id - 128);
-        }
-
-        let base_id = id % 64;
-
+    fn refresh_grid_button(&mut self, base_id: u32) {
         let in_scale_view = (self.selecting_scale
-            && (self.selection.len() == 0 || !self.selection.contains(&id)))
+            && (self.selection.len() == 0 || !self.selection.contains(&base_id)))
             || (self.shift_held && self.selecting_scale_held)
             || self.selection.contains(&(base_id + 64));
 
