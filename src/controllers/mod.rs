@@ -24,6 +24,7 @@ pub enum Modulator {
     None,
     MidiModulator(MidiModulator),
     DuckDecay(u8),
+    DuckAmount(u8),
     Swing(u8),
     LfoAmount(usize, u8),
     LfoSkew(u8),

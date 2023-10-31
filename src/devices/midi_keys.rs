@@ -13,6 +13,7 @@ pub struct MidiKeys {
     output_values: HashMap<u32, (u8, u8)>,
     scale: Arc<Mutex<Scale>>,
     offset: Arc<Mutex<Offset>>,
+    midi_offset: i8,
     velocity_map: Option<Vec<u8>>,
     octave_offset: i32,
     offset_wrap: bool,
@@ -31,6 +32,7 @@ impl MidiKeys {
         velocity_map: Option<Vec<u8>>,
         offset_wrap: bool,
         monophonic: bool,
+        midi_offset: i8,
     ) -> Self {
         MidiKeys {
             midi_port,
@@ -44,18 +46,19 @@ impl MidiKeys {
             last_velocity: 127,
             trigger_stack: Vec::new(),
             monophonic,
+            midi_offset,
         }
     }
 
     fn send_on(&mut self, note_id: u8, velocity: u8) {
         self.midi_port
-            .send(&[144 + self.midi_channel - 1, note_id, velocity])
+            .send(&[144 + self.midi_channel - 1, (note_id as i8 + self.midi_offset).max(0).min(127) as u8, velocity])
             .unwrap();
     }
 
     fn send_off(&mut self, note_id: u8) {
         self.midi_port
-            .send(&[128 + self.midi_channel - 1, note_id, 0])
+            .send(&[128 + self.midi_channel - 1, (note_id as i8 + self.midi_offset).max(0).min(127) as u8, 0])
             .unwrap();
     }
 

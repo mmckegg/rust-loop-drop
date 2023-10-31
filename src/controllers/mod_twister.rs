@@ -33,6 +33,7 @@ impl ModTwister {
         modulators: Vec<Modulator>,
         params: Arc<Mutex<LoopGridParams>>,
         continuously_send: Vec<usize>,
+        continuously_send_rr: Vec<usize>,
         channel_map: HashMap<usize, u32>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
@@ -124,6 +125,7 @@ impl ModTwister {
                         );
                     }
                     Modulator::DuckDecay(default)
+                    | Modulator::DuckAmount(default)
                     | Modulator::Swing(default)
                     | Modulator::LfoAmount(_, default)
                     | Modulator::LfoSkew(default)
@@ -217,6 +219,11 @@ impl ModTwister {
                                         instance.send(value);
                                     }
                                     Modulator::DuckDecay(..) => {
+                                        let mut params = params.lock().unwrap();
+                                        let multiplier = midi_to_float(value) * 0.96;
+                                        params.duck_tick_multiplier = multiplier;
+                                    }
+                                    Modulator::DuckAmount(..) => {
                                         let mut params = params.lock().unwrap();
                                         let multiplier = midi_to_float(value) * 0.96;
                                         params.duck_tick_multiplier = multiplier;
@@ -477,15 +484,22 @@ impl ModTwister {
                             }
                         }
 
-                        // to avoid overwhelming the midi bus, only send one value per tick
                         if continuously_send.len() > 0 {
+                            for id in &continuously_send {
+                                let control = Control::Modulator(*id);
+                                to_send.insert(control);
+                            }
+                        }
+
+                        // to avoid overwhelming the midi bus, only send one rr (round robin) value per tick
+                        if continuously_send_rr.len() > 0 {
                             let control =
-                                Control::Modulator(continuously_send[continuously_send_step]);
+                                Control::Modulator(continuously_send_rr[continuously_send_step]);
 
                             to_send.insert(control);
 
                             continuously_send_step =
-                                (continuously_send_step + 1) % continuously_send.len();
+                                (continuously_send_step + 1) % continuously_send_rr.len();
                         }
 
                         for control in to_send {

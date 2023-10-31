@@ -1,7 +1,4 @@
 use std::sync::{Arc, Mutex};
-
-use midi_time::MidiTime;
-
 use crate::{
     loop_grid_launchpad::LoopGridParams, scheduler::ScheduleRange,
     trigger_envelope::TriggerEnvelope,
@@ -34,16 +31,18 @@ impl DuckOutput {
 impl ::controllers::Schedulable for DuckOutput {
     fn schedule(&mut self, range: ScheduleRange) {
         if range.ticked {
+            let reduction_amount;
             {
                 let params = self.params.lock().unwrap();
                 self.trigger_envelope.tick_multiplier = params.duck_tick_multiplier;
                 self.trigger_envelope.tick(params.duck_triggered);
+                reduction_amount = params.duck_reduction.clone();
             }
 
             for modulator in &mut self.modulators {
                 if let ::controllers::Modulator::MidiModulator(instance) = modulator {
                     let f_value = self.trigger_envelope.value().powf(0.5);
-                    let value = float_to_midi(f_value);
+                    let value = float_to_midi(f_value * reduction_amount);
                     instance.send(value)
                 }
             }

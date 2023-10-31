@@ -81,6 +81,7 @@ fn main() {
         cueing: false,
         duck_triggered: false,
         duck_tick_multiplier: 0.1,
+        duck_reduction: 0.5,
         channel_triggered: HashSet::new(),
         reset_automation: false,
         reset_beat: 0,
@@ -139,12 +140,14 @@ fn main() {
                 port_name,
                 modulators,
                 continuously_send,
+                continuously_send_rr,
                 channel_map,
             } => Box::new(controllers::ModTwister::new(
                 &port_name,
                 resolve_modulators(&mut output_ports, &modulators),
                 Arc::clone(&params),
                 continuously_send,
+                continuously_send_rr,
                 channel_map,
             )),
             config::ControllerConfig::Umi3 { port_name } => Box::new(controllers::Umi3::new(
@@ -247,6 +250,7 @@ fn resolve_modulators(
                 rx_port.clone(),
             )),
             &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
+            &config::ModulatorConfig::DuckAmount(default) => Modulator::DuckAmount(default),
             &config::ModulatorConfig::Swing(default) => Modulator::Swing(default),
             &config::ModulatorConfig::LfoAmount(modulator_index, default) => {
                 Modulator::LfoAmount(modulator_index, default)
@@ -311,6 +315,7 @@ fn make_device(
             output,
             offset_id,
             note_offset,
+            midi_offset,
             octave_offset,
             velocity_map,
             offset_wrap,
@@ -329,6 +334,7 @@ fn make_device(
                 velocity_map,
                 offset_wrap,
                 monophonic,
+                midi_offset
             ))
         }
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(

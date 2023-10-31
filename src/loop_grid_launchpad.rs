@@ -71,6 +71,7 @@ pub struct LoopGridParams {
     pub cueing: bool,
     pub duck_triggered: bool,
     pub duck_tick_multiplier: f64,
+    pub duck_reduction: f64,
     pub channel_triggered: HashSet<u32>,
     pub reset_automation: bool,
     pub reset_beat: u32,

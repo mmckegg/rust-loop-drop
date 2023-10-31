@@ -192,6 +192,7 @@ impl Config {
                         offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -3,
+                        midi_offset: 10,
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -209,6 +210,7 @@ impl Config {
                         monophonic: true,
                         note_offset: -4,
                         octave_offset: -3,
+                        midi_offset: 0,
                     },
                     coords: Coords::new(2, 4),
                     shape: Shape::new(6, 4),
@@ -216,7 +218,7 @@ impl Config {
                     channel: Some(5),
                     repeat_mode: RepeatMode::Global,
                 },
-                // NYMPHES
+                // Lemondrop
                 ChunkConfig {
                     coords: Coords::new(0 + 8, 0),
                     shape: Shape::new(3, 8),
@@ -231,6 +233,7 @@ impl Config {
                         offset_id: String::from("ext"),
                         note_offset: -4,
                         octave_offset: -1,
+                        midi_offset: 0,
                     }]),
                 },
             ],
@@ -244,7 +247,8 @@ impl Config {
                 },
                 ControllerConfig::ModTwister {
                     port_name: String::from("Midi Fighter Twister"),
-                    continuously_send: vec![0,1,2, 4,5,6, 9,10, 12,13,14,15],
+                    continuously_send: vec![0],
+                    continuously_send_rr: vec![1,2, 4,5,6, 9,10, 12,13,14,15],
                     channel_map,
                     modulators: vec![
                         // row 1
@@ -315,6 +319,7 @@ impl Config {
                         // MISC
                         // row 1
                         ModulatorConfig::Swing(0), // global shuffle
+                        ModulatorConfig::DuckAmount(64), // global shuffle
                     ],
                 },
                 ControllerConfig::DuckOutput {
@@ -438,6 +443,7 @@ impl Config {
                         offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -1,
+                        midi_offset: 11 // the tuning on my B2 is a bit out, and the freq knob doesn't go low enough
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -455,6 +461,7 @@ impl Config {
                         monophonic: false,
                         note_offset: -4,
                         octave_offset: -2,
+                        midi_offset: 0
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 8),
@@ -477,6 +484,7 @@ impl Config {
                         offset_id: String::from("ext"),
                         note_offset: -4,
                         octave_offset: -1,
+                        midi_offset: 0
                     }]),
                 },
             ],
@@ -546,6 +554,7 @@ pub enum DeviceConfig {
         offset_id: String,
         offset_wrap: bool,
         note_offset: i32,
+        midi_offset: i8,
         velocity_map: Option<Vec<u8>>,
         octave_offset: i32,
         monophonic: bool,
@@ -599,6 +608,7 @@ pub enum ControllerConfig {
     ModTwister {
         port_name: String,
         continuously_send: Vec<usize>,
+        continuously_send_rr: Vec<usize>,
         modulators: Vec<ModulatorConfig>,
         channel_map: HashMap<usize, u32>,
     },
@@ -634,6 +644,7 @@ pub enum ModulatorConfig {
     LfoOffset(u8),
     LfoSkew(u8),
     DuckDecay(u8),
+    DuckAmount(u8),
     Swing(u8),
 }
 
