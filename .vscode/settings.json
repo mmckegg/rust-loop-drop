@@ -31,6 +31,6 @@
         "zoia"
     ],
     "editor.formatOnPaste": true,
-    "editor.defaultFormatter": "matklad.rust-analyzer",
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
     "editor.formatOnSave": true
 }

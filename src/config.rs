@@ -130,7 +130,7 @@ impl Config {
                     device: DeviceConfig::multi(vec![
                         DeviceConfig::MidiTriggers {
                             output: MidiPortConfig::new(sp404_port_name, 12),
-                            velocity_map: Some(vec![40, 80, 80, 80, 80, 127]),
+                            velocity_map: Some(vec![40, 40, 40, 80, 80, 80, 80, 127]),
                             trigger_ids: vec![36, 38, 43, 39, 42, 46],
                             sidechain_output: Some(SidechainOutput { id: 0 }),
                         },
@@ -209,7 +209,7 @@ impl Config {
                         offset_id: String::from("keys"),
                         monophonic: true,
                         note_offset: -4,
-                        octave_offset: -3,
+                        octave_offset: -2,
                         midi_offset: 0,
                     },
                     coords: Coords::new(2, 4),
@@ -248,7 +248,7 @@ impl Config {
                 ControllerConfig::ModTwister {
                     port_name: String::from("Midi Fighter Twister"),
                     continuously_send: vec![0],
-                    continuously_send_rr: vec![1,2, 4,5,6, 9,10, 12,13,14,15],
+                    continuously_send_rr: vec![1, 2, 4, 5, 6, 9, 10, 12, 13, 14, 15],
                     channel_map,
                     modulators: vec![
                         // row 1
@@ -256,7 +256,6 @@ impl Config {
                         ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(6, 64, 0)), // main fx
                         ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(7, 64, 0)), // main fx mod
                         ModulatorConfig::DuckDecay(10), // duck decay
-
                         // row 2
                         ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(1, 64, 127)), // dfam mod
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 32)), // bass mod
@@ -318,17 +317,23 @@ impl Config {
                         ModulatorConfig::LfoAmount(15, 64),
                         // MISC
                         // row 1
-                        ModulatorConfig::Swing(0), // global shuffle
+                        ModulatorConfig::Swing(0),       // global shuffle
                         ModulatorConfig::DuckAmount(64), // global shuffle
                     ],
                 },
                 ControllerConfig::DuckOutput {
-                    modulators: vec![ModulatorConfig::new(rig_port_name, 2, Modulator::InvertMaxCc(5, 100, 0))]
+                    modulators: vec![ModulatorConfig::new(
+                        rig_port_name,
+                        2,
+                        Modulator::InvertMaxCc(5, 100, 0),
+                    )],
                 },
-                ControllerConfig::ClockPulse { output: MidiPortConfig::new(rig_port_name, 12), divider: 12 }
-                // ControllerConfig::LaunchpadTempo {
-                //     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
-                // },
+                ControllerConfig::ClockPulse {
+                    output: MidiPortConfig::new(rig_port_name, 12),
+                    divider: 12,
+                }, // ControllerConfig::LaunchpadTempo {
+                   //     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
+                   // },
             ],
         }
     }
@@ -432,7 +437,6 @@ impl Config {
                     channel: Some(1),
                     repeat_mode: RepeatMode::Global,
                 },
- 
                 // WESTON B2
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
@@ -443,7 +447,7 @@ impl Config {
                         offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -1,
-                        midi_offset: 11 // the tuning on my B2 is a bit out, and the freq knob doesn't go low enough
+                        midi_offset: 11, // the tuning on my B2 is a bit out, and the freq knob doesn't go low enough
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -461,7 +465,7 @@ impl Config {
                         monophonic: false,
                         note_offset: -4,
                         octave_offset: -2,
-                        midi_offset: 0
+                        midi_offset: 0,
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 8),
@@ -484,7 +488,7 @@ impl Config {
                         offset_id: String::from("ext"),
                         note_offset: -4,
                         octave_offset: -1,
-                        midi_offset: 0
+                        midi_offset: 0,
                     }]),
                 },
             ],

@@ -62,11 +62,11 @@ impl Triggerable for MidiTriggers {
             OutputValue::On(velocity) => {
                 let channel = self.midi_channel;
                 let note_id = self.trigger_ids[id as usize % self.trigger_ids.len()];
-                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                let mapped_velocity = ::devices::map_velocity(&self.velocity_map, velocity);
 
                 // send note
                 self.midi_port
-                    .send(&[144 - 1 + channel, note_id, velocity])
+                    .send(&[144 - 1 + channel, note_id, mapped_velocity])
                     .unwrap();
 
                 // send sync if kick
@@ -77,7 +77,8 @@ impl Triggerable for MidiTriggers {
                     }
                 }
 
-                self.output_values.insert(id, (channel, note_id, velocity));
+                self.output_values
+                    .insert(id, (channel, note_id, mapped_velocity));
             }
         }
     }
