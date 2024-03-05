@@ -260,12 +260,12 @@ impl Config {
                         ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(1, 64, 127)), // dfam mod
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 32)), // bass mod
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 64)), // synth mod
-                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(32, 64)), // lemondrop mod x
+                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(74, 64)), // lemondrop mod x
                         // row 3
                         ModulatorConfig::new(sp404_port_name, 4, Modulator::Cc(16, 127)), // sp404 filter
                         ModulatorConfig::new(rig_port_name, 14, Modulator::PitchBend(0.0)), // bass pitch
                         ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(2, 64, 0)), // plaits decay
-                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(33, 64)), // lemondrop mod y
+                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(78, 64)), // lemondrop mod y
                         // row 4
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(9, 0)), // mod a
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(10, 0)), // mod b
