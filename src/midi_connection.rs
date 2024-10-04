@@ -34,8 +34,8 @@ impl OutputState {
     fn resend(&mut self) {
         if let Some(ref mut port) = self.port {
             for ((msg, id), value) in self.current_values.clone() {
-                // resend 0 for CCs, but not for anything else
-                if (msg >= 176 && msg < 192) || value > 0 {
+                // resend cc
+                if msg >= 176 && msg < 192 {
                     port.send(&[msg, id, value]).unwrap();
                 }
             }

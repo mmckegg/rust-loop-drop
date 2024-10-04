@@ -29,7 +29,7 @@ impl Config {
     pub fn default() -> Self {
         let sp404_port_name = "TR-6S"; // drums
         let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
-        let rig_port_name = launchpad_output_name;
+        let rig_port_name = "Univer Inter";
         let launchpad_clock_out = "Launchpad Pro MK3";
 
         let mut channel_map = HashMap::new();
@@ -119,101 +119,82 @@ impl Config {
                         velocity_map: Some(vec![10, 20, 30, 40, 50, 60, 70, 70, 70, 90, 100]),
                         sidechain_output: None,
                     },
-                    coords: Coords::new(1, 0),
+                    coords: Coords::new(2, 0),
                     shape: Shape::new(1, 8),
-                    color: 9, // orange
+                    color: 15, // yellow
                     channel: Some(1),
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
                 // TR-6S
                 ChunkConfig {
-                    device: DeviceConfig::multi(vec![
-                        DeviceConfig::MidiTriggers {
-                            output: MidiPortConfig::new(sp404_port_name, 12),
-                            velocity_map: Some(vec![40, 40, 40, 80, 80, 80, 80, 127]),
-                            trigger_ids: vec![36, 38, 43, 39, 42, 46],
-                            sidechain_output: Some(SidechainOutput { id: 0 }),
-                        },
-                        DeviceConfig::CcTriggers {
-                            output: MidiPortConfig::new(rig_port_name, 2),
-                            velocity_map: None,
-                            triggers: vec![
-                                MidiTrigger::ChokeNote(2, 0, 127),
-                                MidiTrigger::None,
-                                MidiTrigger::None,
-                                MidiTrigger::None,
-                                MidiTrigger::None,
-                                MidiTrigger::None,
-                            ],
-                        },
-                    ]),
+                    device: DeviceConfig::multi(vec![DeviceConfig::MidiTriggers {
+                        output: MidiPortConfig::new(sp404_port_name, 12),
+                        velocity_map: Some(vec![40, 40, 40, 80, 80, 80, 80, 127]),
+                        trigger_ids: vec![36, 38, 43, 39, 42, 46],
+                        sidechain_output: Some(SidechainOutput { id: 0 }),
+                    }]),
                     coords: Coords::new(0, 0),
-                    shape: Shape::new(1, 6),
+                    shape: Shape::new(2, 3),
                     color: 8, // warm white
                     channel: Some(0),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // dfam
+                // zaps
                 ChunkConfig {
-                    device: DeviceConfig::multi(vec![
-                        DeviceConfig::CcTriggers {
-                            velocity_map: Some(vec![
-                                20, 30, 40, 40, 40, 40, 40, 40, 40, 40, 50, 50, 50, 60, 70, 80, 90,
-                                127,
-                            ]),
-                            output: MidiPortConfig::new(rig_port_name, 13),
-                            triggers: vec![
-                                MidiTrigger::NoteVelocity(13, 0),
-                                MidiTrigger::Note(13, 127, 127),
-                            ],
-                        },
-                        DeviceConfig::CcTriggers {
-                            output: MidiPortConfig::new(rig_port_name, 2),
-                            velocity_map: None,
-                            triggers: vec![
-                                MidiTrigger::ChokeNote(2, 1, 127),
-                                MidiTrigger::ChokeNote(2, 2, 127),
-                            ],
-                        },
-                    ]),
-                    coords: Coords::new(0, 6),
-                    shape: Shape::new(1, 2),
-                    color: 15, // yellow
+                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
+                        velocity_map: Some(vec![10, 10, 10, 127]),
+                        output: MidiPortConfig::new(rig_port_name, 13),
+                        triggers: vec![
+                            MidiTrigger::NoteVelocity(13, 60),
+                            MidiTrigger::NoteVelocity(13, 61),
+                            MidiTrigger::NoteVelocity(13, 62),
+                            MidiTrigger::NoteVelocity(13, 63),
+                            MidiTrigger::NoteVelocity(13, 64),
+                            MidiTrigger::NoteVelocity(13, 65),
+                            MidiTrigger::NoteVelocity(13, 66),
+                            MidiTrigger::NoteVelocity(13, 67),
+                            MidiTrigger::NoteVelocity(13, 68),
+                            MidiTrigger::NoteVelocity(13, 69),
+                        ],
+                    }]),
+                    coords: Coords::new(0, 3),
+                    shape: Shape::new(2, 5),
+                    color: 9, // orange
                     channel: Some(2),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // WESTON B2
-                ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 14),
-                        velocity_map: None,
-                        offset_wrap: false,
-                        monophonic: true,
-                        offset_id: String::from("bass"),
-                        note_offset: -4,
-                        octave_offset: -3,
-                        midi_offset: 10,
-                    },
-                    coords: Coords::new(2, 0),
-                    shape: Shape::new(6, 4),
-                    color: 43, // blue
-                    channel: Some(4),
                     repeat_mode: RepeatMode::Global,
                 },
-                // PLAITS
+                // PLAITS BASS
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
                         output: MidiPortConfig::new(rig_port_name, 15),
                         velocity_map: None,
                         offset_wrap: false,
-                        offset_id: String::from("keys"),
                         monophonic: true,
+                        offset_id: String::from("bass"),
                         note_offset: -4,
-                        octave_offset: -2,
+                        octave_offset: -1,
                         midi_offset: 0,
                     },
-                    coords: Coords::new(2, 4),
-                    shape: Shape::new(6, 4),
+                    coords: Coords::new(3, 0),
+                    shape: Shape::new(5, 4),
+                    color: 43, // blue
+                    channel: Some(4),
+                    repeat_mode: RepeatMode::Global,
+                },
+                // Telepathy
+                ChunkConfig {
+                    device: DeviceConfig::MidiKeys {
+                        output: MidiPortConfig::new(rig_port_name, 14),
+                        velocity_map: None,
+                        offset_wrap: false,
+                        offset_id: String::from("keys"),
+                        monophonic: false,
+                        note_offset: -4,
+                        octave_offset: -3,
+                        midi_offset: 0,
+                    },
+                    coords: Coords::new(3, 4),
+                    shape: Shape::new(5, 4),
                     color: 59, // pink
                     channel: Some(5),
                     repeat_mode: RepeatMode::Global,
@@ -247,30 +228,30 @@ impl Config {
                 },
                 ControllerConfig::ModTwister {
                     port_name: String::from("Midi Fighter Twister"),
-                    continuously_send: vec![0],
-                    continuously_send_rr: vec![1, 2, 4, 5, 6, 9, 10, 12, 13, 14, 15],
+                    continuously_send: vec![],
+                    continuously_send_rr: vec![0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13],
                     channel_map,
                     modulators: vec![
                         // row 1
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(8, 64)), // main filter
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(6, 64, 0)), // main fx
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(7, 64, 0)), // main fx mod
-                        ModulatorConfig::DuckDecay(10), // duck decay
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(6, 0)),  // main fx
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(7, 0)),  // main fx mod
+                        ModulatorConfig::Swing(0), // global shuffle
                         // row 2
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(1, 64, 127)), // dfam mod
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 32)), // bass mod
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 64)), // synth mod
-                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(74, 64)), // lemondrop mod x
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(1, 127)), // dfam mod
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 32)),  // bass mod
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 64)),  // synth mod
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(2, 64)), // pianophonic filter
                         // row 3
                         ModulatorConfig::new(sp404_port_name, 4, Modulator::Cc(16, 127)), // sp404 filter
-                        ModulatorConfig::new(rig_port_name, 14, Modulator::PitchBend(0.0)), // bass pitch
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::MaxCc(2, 64, 0)), // plaits decay
-                        ModulatorConfig::new(rig_port_name, 7, Modulator::Cc(78, 64)), // lemondrop mod y
+                        ModulatorConfig::new(rig_port_name, 15, Modulator::PitchBend(0.0)), // bass pitch
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::PitchBend(0.0)), // synth pitch
+                        ModulatorConfig::DuckDecay(10), // duck decay
                         // row 4
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(9, 0)), // mod a
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(10, 0)), // mod b
                         ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(11, 0)), // mod c
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(12, 0)), // mod d
+                        ModulatorConfig::DuckAmount(64),                             // duck amount
                         ////////////////////////
                         // DRUMS
                         // row 1
@@ -281,7 +262,7 @@ impl Config {
                         // row 2
                         ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(96, 0)), // bd ctrl
                         ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(97, 0)), // sd ctrl
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(102, 0)), // lt ctrl
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(46, 64)), // lt pitch
                         ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(106, 0)), // hc ctrl
                         // row 3
                         ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(20, 64)), // bd pitch
@@ -315,17 +296,13 @@ impl Config {
                         ModulatorConfig::LfoAmount(13, 64),
                         ModulatorConfig::LfoAmount(14, 64),
                         ModulatorConfig::LfoAmount(15, 64),
-                        // MISC
-                        // row 1
-                        ModulatorConfig::Swing(0),       // global shuffle
-                        ModulatorConfig::DuckAmount(64), // global shuffle
                     ],
                 },
                 ControllerConfig::DuckOutput {
                     modulators: vec![ModulatorConfig::new(
                         rig_port_name,
                         2,
-                        Modulator::InvertMaxCc(5, 100, 0),
+                        Modulator::InvertMaxCc(5, 127, 0),
                     )],
                 },
                 ControllerConfig::ClockPulse {
@@ -447,7 +424,7 @@ impl Config {
                         offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -1,
-                        midi_offset: 11, // the tuning on my B2 is a bit out, and the freq knob doesn't go low enough
+                        midi_offset: 0,
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
@@ -658,6 +635,7 @@ pub enum Modulator {
     InvertCc(u8, u8),
     InvertMaxCc(u8, u8, u8),
     TriggerWhen(TriggerCondition, (u8, u8)),
+    // id, max, default
     MaxCc(u8, u8, u8),
     PolarCcSwitch {
         cc_low: Option<u8>,

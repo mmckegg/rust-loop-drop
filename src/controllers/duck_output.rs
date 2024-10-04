@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex};
 use crate::{
     loop_grid_launchpad::LoopGridParams, scheduler::ScheduleRange,
     trigger_envelope::TriggerEnvelope,
 };
+use std::sync::{Arc, Mutex};
 
 use super::float_to_midi;
 
@@ -41,7 +41,7 @@ impl ::controllers::Schedulable for DuckOutput {
 
             for modulator in &mut self.modulators {
                 if let ::controllers::Modulator::MidiModulator(instance) = modulator {
-                    let f_value = self.trigger_envelope.value().powf(0.5);
+                    let f_value = self.trigger_envelope.value(); //.powf(0.5);
                     let value = float_to_midi(f_value * reduction_amount);
                     instance.send(value)
                 }

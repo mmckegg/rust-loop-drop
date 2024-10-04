@@ -225,8 +225,8 @@ impl ModTwister {
                                     }
                                     Modulator::DuckAmount(..) => {
                                         let mut params = params.lock().unwrap();
-                                        let multiplier = midi_to_float(value) * 0.96;
-                                        params.duck_tick_multiplier = multiplier;
+                                        let multiplier = midi_to_float(value);
+                                        params.duck_reduction = multiplier;
                                     }
                                     Modulator::Swing(..) => {
                                         let mut params = params.lock().unwrap();

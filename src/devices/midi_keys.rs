@@ -52,13 +52,21 @@ impl MidiKeys {
 
     fn send_on(&mut self, note_id: u8, velocity: u8) {
         self.midi_port
-            .send(&[144 + self.midi_channel - 1, (note_id as i8 + self.midi_offset).max(0).min(127) as u8, velocity])
+            .send(&[
+                144 + self.midi_channel - 1,
+                (note_id as i8 + self.midi_offset).max(0).min(127) as u8,
+                velocity,
+            ])
             .unwrap();
     }
 
     fn send_off(&mut self, note_id: u8) {
         self.midi_port
-            .send(&[128 + self.midi_channel - 1, (note_id as i8 + self.midi_offset).max(0).min(127) as u8, 0])
+            .send(&[
+                128 + self.midi_channel - 1,
+                (note_id as i8 + self.midi_offset).max(0).min(127) as u8,
+                0,
+            ])
             .unwrap();
     }
 
@@ -109,7 +117,6 @@ impl MidiKeys {
 
         // find the difference between the current notes and the new ones
         // we do this as two different lists so that we can update the still held notes and then
-        // remove the off notes last so that legato works nicely
         let mut off_notes = HashSet::new();
         let mut changed_notes = HashMap::new();
 
@@ -131,12 +138,20 @@ impl MidiKeys {
             }
         }
 
-        for (note_id, velocity) in changed_notes {
-            self.send_on(note_id, velocity);
-        }
-
-        for note_id in off_notes {
-            self.send_off(note_id);
+        if !self.monophonic {
+            for note_id in off_notes {
+                self.send_off(note_id);
+            }
+            for (note_id, velocity) in changed_notes {
+                self.send_on(note_id, velocity);
+            }
+        } else {
+            for (note_id, velocity) in changed_notes {
+                self.send_on(note_id, velocity);
+            }
+            for note_id in off_notes {
+                self.send_off(note_id);
+            }
         }
 
         self.output_values = next_output_values;

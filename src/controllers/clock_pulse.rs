@@ -28,7 +28,7 @@ impl ClockPulse {
 impl ::controllers::Schedulable for ClockPulse {
     fn schedule(&mut self, range: ScheduleRange) {
         if range.ticked {
-            let tick = (range.tick_pos.ticks() - 1) % self.divider;
+            let tick = (range.tick_pos.ticks()) % self.divider;
             if tick == 0 {
                 self.midi_output
                     .send(&[144 - 1 + self.channel, 64, 127])
