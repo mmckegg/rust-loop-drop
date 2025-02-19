@@ -96,7 +96,8 @@ impl MidiKeys {
     }
 
     fn refresh_scale(&mut self) {
-        let mut note_ids = HashSet::new();
+        let mut off_notes = HashSet::new();
+        let mut on_notes = HashMap::new();
         let mut next_output_values = HashMap::new();
 
         for (id, (note_id, velocity)) in &self.output_values {
@@ -110,49 +111,56 @@ impl MidiKeys {
             next_output_values.insert(*id, (new_note_id, *velocity));
 
             if velocity > &0 && note_id != &new_note_id {
-                note_ids.insert(*note_id);
-                note_ids.insert(new_note_id);
+                off_notes.insert(*note_id);
+                on_notes.insert(new_note_id, *velocity);
             }
         }
 
-        // find the difference between the current notes and the new ones
-        // we do this as two different lists so that we can update the still held notes and then
-        let mut off_notes = HashSet::new();
-        let mut changed_notes = HashMap::new();
+        // // find the difference between the current notes and the new ones
+        // // we do this as two different lists so that we can update the still held notes and then
+        // let mut off_notes = HashSet::new();
+        // let mut changed_notes = HashMap::new();
 
-        for note_id in note_ids {
-            let old_value = self
-                .output_values
-                .values()
-                .find(|(id, old_velocity)| id == &note_id && old_velocity > &0);
-            let new_value = next_output_values
-                .values()
-                .find(|(id, new_velocity)| id == &note_id && new_velocity > &0);
+        // for note_id in note_ids {
+        //     let old_value = self
+        //         .output_values
+        //         .values()
+        //         .find(|(id, old_velocity)| id == &note_id && old_velocity > &0);
+        //     let new_value = next_output_values
+        //         .values()
+        //         .find(|(id, new_velocity)| id == &note_id && new_velocity > &0);
 
-            if old_value != new_value {
-                if let Some(new_value) = new_value {
-                    changed_notes.insert(note_id, new_value.1);
-                } else {
-                    off_notes.insert(note_id);
-                }
-            }
+        //     if old_value != new_value {
+        //         if let Some(new_value) = new_value {
+        //             changed_notes.insert(note_id, new_value.1);
+        //         } else {
+        //             off_notes.insert(note_id);
+        //         }
+        //     }
+        // }
+
+        for note_id in off_notes {
+            self.send_off(note_id);
+        }
+        for (note_id, velocity) in on_notes {
+            self.send_on(note_id, velocity);
         }
 
-        if !self.monophonic {
-            for note_id in off_notes {
-                self.send_off(note_id);
-            }
-            for (note_id, velocity) in changed_notes {
-                self.send_on(note_id, velocity);
-            }
-        } else {
-            for (note_id, velocity) in changed_notes {
-                self.send_on(note_id, velocity);
-            }
-            for note_id in off_notes {
-                self.send_off(note_id);
-            }
-        }
+        // if !self.monophonic {
+        //     for note_id in off_notes {
+        //         self.send_off(note_id);
+        //     }
+        //     for (note_id, velocity) in changed_notes {
+        //         self.send_on(note_id, velocity);
+        //     }
+        // } else {
+        //     for note_id in off_notes {
+        //         self.send_off(note_id);
+        //     }
+        //     for (note_id, velocity) in changed_notes {
+        //         self.send_on(note_id, velocity);
+        //     }
+        // }
 
         self.output_values = next_output_values;
     }

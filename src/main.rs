@@ -47,10 +47,9 @@ fn main() {
     let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
     let inputs = midi_connection::get_inputs(&input);
     let has_tr6s = inputs.iter().any(|x| x == "TR-6S");
-    let has_sp404 = inputs.iter().any(|x| x == "SP-404MKII");
 
     let mut chunks = Vec::new();
-    let myconfig = if has_sp404 && !has_tr6s {
+    let myconfig = if !has_tr6s {
         config::Config::minimal()
     } else {
         config::Config::default()
@@ -65,7 +64,6 @@ fn main() {
     //     myconfig.write(CONFIG_FILEPATH).unwrap();
     //     println!("Wrote config to {}", CONFIG_FILEPATH);
     // }
-
 
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", &inputs);
@@ -334,7 +332,7 @@ fn make_device(
                 velocity_map,
                 offset_wrap,
                 monophonic,
-                midi_offset
+                midi_offset,
             ))
         }
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
@@ -390,7 +388,6 @@ fn make_device(
         config::DeviceConfig::Sp404Mk2 {
             port_name,
             velocity_map,
-            default_mapping,
             sidechain_output,
         } => {
             let sidechain_output = if let Some(sidechain_output) = sidechain_output {
@@ -403,7 +400,6 @@ fn make_device(
             };
             Box::new(devices::Sp404Mk2::new(
                 &port_name,
-                default_mapping,
                 velocity_map,
                 sidechain_output,
             ))

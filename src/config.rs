@@ -115,7 +115,6 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::Sp404Mk2 {
                         port_name: String::from(sp404_port_name),
-                        default_mapping: vec![],
                         velocity_map: Some(vec![10, 20, 30, 40, 50, 60, 70, 70, 70, 90, 100]),
                         sidechain_output: None,
                     },
@@ -314,12 +313,11 @@ impl Config {
             ],
         }
     }
-
     pub fn minimal() -> Self {
-        let sp404_port_name = "SP-404MKII"; // drums
+        let polyend_synth_port = "Synth";
         let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
+        let sp404_port_name = launchpad_output_name;
         let rig_port_name = launchpad_output_name;
-        let launchpad_clock_out = "Launchpad Pro MK3";
 
         let mut channel_map = HashMap::new();
         channel_map.insert(4, 2);
@@ -345,7 +343,7 @@ impl Config {
                     device: DeviceConfig::offset("bass"),
                     coords: Coords::new(4 + 8, 0),
                     shape: Shape::new(1, 8),
-                    color: 62,
+                    color: 43, // blue
                     channel: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
@@ -354,7 +352,7 @@ impl Config {
                     device: DeviceConfig::offset("keys"),
                     coords: Coords::new(5 + 8, 0),
                     shape: Shape::new(1, 8),
-                    color: 94,
+                    color: 55, // pink
                     channel: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
@@ -404,20 +402,55 @@ impl Config {
                 ChunkConfig {
                     device: DeviceConfig::Sp404Mk2 {
                         port_name: String::from(sp404_port_name),
-                        default_mapping: vec![],
                         velocity_map: Some(vec![10, 20, 30, 40, 50, 60, 70, 70, 70, 90, 100]),
                         sidechain_output: None,
                     },
-                    coords: Coords::new(0, 0),
-                    shape: Shape::new(2, 8),
+                    coords: Coords::new(0, 4),
+                    shape: Shape::new(2, 4),
                     color: 9, // orange
                     channel: Some(1),
+                    repeat_mode: RepeatMode::OnlyQuant,
+                },
+                // CRUST
+                ChunkConfig {
+                    device: DeviceConfig::CcTriggers {
+                        velocity_map: Some(vec![20, 20, 20, 40, 40, 40, 40, 127]),
+                        output: MidiPortConfig::new(rig_port_name, 12),
+                        triggers: vec![
+                            MidiTrigger::NoteVelocity(12, 30),
+                            MidiTrigger::NoteVelocity(12, 42),
+                            MidiTrigger::NoteVelocity(12, 54),
+                            MidiTrigger::NoteVelocity(12, 66),
+                        ],
+                    },
+                    coords: Coords::new(0, 0),
+                    shape: Shape::new(1, 4),
+                    color: 8, // warm white
+                    channel: Some(0),
                     repeat_mode: RepeatMode::Global,
                 },
-                // WESTON B2
+                // BIA
+                ChunkConfig {
+                    device: DeviceConfig::CcTriggers {
+                        velocity_map: Some(vec![20, 20, 20, 40, 40, 40, 40, 127]),
+                        output: MidiPortConfig::new(rig_port_name, 13),
+                        triggers: vec![
+                            MidiTrigger::NoteVelocity(13, 30),
+                            MidiTrigger::NoteVelocity(13, 42),
+                            MidiTrigger::NoteVelocity(13, 54),
+                            MidiTrigger::NoteVelocity(13, 66),
+                        ],
+                    },
+                    coords: Coords::new(1, 0),
+                    shape: Shape::new(1, 4),
+                    color: 15, // yellow
+                    channel: Some(2),
+                    repeat_mode: RepeatMode::Global,
+                },
+                // SYNTH 1
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 14),
+                        output: MidiPortConfig::new(polyend_synth_port, 1),
                         velocity_map: None,
                         offset_wrap: false,
                         monophonic: true,
@@ -428,40 +461,40 @@ impl Config {
                     },
                     coords: Coords::new(2, 0),
                     shape: Shape::new(6, 4),
-                    color: 15, // blue
+                    color: 43, // blue
                     channel: Some(4),
                     repeat_mode: RepeatMode::Global,
                 },
-                // NYMPHES
+                // SYNTH 2
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 7),
+                        output: MidiPortConfig::new(polyend_synth_port, 2),
                         velocity_map: None,
                         offset_wrap: false,
                         offset_id: String::from("keys"),
                         monophonic: false,
                         note_offset: -4,
-                        octave_offset: -2,
+                        octave_offset: -1,
                         midi_offset: 0,
                     },
-                    coords: Coords::new(2, 0),
-                    shape: Shape::new(6, 8),
-                    color: 51, // pink
+                    coords: Coords::new(2, 4),
+                    shape: Shape::new(6, 4),
+                    color: 59, // pink
                     channel: Some(5),
                     repeat_mode: RepeatMode::Global,
                 },
-                // 404 chromatic
+                // SYNTH 3
                 ChunkConfig {
                     coords: Coords::new(0 + 8, 0),
                     shape: Shape::new(3, 8),
-                    color: 11,
+                    color: 51,
                     channel: Some(6),
                     repeat_mode: RepeatMode::Global,
                     device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
                         offset_wrap: true,
-                        output: MidiPortConfig::new(sp404_port_name, 16),
+                        output: MidiPortConfig::new(polyend_synth_port, 3),
                         velocity_map: None,
-                        monophonic: true,
+                        monophonic: false,
                         offset_id: String::from("ext"),
                         note_offset: -4,
                         octave_offset: -1,
@@ -469,17 +502,89 @@ impl Config {
                     }]),
                 },
             ],
-            clock_input_port_name: String::from(sp404_port_name),
-            clock_output_port_names: vec![String::from(launchpad_clock_out)],
-            resync_port_names: vec![String::from(launchpad_output_name)],
+            clock_input_port_name: String::from("Launchpad Pro MK3"),
+            clock_output_port_names: vec![String::from(polyend_synth_port)],
+            resync_port_names: vec![String::from(polyend_synth_port)],
             keep_alive_port_names: vec![],
             controllers: vec![
                 ControllerConfig::Umi3 {
                     port_name: String::from("Logidy UMI3"),
                 },
-                // ControllerConfig::LaunchpadTempo {
-                //     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
-                // },
+                ControllerConfig::ModTwister {
+                    port_name: String::from("Midi Fighter Twister"),
+                    continuously_send: vec![],
+                    continuously_send_rr: vec![0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13],
+                    channel_map,
+                    modulators: vec![
+                        // row 1
+                        ModulatorConfig::new(sp404_port_name, 3, Modulator::Cc(16, 0)), // sp404 filter
+                        ModulatorConfig::new(sp404_port_name, 4, Modulator::Cc(18, 0)), // sp404 reverb amount
+                        ModulatorConfig::new(sp404_port_name, 4, Modulator::Cc(17, 0)), // sp404 reverb time
+                        ModulatorConfig::Swing(0), // global shuffle
+                        // row 2
+                        ModulatorConfig::new(sp404_port_name, 2, Modulator::Cc(16, 127)), // 404 bank b
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 32)), // bass mod
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 64)), // synth mod
+                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(2, 64)), // pianophonic filter
+                        // row 3
+                        ModulatorConfig::new(sp404_port_name, 1, Modulator::Cc(16, 127)), // 404 bank a
+                        ModulatorConfig::new(polyend_synth_port, 1, Modulator::PitchBend(0.0)), // bass pitch
+                        ModulatorConfig::new(polyend_synth_port, 2, Modulator::PitchBend(0.0)), // synth pitch
+                        ModulatorConfig::new(polyend_synth_port, 3, Modulator::PitchBend(0.0)), // synth pitch
+                        // row 4
+                        ModulatorConfig::DuckAmount(64), // duck amount
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(9, 0)), // mod a
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(10, 0)), // mod b
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(11, 0)), // mod c
+                        ////////////////////////
+                        // DRUMS
+                        // row 1
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(1, 0)),
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(2, 0)),
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(3, 0)),
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(4, 0)),
+                        // row 2
+                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(1, 0)), // bd ctrl
+                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(2, 0)), // sd ctrl
+                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(3, 0)), // lt pitch
+                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(4, 0)), // hc ctrl
+                        // row 3
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(20, 64)), // bd pitch
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(17, 64)), // delay time
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(62, 32)), // ch decay
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(81, 64)), // oh decay
+                        // row 4
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(91, 0)), // reverb amount
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(18, 40)), // delay feedback
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(107, 0)), // ch ctrl
+                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(108, 0)), // oh ctrl
+                        ////////////////////////
+                        // LFO MODULATORS
+                        // row 1
+                        ModulatorConfig::LfoSpeed(50),
+                        ModulatorConfig::LfoSkew(64),
+                        ModulatorConfig::LfoHold(0),
+                        ModulatorConfig::LfoOffset(64),
+                        // row 2
+                        ModulatorConfig::LfoAmount(4, 64),
+                        ModulatorConfig::LfoAmount(5, 64),
+                        ModulatorConfig::LfoAmount(6, 64),
+                        ModulatorConfig::LfoAmount(7, 64),
+                        // row 3
+                        ModulatorConfig::LfoAmount(8, 64),
+                        ModulatorConfig::LfoAmount(9, 64),
+                        ModulatorConfig::LfoAmount(10, 64),
+                        ModulatorConfig::LfoAmount(11, 64),
+                        // row 4
+                        ModulatorConfig::LfoAmount(12, 64),
+                        ModulatorConfig::LfoAmount(13, 64),
+                        ModulatorConfig::LfoAmount(14, 64),
+                        ModulatorConfig::LfoAmount(15, 64),
+                    ],
+                },
+                ControllerConfig::LaunchpadTempo {
+                    daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
+                },
             ],
         }
     }
@@ -562,7 +667,6 @@ pub enum DeviceConfig {
     Sp404Mk2 {
         port_name: String,
         velocity_map: Option<Vec<u8>>,
-        default_mapping: Vec<(u8, u8, u8)>,
         sidechain_output: Option<SidechainOutput>,
     },
 }
