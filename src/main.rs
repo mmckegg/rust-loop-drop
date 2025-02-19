@@ -6,6 +6,7 @@ extern crate serde;
 extern crate serde_json;
 
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -81,6 +82,7 @@ fn main() {
         duck_tick_multiplier: 0.1,
         duck_reduction: 0.5,
         channel_triggered: HashSet::new(),
+        channel_last_step: HashMap::new(),
         reset_automation: false,
         reset_beat: 0,
         active_notes: HashSet::new(),
@@ -109,12 +111,18 @@ fn main() {
             chunk.color,
             chunk.channel,
             chunk.repeat_mode,
-        ))
+        ));
+
+        if let Some(channel) = chunk.channel {
+            let mut params: std::sync::MutexGuard<'_, LoopGridParams> = params.lock().unwrap();
+            params.channel_last_step.insert(channel, 0);
+        }
     }
 
     let mut launchpad = LoopGridLaunchpad::new(
         launchpad_io_name,
         chunks,
+        HashSet::from_iter(myconfig.post_schedule_channels),
         Arc::clone(&params),
         Arc::clone(&use_internal_clock),
     );
@@ -216,6 +224,8 @@ fn main() {
             controller.schedule(range)
         }
 
+        launchpad.post_schedule();
+
         if range.ticked {
             for output in &mut keep_alive_outputs {
                 output.send(&[254]).unwrap();
@@ -241,11 +251,13 @@ fn resolve_modulators(
                 port,
                 rx_port,
                 modulator,
+                step_channel,
             } => Modulator::MidiModulator(controllers::MidiModulator::new(
                 get_port(output_ports, &port.name),
                 port.channel,
                 modulator.clone(),
                 rx_port.clone(),
+                step_channel.clone(),
             )),
             &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
             &config::ModulatorConfig::DuckAmount(default) => Modulator::DuckAmount(default),

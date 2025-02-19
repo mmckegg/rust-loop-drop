@@ -72,6 +72,7 @@ pub struct LoopGridParams {
     pub duck_triggered: bool,
     pub duck_tick_multiplier: f64,
     pub duck_reduction: f64,
+    pub channel_last_step: HashMap<u32, u32>,
     pub channel_triggered: HashSet<u32>,
     pub reset_automation: bool,
     pub reset_beat: u32,
@@ -234,6 +235,7 @@ pub struct LoopGridLaunchpad {
     chunks: Vec<Box<dyn Triggerable>>,
     chunk_colors: Vec<Light>,
     chunk_channels: HashMap<usize, u32>,
+    post_schedule_channels: HashSet<u32>,
     chunk_trigger_ids: Vec<Vec<u32>>,
     launchpad_output: midi_connection::SharedMidiOutputConnection,
 
@@ -262,6 +264,8 @@ pub struct LoopGridLaunchpad {
     selecting_scale: bool,
     selecting_scale_held: bool,
     last_selecting_scale: Instant,
+
+    post_controller_triggers: Vec<(MidiMap, OutputValue)>,
 
     rate: MidiTime,
     recorder: LoopRecorder,
@@ -310,6 +314,7 @@ impl LoopGridLaunchpad {
     pub fn new(
         launchpad_port_name: &str,
         chunk_map: Vec<Box<ChunkMap>>,
+        post_schedule_channels: HashSet<u32>,
         params: Arc<Mutex<LoopGridParams>>,
         use_internal_clock: Arc<AtomicBool>,
     ) -> Self {
@@ -434,6 +439,7 @@ impl LoopGridLaunchpad {
             chunks: Vec::new(),
             chunk_colors: Vec::new(),
             chunk_channels: HashMap::new(),
+            post_schedule_channels,
             chunk_trigger_ids: Vec::new(),
 
             no_suppress: HashSet::new(),
@@ -495,6 +501,7 @@ impl LoopGridLaunchpad {
             last_repeat_light: RIGHT_SIDE_BUTTONS[7],
 
             loop_state: LoopState::new(loop_length),
+            post_controller_triggers: Vec::new(),
         };
 
         for item in chunk_map {
@@ -921,6 +928,7 @@ impl LoopGridLaunchpad {
                         .or_insert(CircularQueue::with_capacity(8))
                         .push(event.id);
                 }
+
                 self.event(event);
             }
         }
@@ -934,6 +942,15 @@ impl LoopGridLaunchpad {
 
         self.refresh_active_notes();
         self.refresh_grid_buttons();
+    }
+
+    pub fn post_schedule(&mut self) {
+        let mut triggers = self.post_controller_triggers.split_off(0);
+        for (map, value) in triggers {
+            if let Some(chunk) = self.chunks.get_mut(map.chunk_index) {
+                chunk.trigger(map.id, value);
+            }
+        }
     }
 
     fn refresh_active_notes(&mut self) {
@@ -2257,11 +2274,24 @@ impl LoopGridLaunchpad {
 
     fn trigger_chunk(&mut self, map: MidiMap, value: OutputValue) {
         if let Some(chunk) = self.chunks.get_mut(map.chunk_index) {
-            chunk.trigger(map.id, value);
+            let is_post_schedule = if let Some(channel) = self.chunk_channels.get(&map.chunk_index)
+            {
+                self.post_schedule_channels.contains(channel)
+            } else {
+                false
+            };
+
+            if is_post_schedule {
+                self.post_controller_triggers.push((map, value));
+            } else {
+                chunk.trigger(map.id, value);
+            }
+
             if value.is_on() {
                 if let Some(channel) = self.chunk_channels.get(&map.chunk_index) {
                     let mut params = self.params.lock().unwrap();
                     params.channel_triggered.insert(*channel);
+                    params.channel_last_step.insert(*channel, map.id);
                 }
             }
         }

@@ -7,7 +7,6 @@ use serde_json::{json, to_writer_pretty};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::hash::Hash;
 use std::io::BufReader;
 
 impl Config {
@@ -33,13 +32,13 @@ impl Config {
         let launchpad_clock_out = "Launchpad Pro MK3";
 
         let mut channel_map = HashMap::new();
-        channel_map.insert(4, 2);
+        channel_map.insert(8, 1);
         channel_map.insert(5, 4);
         channel_map.insert(6, 5);
         channel_map.insert(7, 6);
-        channel_map.insert(8, 1);
 
         Config {
+            post_schedule_channels: vec![],
             chunks: vec![
                 // EXT SYNTH OFFSET
                 // (also sends pitch mod on channel 2 for slicer)
@@ -327,6 +326,7 @@ impl Config {
         channel_map.insert(8, 1);
 
         Config {
+            post_schedule_channels: vec![2, 3],
             chunks: vec![
                 // EXT SYNTH OFFSET
                 // (also sends pitch mod on channel 2 for slicer)
@@ -426,7 +426,7 @@ impl Config {
                     coords: Coords::new(0, 0),
                     shape: Shape::new(1, 4),
                     color: 8, // warm white
-                    channel: Some(0),
+                    channel: Some(2),
                     repeat_mode: RepeatMode::Global,
                 },
                 // BIA
@@ -444,7 +444,7 @@ impl Config {
                     coords: Coords::new(1, 0),
                     shape: Shape::new(1, 4),
                     color: 15, // yellow
-                    channel: Some(2),
+                    channel: Some(3),
                     repeat_mode: RepeatMode::Global,
                 },
                 // SYNTH 1
@@ -513,7 +513,7 @@ impl Config {
                 ControllerConfig::ModTwister {
                     port_name: String::from("Midi Fighter Twister"),
                     continuously_send: vec![],
-                    continuously_send_rr: vec![0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 13],
+                    continuously_send_rr: vec![],
                     channel_map,
                     modulators: vec![
                         // row 1
@@ -523,41 +523,63 @@ impl Config {
                         ModulatorConfig::Swing(0), // global shuffle
                         // row 2
                         ModulatorConfig::new(sp404_port_name, 2, Modulator::Cc(16, 127)), // 404 bank b
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(4, 32)), // bass mod
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(3, 64)), // synth mod
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(2, 64)), // pianophonic filter
+                        ModulatorConfig::new(polyend_synth_port, 1, Modulator::Cc(4, 74)), // blue synth
+                        ModulatorConfig::new(polyend_synth_port, 2, Modulator::Cc(3, 74)), // gold synth
+                        ModulatorConfig::new(polyend_synth_port, 3, Modulator::Cc(2, 64)), // purple synth
                         // row 3
                         ModulatorConfig::new(sp404_port_name, 1, Modulator::Cc(16, 127)), // 404 bank a
-                        ModulatorConfig::new(polyend_synth_port, 1, Modulator::PitchBend(0.0)), // bass pitch
-                        ModulatorConfig::new(polyend_synth_port, 2, Modulator::PitchBend(0.0)), // synth pitch
-                        ModulatorConfig::new(polyend_synth_port, 3, Modulator::PitchBend(0.0)), // synth pitch
+                        ModulatorConfig::new(polyend_synth_port, 1, Modulator::PitchBend(0.0)), // blue pitch
+                        ModulatorConfig::new(polyend_synth_port, 2, Modulator::PitchBend(0.0)), // gold pitch
+                        ModulatorConfig::new(polyend_synth_port, 3, Modulator::PitchBend(0.0)), // purple pitch
                         // row 4
-                        ModulatorConfig::DuckAmount(64), // duck amount
-                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(9, 0)), // mod a
-                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(10, 0)), // mod b
-                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(11, 0)), // mod c
+                        ModulatorConfig::new(sp404_port_name, 1, Modulator::Cc(17, 0)), // 404 bank a
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(9, 0)),   // mod a
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(10, 0)),  // mod b
+                        ModulatorConfig::new(rig_port_name, 14, Modulator::Cc(11, 0)),  // mod c
                         ////////////////////////
-                        // DRUMS
+                        // CRUST
                         // row 1
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(1, 0)),
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(2, 0)),
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(3, 0)),
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((0, 2), sp404_port_name, 12, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((1, 2), rig_port_name, 12, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((2, 2), rig_port_name, 12, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((3, 2), rig_port_name, 12, Modulator::Cc(1, 0)),
                         // row 2
-                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(1, 0)), // bd ctrl
-                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(2, 0)), // sd ctrl
-                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(3, 0)), // lt pitch
-                        ModulatorConfig::new(sp404_port_name, 13, Modulator::Cc(4, 0)), // hc ctrl
+                        ModulatorConfig::step((0, 2), rig_port_name, 12, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((1, 2), rig_port_name, 12, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((2, 2), rig_port_name, 12, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((3, 2), rig_port_name, 12, Modulator::Cc(2, 0)),
                         // row 3
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(20, 64)), // bd pitch
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(17, 64)), // delay time
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(62, 32)), // ch decay
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(81, 64)), // oh decay
+                        ModulatorConfig::step((0, 2), rig_port_name, 12, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((1, 2), rig_port_name, 12, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((2, 2), rig_port_name, 12, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((3, 2), rig_port_name, 12, Modulator::Cc(3, 0)),
                         // row 4
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(91, 0)), // reverb amount
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(18, 40)), // delay feedback
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(107, 0)), // ch ctrl
-                        ModulatorConfig::new(sp404_port_name, 12, Modulator::Cc(108, 0)), // oh ctrl
+                        ModulatorConfig::step((0, 2), rig_port_name, 12, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((1, 2), rig_port_name, 12, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((2, 2), rig_port_name, 12, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((3, 2), rig_port_name, 12, Modulator::Cc(4, 0)),
+                        ////////////////////////
+                        // BIA
+                        // row 1
+                        ModulatorConfig::step((0, 3), rig_port_name, 13, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((1, 3), rig_port_name, 13, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((2, 3), rig_port_name, 13, Modulator::Cc(1, 0)),
+                        ModulatorConfig::step((3, 3), rig_port_name, 13, Modulator::Cc(1, 0)),
+                        // row 2
+                        ModulatorConfig::step((0, 3), rig_port_name, 13, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((1, 3), rig_port_name, 13, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((2, 3), rig_port_name, 13, Modulator::Cc(2, 0)),
+                        ModulatorConfig::step((3, 3), rig_port_name, 13, Modulator::Cc(2, 0)),
+                        // row 3
+                        ModulatorConfig::step((0, 3), rig_port_name, 13, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((1, 3), rig_port_name, 13, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((2, 3), rig_port_name, 13, Modulator::Cc(3, 0)),
+                        ModulatorConfig::step((3, 3), rig_port_name, 13, Modulator::Cc(3, 0)),
+                        // row 4
+                        ModulatorConfig::step((0, 3), rig_port_name, 13, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((1, 3), rig_port_name, 13, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((2, 3), rig_port_name, 13, Modulator::Cc(4, 0)),
+                        ModulatorConfig::step((3, 3), rig_port_name, 13, Modulator::Cc(4, 0)),
                         ////////////////////////
                         // LFO MODULATORS
                         // row 1
@@ -593,6 +615,7 @@ impl Config {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub chunks: Vec<ChunkConfig>,
+    pub post_schedule_channels: Vec<u32>,
     pub clock_input_port_name: String,
     pub clock_output_port_names: Vec<String>,
     pub keep_alive_port_names: Vec<String>,
@@ -722,6 +745,7 @@ pub enum ModulatorConfig {
         port: MidiPortConfig,
         rx_port: Option<MidiPortConfig>,
         modulator: Modulator,
+        step_channel: Option<(u32, u32)>,
     },
     LfoAmount(usize, u8),
     LfoSpeed(u8),
@@ -733,7 +757,7 @@ pub enum ModulatorConfig {
     Swing(u8),
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Modulator {
     Cc(u8, u8),
     InvertCc(u8, u8),
@@ -753,7 +777,7 @@ pub enum Modulator {
     Multi(Vec<Modulator>),
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TriggerCondition {
     Gt(u8),
     Lt(u8),
@@ -783,6 +807,20 @@ impl ModulatorConfig {
             port: MidiPortConfig::new(port_name, port_number),
             rx_port: None,
             modulator,
+            step_channel: None,
+        }
+    }
+    pub fn step(
+        step_channel: (u32, u32),
+        port_name: &str,
+        port_number: u8,
+        modulator: Modulator,
+    ) -> ModulatorConfig {
+        ModulatorConfig::Midi {
+            port: MidiPortConfig::new(port_name, port_number),
+            rx_port: None,
+            modulator,
+            step_channel: Some(step_channel),
         }
     }
     pub fn rx(port_name: &str, port_number: u8, modulator: Modulator) -> ModulatorConfig {
@@ -790,6 +828,7 @@ impl ModulatorConfig {
             port: MidiPortConfig::new(port_name, port_number),
             rx_port: Some(MidiPortConfig::new(port_name, port_number)),
             modulator,
+            step_channel: None,
         }
     }
 }

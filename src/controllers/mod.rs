@@ -38,6 +38,7 @@ pub struct MidiModulator {
     pub channel: u8,
     pub modulator: ::config::Modulator,
     pub rx_port: Option<::config::MidiPortConfig>,
+    pub step_channel: Option<(u32, u32)>,
     triggered: HashSet<u8>,
 }
 
@@ -47,6 +48,7 @@ impl MidiModulator {
         channel: u8,
         modulator: ::config::Modulator,
         rx_port: Option<::config::MidiPortConfig>,
+        step_channel: Option<(u32, u32)>,
     ) -> Self {
         Self {
             port,
@@ -54,6 +56,7 @@ impl MidiModulator {
             modulator,
             rx_port,
             triggered: HashSet::new(),
+            step_channel,
         }
     }
 

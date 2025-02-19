@@ -18,6 +18,9 @@ use super::midi_to_polar;
 
 pub struct ModTwister {
     _midi_input: midi_connection::ThreadReference,
+    current_channel_last_step: HashMap<u32, u32>,
+    step_channel_control_lookup: HashMap<(u32, u32), HashSet<Control>>,
+    params: Arc<Mutex<LoopGridParams>>,
     tx: mpsc::Sender<ModTwisterMessage>,
 }
 
@@ -39,11 +42,24 @@ impl ModTwister {
         let (tx, rx) = mpsc::channel();
         // let clock_sender = clock.sender.clone();
         let control_ids = get_control_ids();
-
+        let cloned_params = params.clone();
+        let mut step_channel_control_lookup: HashMap<(u32, u32), HashSet<Control>> = HashMap::new();
         let tx_input = tx.clone();
         let tx_feedback = tx.clone();
         let tx_clock = tx.clone();
         let mut continuously_send_step = 0;
+
+        // map for step modulators
+        for (index, modulator) in modulators.iter().enumerate() {
+            if let Modulator::MidiModulator(instance) = modulator {
+                if let Some(step_channel) = instance.step_channel {
+                    let channels = step_channel_control_lookup
+                        .entry(step_channel)
+                        .or_insert(HashSet::new());
+                    channels.insert(Control::Modulator(index));
+                }
+            }
+        }
 
         let mut output = midi_connection::get_shared_output(port_name);
 
@@ -84,6 +100,7 @@ impl ModTwister {
             let mut recorder = LoopRecorder::new();
             let mut last_pos = MidiTime::zero();
             let mut last_values: HashMap<Control, u8> = HashMap::new();
+
             let mut record_start_times = HashMap::new();
             let mut loops: HashMap<Control, Loop> = HashMap::new();
             let mut modulators = modulators;
@@ -216,7 +233,18 @@ impl ModTwister {
                                 match modulators.get_mut(index).unwrap_or(&mut Modulator::None) {
                                     Modulator::None => (),
                                     Modulator::MidiModulator(instance) => {
-                                        instance.send(value);
+                                        if let Some((step, channel)) = instance.step_channel {
+                                            let params = params.lock().unwrap();
+                                            let active_step = params
+                                                .channel_last_step
+                                                .get(&channel)
+                                                .unwrap_or(&0);
+                                            if active_step == &step {
+                                                instance.send(value);
+                                            }
+                                        } else {
+                                            instance.send(value);
+                                        }
                                     }
                                     Modulator::DuckDecay(..) => {
                                         let mut params = params.lock().unwrap();
@@ -326,6 +354,26 @@ impl ModTwister {
                                 .send(&[176, id.clone() as u8, *cued_value.unwrap_or(&value)])
                                 .unwrap();
 
+                            let matches_step_channel =
+                                if let Some(Modulator::MidiModulator(modulator)) =
+                                    modulators.get(*id)
+                                {
+                                    if let Some(step_channel) = modulator.step_channel {
+                                        let params: std::sync::MutexGuard<'_, LoopGridParams> =
+                                            params.lock().unwrap();
+                                        Some(step_channel.0)
+                                            == params
+                                                .channel_last_step
+                                                .get(&step_channel.1)
+                                                .copied()
+                                            && triggering_channels.contains(&step_channel.1)
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
+
                             // MFT animation for currently looping (Channel 6)
                             if cued_value.is_some() {
                                 output.send(&[181, id.clone() as u8, 61]).unwrap();
@@ -336,7 +384,9 @@ impl ModTwister {
                             } else if frozen {
                                 output.send(&[181, id.clone() as u8, 59]).unwrap();
                             // Slow Indicator Pulse
-                            } else if triggering_channels.contains(&channel.unwrap_or(&u32::MAX)) {
+                            } else if triggering_channels.contains(&channel.unwrap_or(&u32::MAX))
+                                || matches_step_channel
+                            {
                                 output.send(&[181, id.clone() as u8, 17]).unwrap();
                             // Turn off indicator (flash)
                             } else if loops.contains_key(&control) {
@@ -350,7 +400,8 @@ impl ModTwister {
                     }
 
                     ModTwisterMessage::Schedule { pos, length } => {
-                        let mut params = params.lock().unwrap();
+                        let mut params: std::sync::MutexGuard<'_, LoopGridParams> =
+                            params.lock().unwrap();
                         if params.reset_automation {
                             // HACK: ack reset message from clear all
                             params.reset_automation = false;
@@ -516,13 +567,29 @@ impl ModTwister {
 
         ModTwister {
             _midi_input: input,
+            params: cloned_params,
             tx: tx_clock,
+            current_channel_last_step: HashMap::new(),
+            step_channel_control_lookup,
         }
     }
 }
 
 impl ::controllers::Schedulable for ModTwister {
     fn schedule(&mut self, range: ScheduleRange) {
+        // scan for params that need to be sent due to step change
+        let params = self.params.lock().unwrap();
+        for (channel, step) in &params.channel_last_step {
+            if self.current_channel_last_step.get(&channel) != Some(&step) {
+                if let Some(controls) = self.step_channel_control_lookup.get(&(*step, *channel)) {
+                    for control in controls {
+                        self.tx.send(ModTwisterMessage::Send(*control)).unwrap();
+                    }
+                }
+                self.current_channel_last_step.insert(*channel, *step);
+            }
+        }
+
         if range.ticked {
             self.tx
                 .send(ModTwisterMessage::Schedule {
