@@ -37,7 +37,7 @@ use scale::{Offset, Scale};
 use scheduler::Scheduler;
 
 const APP_NAME: &str = "Loop Drop";
-const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
+// const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
 
 type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
 type OffsetLookup = HashMap<String, Arc<Mutex<Offset>>>;
@@ -66,7 +66,6 @@ fn main() {
     //     println!("Wrote config to {}", CONFIG_FILEPATH);
     // }
 
-
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", &inputs);
 
@@ -86,6 +85,8 @@ fn main() {
         reset_automation: false,
         reset_beat: 0,
         active_notes: HashSet::new(),
+        slicer_offsets: HashMap::new(),
+        slicer_pitches: HashMap::new(),
     }));
 
     let launchpad_io_name = if cfg!(target_os = "linux") {
@@ -110,6 +111,7 @@ fn main() {
             chunk.shape,
             chunk.color,
             chunk.channel,
+            chunk.trigger_channels,
             chunk.repeat_mode,
         ))
     }
@@ -251,6 +253,12 @@ fn resolve_modulators(
             )),
             &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
             &config::ModulatorConfig::DuckAmount(default) => Modulator::DuckAmount(default),
+            &config::ModulatorConfig::SlicerOffset(channel, slice, default) => {
+                Modulator::SlicerOffset(channel, slice, default)
+            }
+            &config::ModulatorConfig::SlicerPitch(channel, slice, default) => {
+                Modulator::SlicerPitch(channel, slice, default)
+            }
             &config::ModulatorConfig::Swing(default) => Modulator::Swing(default),
             &config::ModulatorConfig::LfoAmount(modulator_index, default) => {
                 Modulator::LfoAmount(modulator_index, default)
@@ -334,7 +342,7 @@ fn make_device(
                 velocity_map,
                 offset_wrap,
                 monophonic,
-                midi_offset
+                midi_offset,
             ))
         }
         config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
@@ -375,6 +383,42 @@ fn make_device(
                 velocity_map,
             ))
         }
+        config::DeviceConfig::MidiSlicer {
+            output,
+            slicer_channel,
+            start_trigger_id,
+            trigger_count,
+            velocity_map,
+        } => {
+            let device_port = get_port(&mut output_ports, &output.name);
+
+            Box::new(devices::MidiSlicer::new(
+                Arc::clone(params),
+                device_port,
+                output.channel,
+                slicer_channel,
+                start_trigger_id,
+                trigger_count,
+                velocity_map,
+            ))
+        }
+        config::DeviceConfig::CcSlicer {
+            output,
+            slicer_channel,
+            cc,
+            velocity_map,
+        } => {
+            let device_port = get_port(&mut output_ports, &output.name);
+
+            Box::new(devices::CcSlicer::new(
+                Arc::clone(params),
+                device_port,
+                output.channel,
+                slicer_channel,
+                cc as u8,
+                velocity_map,
+            ))
+        }
         config::DeviceConfig::CcTriggers {
             output,
             triggers,
@@ -390,7 +434,6 @@ fn make_device(
         config::DeviceConfig::Sp404Mk2 {
             port_name,
             velocity_map,
-            default_mapping,
             sidechain_output,
         } => {
             let sidechain_output = if let Some(sidechain_output) = sidechain_output {
@@ -403,7 +446,6 @@ fn make_device(
             };
             Box::new(devices::Sp404Mk2::new(
                 &port_name,
-                default_mapping,
                 velocity_map,
                 sidechain_output,
             ))

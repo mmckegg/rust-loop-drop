@@ -79,6 +79,7 @@ pub struct ChunkMap {
     pub shape: Shape,
     pub chunk: Box<dyn Triggerable + Send>,
     pub channel: Option<u32>,
+    pub trigger_channels: Option<Vec<u32>>,
     pub color: u8,
     pub repeat_mode: RepeatMode,
 }
@@ -90,6 +91,7 @@ impl ChunkMap {
         shape: Shape,
         color: u8,
         channel: Option<u32>,
+        trigger_channels: Option<Vec<u32>>,
         repeat_mode: RepeatMode,
     ) -> Box<Self> {
         Box::new(ChunkMap {
@@ -98,6 +100,7 @@ impl ChunkMap {
             shape,
             color,
             channel,
+            trigger_channels,
             repeat_mode,
         })
     }

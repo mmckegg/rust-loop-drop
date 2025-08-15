@@ -1,5 +1,7 @@
+mod cc_slicer;
 mod cc_triggers;
 mod midi_keys;
+mod midi_slicer;
 mod midi_triggers;
 mod multi;
 mod offset;
@@ -16,7 +18,9 @@ pub use self::midi_triggers::SidechainOutput;
 pub use self::multi::MultiChunk;
 pub use self::sp404mk2::Sp404Mk2;
 
+pub use self::cc_slicer::CcSlicer;
 pub use self::midi_keys::MidiKeys;
+pub use self::midi_slicer::MidiSlicer;
 pub use self::offset::OffsetChunk;
 pub use self::pitch_offset_chunk::PitchOffsetChunk;
 pub use self::root_offset_chunk::RootOffsetChunk;

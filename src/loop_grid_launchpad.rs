@@ -27,7 +27,7 @@ const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
 const BOTTOM_BUTTONS: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
 const TRIGGER_MODE_BUTTONS: [u8; 4] = [1, 2, 3, 4];
 const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
-const BANK_COLORS: [u8; 4] = [17, 17, 17, 17];
+const BANK_COLORS: [u8; 4] = [17, 13, 47, 11];
 
 const LOOP_BUTTON: u8 = TOP_BUTTONS[0];
 const FLATTEN_BUTTON: u8 = TOP_BUTTONS[1];
@@ -76,6 +76,8 @@ pub struct LoopGridParams {
     pub reset_automation: bool,
     pub reset_beat: u32,
     pub active_notes: HashSet<u8>,
+    pub slicer_offsets: HashMap<u32, HashMap<u32, u8>>,
+    pub slicer_pitches: HashMap<u32, HashMap<u32, u8>>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -234,6 +236,7 @@ pub struct LoopGridLaunchpad {
     chunks: Vec<Box<dyn Triggerable>>,
     chunk_colors: Vec<Light>,
     chunk_channels: HashMap<usize, u32>,
+    chunk_trigger_channels: HashMap<usize, Vec<u32>>,
     chunk_trigger_ids: Vec<Vec<u32>>,
     launchpad_output: midi_connection::SharedMidiOutputConnection,
 
@@ -262,6 +265,8 @@ pub struct LoopGridLaunchpad {
     selecting_scale: bool,
     selecting_scale_held: bool,
     last_selecting_scale: Instant,
+
+    last_flatten_press_at: Instant,
 
     rate: MidiTime,
     recorder: LoopRecorder,
@@ -434,6 +439,7 @@ impl LoopGridLaunchpad {
             chunks: Vec::new(),
             chunk_colors: Vec::new(),
             chunk_channels: HashMap::new(),
+            chunk_trigger_channels: HashMap::new(),
             chunk_trigger_ids: Vec::new(),
 
             no_suppress: HashSet::new(),
@@ -458,6 +464,7 @@ impl LoopGridLaunchpad {
             selecting_scale: false,
             selecting_scale_held: false,
             last_selecting_scale: Instant::now(),
+            last_flatten_press_at: Instant::now(),
 
             rate: MidiTime::from_beats(2),
             recorder: LoopRecorder::new(),
@@ -542,6 +549,11 @@ impl LoopGridLaunchpad {
             if let Some(channel) = item.channel {
                 instance.chunk_channels.insert(chunk_index, channel);
             }
+            if let Some(trigger_channels) = item.trigger_channels {
+                instance
+                    .chunk_trigger_channels
+                    .insert(chunk_index, trigger_channels);
+            }
 
             instance.chunks.push(item.chunk);
         }
@@ -595,24 +607,28 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::FlattenButton(pressed) => {
                 if pressed {
-                    self.commit_selection_override();
-                    if self.should_flatten {
-                        self.flatten();
-                    } else if self.selection.len() > 0 {
-                        self.clear_loops(TransformTarget::Selected, true);
-                    } else {
-                        if self.shift_held {
-                            self.clear_loops(TransformTarget::All, false);
-                            self.clear_automation();
+                    if self.last_flatten_press_at.elapsed() > Duration::from_millis(200) {
+                        self.commit_selection_override();
+                        if self.should_flatten {
+                            self.flatten();
+                        } else if self.selection.len() > 0 {
+                            self.clear_loops(TransformTarget::Selected, true);
                         } else {
-                            if self.selecting_scale {
-                                self.clear_loops(TransformTarget::Scale, false);
+                            if self.shift_held {
+                                self.clear_loops(TransformTarget::All, false);
+                                self.clear_automation();
                             } else {
-                                self.clear_loops(TransformTarget::Main, false);
+                                if self.selecting_scale {
+                                    self.clear_loops(TransformTarget::Scale, false);
+                                } else {
+                                    self.clear_loops(TransformTarget::Main, false);
+                                }
                             }
                         }
+                        self.clear_selection();
                     }
-                    self.clear_selection();
+
+                    self.last_flatten_press_at = Instant::now();
                 }
             }
             LaunchpadEvent::UndoButton(pressed) => {
@@ -951,12 +967,13 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_selected_bank(&mut self) {
-        let bank_color = if self.use_internal_clock.load(atomic::Ordering::Relaxed) {
-            95
-        } else {
-            17
-        };
+        let internal_clock = self.use_internal_clock.load(atomic::Ordering::Relaxed);
         for (index, id) in BANK_BUTTONS.iter().enumerate() {
+            let bank_color = if internal_clock {
+                95
+            } else {
+                BANK_COLORS[index]
+            };
             if self.current_bank == index as u8 {
                 self.launchpad_output
                     .send(&[178, *id as u8, Light::White.value()])
@@ -2262,6 +2279,13 @@ impl LoopGridLaunchpad {
                 if let Some(channel) = self.chunk_channels.get(&map.chunk_index) {
                     let mut params = self.params.lock().unwrap();
                     params.channel_triggered.insert(*channel);
+                }
+
+                if let Some(trigger_channels) = self.chunk_trigger_channels.get(&map.chunk_index) {
+                    if let Some(channel) = trigger_channels.get(map.id as usize) {
+                        let mut params = self.params.lock().unwrap();
+                        params.channel_triggered.insert(*channel);
+                    }
                 }
             }
         }

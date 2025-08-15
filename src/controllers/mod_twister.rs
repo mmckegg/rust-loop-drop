@@ -135,6 +135,11 @@ impl ModTwister {
                         last_values.insert(Control::Modulator(index), *default);
                     }
 
+                    Modulator::SlicerOffset(_, _, default)
+                    | Modulator::SlicerPitch(_, _, default) => {
+                        last_values.insert(Control::Modulator(index), *default);
+                    }
+
                     Modulator::None => (),
                 }
             }
@@ -232,6 +237,20 @@ impl ModTwister {
                                         let mut params = params.lock().unwrap();
                                         let value = midi_to_float(value) * 0.5;
                                         params.swing = value;
+                                    }
+                                    Modulator::SlicerOffset(channel, id, _) => {
+                                        let mut params = params.lock().unwrap();
+                                        let channel_map =
+                                            params.slicer_offsets.entry(*channel).or_default();
+
+                                        channel_map.entry(*id).insert_entry(value);
+                                    }
+                                    Modulator::SlicerPitch(channel, id, _) => {
+                                        let mut params = params.lock().unwrap();
+                                        let channel_map =
+                                            params.slicer_pitches.entry(*channel).or_default();
+
+                                        channel_map.entry(*id).insert_entry(value);
                                     }
                                     Modulator::LfoAmount(modulator_index, ..) => {
                                         lfo_amounts.insert(

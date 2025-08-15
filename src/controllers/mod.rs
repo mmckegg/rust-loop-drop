@@ -31,6 +31,8 @@ pub enum Modulator {
     LfoSpeed(u8),
     LfoOffset(u8),
     LfoHold(u8),
+    SlicerOffset(u32, u32, u8),
+    SlicerPitch(u32, u32, u8),
 }
 
 pub struct MidiModulator {

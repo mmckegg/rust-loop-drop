@@ -54,6 +54,13 @@ impl CcTriggers {
                     .unwrap();
                 self.choke_notes.insert((*channel, *note));
             }
+            MidiTrigger::RetriggerNoteVelocity(channel, note) => {
+                self.midi_port.send(&[128 - 1 + channel, *note, 0]).unwrap();
+
+                self.midi_port
+                    .send(&[144 - 1 + channel, *note, velocity])
+                    .unwrap();
+            }
             MidiTrigger::CcVelocity(channel, cc) => {
                 self.midi_port
                     .send(&[176 - 1 + channel, *cc, velocity])
@@ -82,6 +89,7 @@ impl CcTriggers {
                 self.midi_port.send(&[144 - 1 + channel, *note, 0]).unwrap();
             }
             MidiTrigger::ChokeNote(_, _, _) => (),
+            MidiTrigger::RetriggerNoteVelocity(_, _) => (),
             MidiTrigger::CcVelocity(channel, cc) => {
                 self.midi_port.send(&[176 - 1 + channel, *cc, 0]).unwrap();
             }
@@ -126,6 +134,7 @@ pub enum MidiTrigger {
     CcVelocity(u8, u8),
     Note(u8, u8, u8),
     NoteVelocity(u8, u8),
+    RetriggerNoteVelocity(u8, u8),
     ChokeNote(u8, u8, u8),
     Multi(Vec<MidiTrigger>),
     None,
