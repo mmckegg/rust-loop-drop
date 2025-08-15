@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# One-command deploy for Raspberry Pi (build, sysroot sync, install, restart, tail logs)
+# Change only PI_HOST if needed. Everything else should be fine.
+
+set -Eeuo pipefail
+trap 'echo "Error on line $LINENO: $BASH_COMMAND" >&2' ERR
+
+# === CONFIG (edit PI_HOST if needed) ==========================================
+PI_HOST="pi@raspberrypi.local"     # Change to your Pi user/host
+SERVICE_NAME="loop-drop"           # Systemd service name and binary name
+BINARY_NAME="loop-drop"
+REMOTE_BIN_DIR="/usr/local/bin"    # Install path on the Pi
+REMOTE_BIN_PATH="$REMOTE_BIN_DIR/$BINARY_NAME"
+SERVICE_LOCAL_PATH="scripts/$SERVICE_NAME.service"  # Local service unit file
+
+SYSROOT="$HOME/sysroots/raspi"     # Local sysroot path (auto-managed)
+TAIL_LOGS=1                        # 1 to follow logs after deploy, 0 to skip
+LOG_LINES=5
+
+# SSH options: BatchMode + quick connect + auto-accept new host keys
+SSH_OPTS=(
+  -o BatchMode=yes
+  -o ConnectTimeout=15
+  -o StrictHostKeyChecking=accept-new
+)
+
+# === HELPERS =================================================================
+ssh_pi() { ssh "${SSH_OPTS[@]}" "$PI_HOST" "$@"; }
+scp_pi() { scp -C "${SSH_OPTS[@]}" "$1" "$PI_HOST:$2"; }
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
+
+# === PREFLIGHT ================================================================
+require_cmd ssh
+require_cmd scp
+require_cmd rsync
+require_cmd cargo
+require_cmd rustup
+require_cmd pkg-config
+require_cmd zig
+# Optional speedup
+if command -v sccache >/dev/null 2>&1; then
+  export RUSTC_WRAPPER="$(command -v sccache)"
+  export SCCACHE_CACHE_SIZE=20G
+fi
+
+echo "==> Verifying SSH connectivity to $PI_HOST"
+if ! ssh_pi "echo Connected to \$(hostname)"; then
+  echo "SSH failed. Ensure your key is loaded (ssh-add --apple-use-keychain <key>)"
+  exit 1
+fi
+
+echo "==> Detecting Pi architecture"
+PI_ARCH="$(ssh_pi 'uname -m' | tr -d '\r')"
+case "$PI_ARCH" in
+  aarch64)
+    TARGET_TRIPLE="aarch64-unknown-linux-gnu"
+    LIBDIR="aarch64-linux-gnu"
+    ZIG_TARGET="aarch64-linux-gnu"
+    ;;
+  armv7l|armv6l|armv8l|arm*)
+    TARGET_TRIPLE="armv7-unknown-linux-gnueabihf"
+    LIBDIR="arm-linux-gnueabihf"
+    ZIG_TARGET="arm-linux-gnueabihf"
+    ;;
+  *)
+    echo "Unrecognized Pi arch '$PI_ARCH'; defaulting to armv7"
+    TARGET_TRIPLE="armv7-unknown-linux-gnueabihf"
+    LIBDIR="arm-linux-gnueabihf"
+    ZIG_TARGET="arm-linux-gnueabihf"
+    ;;
+esac
+echo "=> Using TARGET_TRIPLE=$TARGET_TRIPLE (Pi arch: $PI_ARCH)"
+
+# Ensure Rust target and cargo-zigbuild
+if ! rustup target list --installed | grep -q "^$TARGET_TRIPLE$"; then
+  echo "==> Installing Rust target $TARGET_TRIPLE"
+  rustup target add "$TARGET_TRIPLE"
+fi
+if ! command -v cargo-zigbuild >/dev/null 2>&1; then
+  echo "==> Installing cargo-zigbuild (one-time)"
+  cargo install cargo-zigbuild --locked
+fi
+
+echo "==> Ensuring ALSA dev packages on the Pi"
+ssh_pi 'bash -se' <<'REMOTE_CMDS'
+set -Eeuo pipefail
+needs_install=0
+dpkg -s libasound2-dev >/dev/null 2>&1 || needs_install=1
+dpkg -s pkg-config >/dev/null 2>&1 || needs_install=1
+if [ "$needs_install" -eq 1 ]; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    libasound2 libasound2-dev pkg-config
+fi
+REMOTE_CMDS
+
+# === SYSROOT SYNC (headers, libs, pkgconfig from Pi) ==========================
+ALSAPC_LOCAL="$SYSROOT/usr/lib/$LIBDIR/pkgconfig/alsa.pc"
+ASOUND_H_LOCAL="$SYSROOT/usr/include/alsa/asoundlib.h"
+
+echo "==> Preparing local sysroot at $SYSROOT"
+mkdir -p \
+  "$SYSROOT/usr/include" \
+  "$SYSROOT/usr/lib/$LIBDIR" \
+  "$SYSROOT/usr/share/pkgconfig" \
+  "$SYSROOT/lib/$LIBDIR"
+
+if [[ ! -f "$ALSAPC_LOCAL" || ! -f "$ASOUND_H_LOCAL" ]]; then
+  echo "==> Pulling ALSA headers/libs/pkgconfig from the Pi"
+  rsync -avz --delete "$PI_HOST:/usr/include/" "$SYSROOT/usr/include/"
+  rsync -avz --delete "$PI_HOST:/usr/lib/$LIBDIR/" "$SYSROOT/usr/lib/$LIBDIR/"
+  rsync -avz --delete "$PI_HOST:/usr/share/pkgconfig/" "$SYSROOT/usr/share/pkgconfig/" || true
+  rsync -avz --delete "$PI_HOST:/lib/$LIBDIR/" "$SYSROOT/lib/$LIBDIR/" || true
+else
+  echo "Sysroot already contains ALSA; skipping rsync"
+fi
+
+# Verify pkg-config sees ALSA
+echo "==> Verifying pkg-config can find ALSA in sysroot"
+export PKG_CONFIG_ALLOW_CROSS=1
+export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+export PKG_CONFIG_LIBDIR="$SYSROOT/usr/lib/$LIBDIR/pkgconfig:$SYSROOT/usr/share/pkgconfig"
+pkg-config --cflags --libs alsa >/dev/null
+
+# === BUILD ====================================================================
+ENV_PREFIX="${TARGET_TRIPLE//-/_}"
+export "CC_${ENV_PREFIX}=zig cc -target $ZIG_TARGET"
+export "CXX_${ENV_PREFIX}=zig c++ -target $ZIG_TARGET"
+
+echo "==> Building release with cargo-zigbuild ($TARGET_TRIPLE)"
+cargo zigbuild --target "$TARGET_TRIPLE" --release
+
+LOCAL_BIN="target/$TARGET_TRIPLE/release/$BINARY_NAME"
+[[ -f "$LOCAL_BIN" ]] || { echo "Build produced no $LOCAL_BIN"; exit 1; }
+
+# === DEPLOY ===================================================================
+STAMP="$(date +%Y%m%d-%H%M%S)"
+REMOTE_TMP="/tmp/${BINARY_NAME}.${STAMP}.$$"
+REMOTE_STAGE="${REMOTE_BIN_PATH}.new"
+REMOTE_SERVICE_TMP="/tmp/${SERVICE_NAME}.service"
+
+echo "==> Uploading binary to $PI_HOST:$REMOTE_TMP"
+scp_pi "$LOCAL_BIN" "$REMOTE_TMP"
+
+echo "==> Uploading service unit to $PI_HOST:$REMOTE_SERVICE_TMP"
+[[ -f "$SERVICE_LOCAL_PATH" ]] || { echo "Missing $SERVICE_LOCAL_PATH"; exit 1; }
+scp_pi "$SERVICE_LOCAL_PATH" "$REMOTE_SERVICE_TMP"
+
+echo "==> Installing binary and service; enabling and restarting"
+ssh_pi \
+  PI_REMOTE_TMP="$REMOTE_TMP" \
+  PI_REMOTE_STAGE="$REMOTE_STAGE" \
+  PI_REMOTE_FINAL="$REMOTE_BIN_PATH" \
+  PI_SERVICE="$SERVICE_NAME" \
+  PI_REMOTE_SERVICE_TMP="$REMOTE_SERVICE_TMP" \
+  bash -se <<'REMOTE_CMDS'
+set -Eeuo pipefail
+
+sudo mkdir -p "$(dirname "$PI_REMOTE_FINAL")"
+
+# Stage uploaded binary with correct perms
+sudo install -m 0755 -o root -g root "$PI_REMOTE_TMP" "$PI_REMOTE_STAGE"
+
+# Stop service right before swapping to minimize downtime
+sudo systemctl stop "$PI_SERVICE" || true
+
+# Atomic swap into place
+sudo mv -f "$PI_REMOTE_STAGE" "$PI_REMOTE_FINAL"
+
+# Clean uploaded temp
+rm -f "$PI_REMOTE_TMP"
+
+# Patch ExecStart to installed path (idempotent)
+TMP_PATCHED="/tmp/${PI_SERVICE}.service.patched"
+if grep -q '^ExecStart=' "$PI_REMOTE_SERVICE_TMP"; then
+  sed -E "s|^ExecStart=.*|ExecStart=${PI_REMOTE_FINAL}|" \
+    "$PI_REMOTE_SERVICE_TMP" >"$TMP_PATCHED"
+else
+  cp "$PI_REMOTE_SERVICE_TMP" "$TMP_PATCHED"
+  printf "\nExecStart=%s\n" "$PI_REMOTE_FINAL" >>"$TMP_PATCHED"
+fi
+
+# Install service unit, permissions 0644
+sudo install -m 0644 -o root -g root "$TMP_PATCHED" \
+  "/lib/systemd/system/${PI_SERVICE}.service"
+
+# Reload systemd and enable/start service
+sudo systemctl daemon-reload
+sudo systemctl enable "$PI_SERVICE" || true
+sudo systemctl restart "$PI_SERVICE"
+
+# Cleanup
+rm -f "$PI_REMOTE_SERVICE_TMP" "$TMP_PATCHED"
+REMOTE_CMDS
+
+# === LOGS =====================================================================
+if [[ "$TAIL_LOGS" -eq 1 ]]; then
+  echo "==> Tailing logs (Ctrl-C to stop; service keeps running)"
+  ssh_pi "journalctl -u $SERVICE_NAME -n $LOG_LINES -f --output=short-iso"
+else
+  echo "==> Done. To view logs:"
+  echo "ssh $PI_HOST 'journalctl -u $SERVICE_NAME -n $LOG_LINES -f --output=short-iso'"
+fi
