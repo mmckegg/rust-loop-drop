@@ -7,6 +7,7 @@ use std::collections::hash_map::Entry;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::{Add, Sub};
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -27,7 +28,7 @@ const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
 const BOTTOM_BUTTONS: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
 const TRIGGER_MODE_BUTTONS: [u8; 4] = [1, 2, 3, 4];
 const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
-const BANK_COLORS: [u8; 4] = [17, 13, 47, 11];
+const BANK_COLORS: [u8; 4] = [13, 11, 47, 17];
 
 const LOOP_BUTTON: u8 = TOP_BUTTONS[0];
 const FLATTEN_BUTTON: u8 = TOP_BUTTONS[1];
@@ -86,6 +87,13 @@ pub enum TriggerMode {
     Quantized = 1,
     Repeat = 2,
     Cycle = 3,
+}
+
+struct LoopSnapshot {
+    loop_from: MidiTime,
+    loop_length: MidiTime,
+    last_changed_triggers: HashMap<u32, MidiTime>,
+    recording_ids: HashSet<u32>,
 }
 
 impl TriggerMode {
@@ -283,7 +291,6 @@ pub struct LoopGridLaunchpad {
     currently_held_inputs: Vec<u32>,
     currently_held_rates: Vec<usize>,
     last_changed_triggers: HashMap<u32, MidiTime>,
-
     // out state
     current_swing: f64,
     out_transforms: HashMap<u32, LoopTransform>,
@@ -309,6 +316,7 @@ pub struct LoopGridLaunchpad {
     last_repeat_light: u8,
 
     loop_state: LoopState,
+    last_loop_snapshot: Option<LoopSnapshot>,
 }
 
 impl LoopGridLaunchpad {
@@ -502,6 +510,7 @@ impl LoopGridLaunchpad {
             last_repeat_light: RIGHT_SIDE_BUTTONS[7],
 
             loop_state: LoopState::new(loop_length),
+            last_loop_snapshot: None,
         };
 
         for item in chunk_map {
@@ -640,6 +649,7 @@ impl LoopGridLaunchpad {
                     } else {
                         self.loop_state.undo();
                     }
+                    self.clear_loop_snapshot();
                 }
             }
             LaunchpadEvent::RedoButton(pressed) => {
@@ -651,6 +661,7 @@ impl LoopGridLaunchpad {
                     } else {
                         self.loop_state.redo();
                     }
+                    self.clear_loop_snapshot();
                 }
             }
             LaunchpadEvent::HoldButton(pressed) => {
@@ -689,7 +700,11 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::LengthButton { id, pressed } => {
                 if pressed {
-                    self.set_loop_length(LOOP_LENGTHS[id % LOOP_LENGTHS.len()]);
+                    let length = LOOP_LENGTHS[id % LOOP_LENGTHS.len()];
+                    self.set_loop_length(length);
+                    if self.shift_held {
+                        self.reloop(length)
+                    }
                 }
             }
             LaunchpadEvent::RateButton { id, pressed } => {
@@ -759,6 +774,11 @@ impl LoopGridLaunchpad {
                 self.freeze_button(pressed);
             }
         }
+    }
+
+    fn clear_loop_snapshot(&mut self) {
+        self.last_loop_snapshot = None;
+        self.refresh_loop_length();
     }
 
     fn drain_input_events(&mut self) {
@@ -1121,7 +1141,11 @@ impl LoopGridLaunchpad {
                 .unwrap_or(&(LOOP_LENGTHS[LOOP_LENGTHS.len() - 1] * 2));
 
             let result = if button_length == self.loop_length {
-                Light::Yellow
+                if self.last_loop_snapshot.is_some() {
+                    Light::Green
+                } else {
+                    Light::Yellow
+                }
             } else if self.loop_length < button_length && self.loop_length > prev_button_length {
                 Light::Red
             } else if self.loop_length > button_length && self.loop_length < next_button_length {
@@ -1945,13 +1969,63 @@ impl LoopGridLaunchpad {
             }
         }
 
+        self.last_loop_snapshot = Some(LoopSnapshot {
+            loop_from: self.loop_from,
+            loop_length: self.loop_length,
+            last_changed_triggers: self.last_changed_triggers.clone(),
+            recording_ids,
+        });
+
         if new_loop.transforms.len() > 0 {
             new_loop.length = self.loop_length;
             self.loop_state.set(new_loop);
             self.clear_recording();
         }
 
+        self.refresh_loop_length();
         self.clear_selection();
+    }
+
+    fn reloop(&mut self, length: MidiTime) {
+        if let Some(last_loop_snapshot) = &self.last_loop_snapshot {
+            let offset = last_loop_snapshot.loop_length - length;
+            let pos = self.loop_from + offset;
+
+            let mut recording_ids = HashSet::new();
+
+            for id in &last_loop_snapshot.recording_ids {
+                recording_ids.insert(*id);
+            }
+
+            // add additional IDs from before the old loop start
+            for (id, last_change) in &last_loop_snapshot.last_changed_triggers {
+                if last_change > &pos {
+                    recording_ids.insert(*id);
+                }
+            }
+
+            self.loop_state.undo();
+
+            let mut current_loop = self.loop_state.get().clone();
+
+            for id in recording_ids {
+                let current_event = self.recorder.get_event_at(id, pos);
+                let has_events = self.recorder.has_events(id, pos, pos + length);
+                if has_events {
+                    current_loop
+                        .transforms
+                        .insert(id, LoopTransform::Range { pos, length });
+                } else if let Some(event) = current_event {
+                    current_loop
+                        .transforms
+                        .insert(id, LoopTransform::Value(event.value));
+                } else {
+                    current_loop.transforms.insert(id, LoopTransform::None);
+                }
+            }
+
+            self.loop_state.set(current_loop);
+        }
     }
 
     fn select(&mut self, id: u32) {
@@ -2044,6 +2118,7 @@ impl LoopGridLaunchpad {
         }
 
         self.loop_state.set(new_loop);
+        self.clear_loop_snapshot();
     }
 
     fn clear_loops(&mut self, target: TransformTarget, clear_permanent: bool) {
@@ -2065,6 +2140,7 @@ impl LoopGridLaunchpad {
         }
 
         self.loop_state.set(new_loop);
+        self.clear_loop_snapshot();
     }
 
     fn clear_automation(&mut self) {
@@ -2319,6 +2395,7 @@ impl LoopGridLaunchpad {
 
                 if let Some(new_loop) = new_loop {
                     self.loop_state.set(new_loop);
+                    self.clear_loop_snapshot();
                 }
             }
 
