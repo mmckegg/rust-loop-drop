@@ -13,6 +13,11 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const PLAYABLE_GRID_SIZE: u32 = 112;
+const GRID_NOTE_START: u8 = 8;
+const GRID_2_NOTE_START: u8 = 96;
+const LENGTH_BUTTONS: [u8; 8] = [88, 89, 90, 91, 92, 93, 94, 95];
+
 use midi_connection;
 use midi_time::MidiTime;
 use scheduler;
@@ -22,36 +27,29 @@ use loop_recorder::{LoopEvent, LoopRecorder};
 use loop_state::{LoopCollection, LoopState, LoopStateChange, LoopTransform};
 use output_value::OutputValue;
 
-const TOP_BUTTONS: [u8; 8] = [91, 92, 93, 94, 95, 96, 97, 98];
-const RIGHT_SIDE_BUTTONS: [u8; 8] = [89, 79, 69, 59, 49, 39, 29, 19];
-const LEFT_SIDE_BUTTONS: [u8; 8] = [80, 70, 60, 50, 40, 30, 20, 10];
-const BOTTOM_BUTTONS: [u8; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
-const TRIGGER_MODE_BUTTONS: [u8; 4] = [1, 2, 3, 4];
-const BANK_BUTTONS: [u8; 4] = [5, 6, 7, 8];
-const BANK_COLORS: [u8; 4] = [13, 11, 47, 17];
+const CONTROL_BUTTONS: [u8; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+const BANK_BUTTONS: [u8; 4] = [1, 2, 3, 4];
+const BANK_COLORS: [u8; 4] = [0, 0, 0, 0];
 
-const LOOP_BUTTON: u8 = TOP_BUTTONS[0];
-const FLATTEN_BUTTON: u8 = TOP_BUTTONS[1];
-const UNDO_BUTTON: u8 = TOP_BUTTONS[2];
-const REDO_BUTTON: u8 = TOP_BUTTONS[3];
-const HOLD_BUTTON: u8 = TOP_BUTTONS[4];
-const SUPPRESS_BUTTON: u8 = TOP_BUTTONS[5];
-const SESSION_BUTTON: u8 = TOP_BUTTONS[6];
-const SHIFT_BUTTON: u8 = TOP_BUTTONS[7];
-
-// THE LAUNCHPAD PRO MK3 IS JUST TOO DAMN SENSITIVE!
-const VELOCITY_THRESHOLD: u8 = 20;
+const LOOP_BUTTON: u8 = CONTROL_BUTTONS[0];
+const FLATTEN_BUTTON: u8 = CONTROL_BUTTONS[1];
+const UNDO_BUTTON: u8 = CONTROL_BUTTONS[2];
+const REDO_BUTTON: u8 = CONTROL_BUTTONS[3];
+const SUPPRESS_BUTTON: u8 = CONTROL_BUTTONS[4];
+const REPEAT_BUTTON: u8 = CONTROL_BUTTONS[5];
+const PREPARE_BUTTON: u8 = CONTROL_BUTTONS[6];
+const SELECT_BUTTON: u8 = CONTROL_BUTTONS[7];
 
 lazy_static! {
     static ref REPEAT_RATES: [MidiTime; 8] = [
         MidiTime::from_measure(2, 1),
         MidiTime::from_measure(1, 1),
-        MidiTime::from_measure(2, 3),
         MidiTime::from_measure(1, 2),
-        MidiTime::from_measure(1, 3),
         MidiTime::from_measure(1, 4),
+        MidiTime::from_measure(1, 8),
         MidiTime::from_measure(1, 6),
-        MidiTime::from_measure(1, 8)
+        MidiTime::from_measure(1, 3),
+        MidiTime::from_measure(2, 3),
     ];
     static ref LOOP_LENGTHS: [MidiTime; 8] = [
         MidiTime::from_beats(1),
@@ -115,7 +113,7 @@ impl TriggerMode {
 pub enum LoopGridRemoteEvent {
     DoubleButton(bool),
     LoopButton(bool),
-    SustainButton(bool),
+    PrepareButton(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +138,7 @@ enum RepeatPhase {
 enum Light {
     // http://launchpaddr.com/mk2palette/
     Value(u8),
+    ValueLow(u8),
     Yellow,
     YellowMed,
     Lime,
@@ -157,6 +156,7 @@ enum Light {
     RedLow,
     BlueDark,
     White,
+    WhiteMed,
     Off,
     None,
 }
@@ -164,7 +164,6 @@ enum Light {
 enum TransformTarget {
     All,
     Main,
-    Scale,
     Selected,
 }
 
@@ -176,25 +175,32 @@ impl Light {
         }
     }
 
+    pub fn low(&self) -> Self {
+        match self {
+            Light::Value(value) => Light::ValueLow(*value),
+            _ => self.clone(),
+        }
+    }
+
     pub fn value(&self) -> u8 {
         match self {
-            Light::Yellow => 13,
-            Light::YellowMed => 97,
-            Light::Lime => 73,
-            Light::LimeLow => 63,
-            Light::Purple => 94,
-            Light::Green => 17,
-            Light::GreenMed => 76,
-            Light::GreenLow => 18,
-            Light::GreenDark => 35,
-            Light::Orange => 96,
-            Light::OrangeMed => 126,
-            Light::OrangeLow => 105,
-            Light::Red => 72,
-            Light::RedMed => 120,
-            Light::RedLow => 6,
-            Light::BlueDark => 43,
-            Light::White => 3,
+            Light::Yellow => 22,
+            Light::YellowMed => 22,
+            Light::Lime => 37,
+            Light::LimeLow => 40,
+            Light::Purple => 97,
+            Light::Green => 43,
+            Light::GreenMed => 43,
+            Light::GreenLow => 43,
+            Light::GreenDark => 43,
+            Light::Orange => 13,
+            Light::OrangeMed => 13,
+            Light::OrangeLow => 13,
+            Light::Red => 1,
+            Light::RedMed => 1,
+            Light::RedLow => 1,
+            Light::BlueDark => 85,
+            Light::White => 127,
             Light::Value(value) => *value,
             _ => 0,
         }
@@ -208,16 +214,18 @@ enum LaunchpadEvent {
     FlattenButton(bool),
     UndoButton(bool),
     RedoButton(bool),
-    HoldButton(bool),
     SuppressButton(bool),
+    RepeatButton(bool),
     ViewModeButton(bool),
-    ShiftButton(bool),
-    SustainButton(bool),
+    SelectButton(bool),
+    PrepareButton(bool),
 
     None,
     LengthButton { id: usize, pressed: bool },
     RateButton { id: usize, pressed: bool },
-    TriggerModeButton { id: usize, pressed: bool },
+    TriggerModeSelect { id: usize },
+    SwingControl { value: u8 },
+    TempoControl { value: u8 },
     BankButton { id: usize, pressed: bool },
     GridInput { id: u32, value: u8, stamp: u64 },
 }
@@ -237,6 +245,7 @@ pub struct LoopGridLaunchpad {
     _input: midi_connection::ThreadReference,
     params: Arc<Mutex<LoopGridParams>>,
     use_internal_clock: Arc<AtomicBool>,
+    internal_bpm: Arc<Mutex<f64>>,
 
     input_queue: mpsc::Receiver<LaunchpadEvent>,
 
@@ -261,7 +270,7 @@ pub struct LoopGridLaunchpad {
     suppressing: bool,
     holding: bool,
     holding_at: MidiTime,
-    shift_held: bool,
+    select_held: bool,
     selection_override_offset: Option<isize>,
     refresh_loop_length_in: Option<i32>,
     id_to_midi: HashMap<u32, u8>,
@@ -269,10 +278,6 @@ pub struct LoopGridLaunchpad {
     loop_held: bool,
     loop_from: MidiTime,
     should_flatten: bool,
-
-    selecting_scale: bool,
-    selecting_scale_held: bool,
-    last_selecting_scale: Instant,
 
     last_flatten_press_at: Instant,
 
@@ -298,9 +303,10 @@ pub struct LoopGridLaunchpad {
 
     out_values: HashMap<u32, OutputValue>,
     grid_out: HashMap<u32, LaunchpadLight>,
-    bottom_button_out: HashMap<u32, LaunchpadLight>,
+    length_row_out: HashMap<u8, Light>,
+    repeat_button_out: Light,
+    loop_button_out: Light,
     select_out: Light,
-    last_repeat_light_out: Light,
     last_triggered: HashMap<usize, CircularQueue<u32>>,
 
     trigger_mode: TriggerMode,
@@ -312,19 +318,23 @@ pub struct LoopGridLaunchpad {
     active: HashSet<u32>,
     recording: HashSet<u32>,
 
-    last_beat_light: u8,
-    last_repeat_light: u8,
-
     loop_state: LoopState,
     last_loop_snapshot: Option<LoopSnapshot>,
 }
 
 impl LoopGridLaunchpad {
+    fn send_note_color(&mut self, channel: u8, note: u8, light: Light) {
+        for message in note_light_messages(channel, note, light) {
+            self.launchpad_output.send(&message).unwrap();
+        }
+    }
+
     pub fn new(
         launchpad_port_name: &str,
         chunk_map: Vec<Box<ChunkMap>>,
         params: Arc<Mutex<LoopGridParams>>,
         use_internal_clock: Arc<AtomicBool>,
+        internal_bpm: Arc<Mutex<f64>>,
     ) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
@@ -334,79 +344,82 @@ impl LoopGridLaunchpad {
         let input_queue_connect_tx = input_queue_tx.clone();
 
         let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message| {
-            if message[0] == 144 || message[0] == 128 {
-                let grid_button = midi_to_id.get(&message[1]);
-                if let Some(id) = grid_button {
-                    input_queue_tx
-                        .send(LaunchpadEvent::GridInput {
-                            stamp,
-                            id: *id,
-                            value: message[2],
-                        })
-                        .unwrap();
-                };
-            } else if message[0] == 160 {
-                // poly aftertouch
-                let grid_button = midi_to_id.get(&message[1]);
-                if let Some(id) = grid_button {
-                    input_queue_tx
-                        .send(LaunchpadEvent::GridInput {
-                            stamp,
-                            id: *id,
-                            value: message[2],
-                        })
-                        .unwrap();
-                }
-            } else if message[0] == 176 {
-                let pressed = message[2] > 0;
+            let status = message[0];
+            let channel = (status & 0x0F) + 1;
+            let message_type = status & 0xF0;
 
-                if let Some(id) = LEFT_SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
-                    input_queue_tx
-                        .send(LaunchpadEvent::LengthButton { id, pressed })
-                        .unwrap();
-                } else if let Some(id) = RIGHT_SIDE_BUTTONS.iter().position(|&x| x == message[1]) {
-                    input_queue_tx
-                        .send(LaunchpadEvent::RateButton { id, pressed })
-                        .unwrap();
-                } else if let Some(id) = TOP_BUTTONS.iter().position(|&x| x == message[1]) {
-                    input_queue_tx
-                        .send(match id {
-                            0 => LaunchpadEvent::LoopButton(pressed),
-                            1 => LaunchpadEvent::FlattenButton(pressed),
-                            2 => LaunchpadEvent::UndoButton(pressed),
-                            3 => LaunchpadEvent::RedoButton(pressed),
-                            4 => LaunchpadEvent::HoldButton(pressed),
-                            5 => LaunchpadEvent::SuppressButton(pressed),
-                            6 => LaunchpadEvent::ViewModeButton(pressed),
-                            7 => LaunchpadEvent::ShiftButton(pressed),
-                            _ => LaunchpadEvent::None,
-                        })
-                        .unwrap();
-                } else if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == message[1]) {
-                    // use last 4 bottom buttons as bank switchers
-                    input_queue_tx
-                        .send(LaunchpadEvent::BankButton { id, pressed })
-                        .unwrap();
-                } else if let Some(index) = BOTTOM_BUTTONS.iter().position(|&x| x == message[1]) {
-                    let id = 128 + index as u32;
-                    input_queue_tx
-                        .send(LaunchpadEvent::GridInput {
-                            stamp,
-                            id,
-                            value: message[2],
-                        })
-                        .unwrap();
-                } else if let Some(id) = TRIGGER_MODE_BUTTONS.iter().position(|&x| x == message[1])
-                {
-                    input_queue_tx
-                        .send(LaunchpadEvent::TriggerModeButton { id, pressed })
-                        .unwrap();
-                } else if message[1] == 90 {
-                    // Shift Button
-                    input_queue_tx
-                        .send(LaunchpadEvent::SustainButton(pressed))
-                        .unwrap();
+            match message_type {
+                0x90 | 0x80 => {
+                    let note = message[1];
+                    let value = if message_type == 0x80 { 0 } else { message[2] };
+                    let pressed = value > 0;
+
+                    if channel == 1 {
+                        if let Some(id) = midi_to_id.get(&note) {
+                            input_queue_tx
+                                .send(LaunchpadEvent::GridInput {
+                                    stamp,
+                                    id: *id,
+                                    value,
+                                })
+                                .unwrap();
+                        } else if let Some(id) = CONTROL_BUTTONS.iter().position(|&x| x == note) {
+                            input_queue_tx
+                                .send(match id {
+                                    0 => LaunchpadEvent::LoopButton(pressed),
+                                    1 => LaunchpadEvent::FlattenButton(pressed),
+                                    2 => LaunchpadEvent::UndoButton(pressed),
+                                    3 => LaunchpadEvent::RedoButton(pressed),
+                                    4 => LaunchpadEvent::SuppressButton(pressed),
+                                    5 => LaunchpadEvent::RepeatButton(pressed),
+                                    6 => LaunchpadEvent::PrepareButton(pressed),
+                                    7 => LaunchpadEvent::SelectButton(pressed),
+                                    _ => LaunchpadEvent::None,
+                                })
+                                .unwrap();
+                        } else if let Some(id) = LENGTH_BUTTONS.iter().position(|&x| x == note) {
+                            input_queue_tx
+                                .send(LaunchpadEvent::LengthButton { id, pressed })
+                                .unwrap();
+                        }
+                    } else if channel == 2 {
+                        if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == note) {
+                            input_queue_tx
+                                .send(LaunchpadEvent::BankButton { id, pressed })
+                                .unwrap();
+                        }
+                    }
                 }
+                0xB0 => {
+                    if channel == 2 {
+                        match message[1] {
+                            1 => {
+                                let id = cc_bucket(message[2], REPEAT_RATES.len());
+                                input_queue_tx
+                                    .send(LaunchpadEvent::RateButton { id, pressed: true })
+                                    .unwrap();
+                            }
+                            2 => {
+                                let id = cc_bucket(message[2], 4);
+                                input_queue_tx
+                                    .send(LaunchpadEvent::TriggerModeSelect { id })
+                                    .unwrap();
+                            }
+                            3 => {
+                                input_queue_tx
+                                    .send(LaunchpadEvent::SwingControl { value: message[2] })
+                                    .unwrap();
+                            }
+                            4 => {
+                                input_queue_tx
+                                    .send(LaunchpadEvent::TempoControl { value: message[2] })
+                                    .unwrap();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
             }
         });
 
@@ -415,10 +428,7 @@ impl LoopGridLaunchpad {
         let mut base_loop = LoopCollection::new(loop_length);
 
         let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
-        launchpad_output.on_connect(move |port| {
-            port.send(&[0xF0, 0x00, 0x20, 0x29, 0x02, 0x0E, 0x0E, 0x01, 0xF7])
-                .unwrap();
-
+        launchpad_output.on_connect(move |_port| {
             input_queue_connect_tx
                 .send(LaunchpadEvent::Connected)
                 .unwrap();
@@ -430,6 +440,7 @@ impl LoopGridLaunchpad {
             loop_length,
             params,
             use_internal_clock,
+            internal_bpm,
             id_to_midi,
 
             trigger_mode: TriggerMode::Immediate,
@@ -461,17 +472,13 @@ impl LoopGridLaunchpad {
             suppressing: false,
             holding: false,
             holding_at: MidiTime::zero(),
-            shift_held: false,
+            select_held: false,
             selection_override_offset: None,
             refresh_loop_length_in: None,
 
             loop_held: false,
             loop_from: MidiTime::from_ticks(0),
             should_flatten: false,
-
-            selecting_scale: false,
-            selecting_scale_held: false,
-            last_selecting_scale: Instant::now(),
             last_flatten_press_at: Instant::now(),
 
             rate: MidiTime::from_beats(2),
@@ -497,17 +504,15 @@ impl LoopGridLaunchpad {
 
             out_values: HashMap::new(),
             grid_out: HashMap::new(),
-            bottom_button_out: HashMap::new(),
+            length_row_out: HashMap::new(),
+            repeat_button_out: Light::Off,
+            loop_button_out: Light::Off,
             select_out: Light::Off,
-            last_repeat_light_out: Light::Off,
             last_triggered: HashMap::new(),
 
             // display state
             active: HashSet::new(),
             recording: HashSet::new(),
-
-            last_beat_light: RIGHT_SIDE_BUTTONS[7],
-            last_repeat_light: RIGHT_SIDE_BUTTONS[7],
 
             loop_state: LoopState::new(loop_length),
             last_loop_snapshot: None,
@@ -574,11 +579,8 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_grid_buttons(&mut self) {
-        for id in 0..64 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             self.refresh_grid_button(id);
-        }
-        for id in 0..8 {
-            self.refresh_bottom_button(id);
         }
     }
 
@@ -587,31 +589,23 @@ impl LoopGridLaunchpad {
             LaunchpadEvent::Connected => {
                 println!("Launchpad Connected");
                 self.grid_out.clear();
-                self.bottom_button_out.clear();
+                self.length_row_out.clear();
+                self.repeat_button_out = Light::Off;
+                self.loop_button_out = Light::Off;
                 self.refresh_grid_buttons();
-                self.launchpad_output.send(&[176, HOLD_BUTTON, 32]).unwrap();
-                self.launchpad_output
-                    .send(&[176, SUPPRESS_BUTTON, 57])
-                    .unwrap();
-                self.launchpad_output
-                    .send(&[176, SESSION_BUTTON, 45])
-                    .unwrap();
                 self.refresh_loop_button();
                 self.refresh_undo_redo_lights();
+                self.refresh_suppress_button();
                 self.refresh_selected_bank();
-                self.refresh_selected_trigger_mode();
+                self.refresh_loop_length();
+                self.refresh_repeat_button();
+                self.refresh_select_state();
             }
             LaunchpadEvent::LoopButton(pressed) => {
-                if self.selecting_scale && self.shift_held {
-                    if pressed {
-                        self.tap_tempo();
-                    }
+                if pressed {
+                    self.start_loop();
                 } else {
-                    if pressed {
-                        self.start_loop();
-                    } else {
-                        self.end_loop();
-                    }
+                    self.end_loop();
                 }
             }
             LaunchpadEvent::FlattenButton(pressed) => {
@@ -623,15 +617,11 @@ impl LoopGridLaunchpad {
                         } else if self.selection.len() > 0 {
                             self.clear_loops(TransformTarget::Selected, true);
                         } else {
-                            if self.shift_held {
+                            if self.select_held {
                                 self.clear_loops(TransformTarget::All, false);
                                 self.clear_automation();
                             } else {
-                                if self.selecting_scale {
-                                    self.clear_loops(TransformTarget::Scale, false);
-                                } else {
-                                    self.clear_loops(TransformTarget::Main, false);
-                                }
+                                self.clear_loops(TransformTarget::Main, false);
                             }
                         }
                         self.clear_selection();
@@ -642,7 +632,7 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::UndoButton(pressed) => {
                 if pressed {
-                    if self.shift_held {
+                    if self.select_held {
                         self.halve_loop_length();
                     } else if self.selection.len() > 0 {
                         self.undo_selection();
@@ -654,7 +644,7 @@ impl LoopGridLaunchpad {
             }
             LaunchpadEvent::RedoButton(pressed) => {
                 if pressed {
-                    if self.shift_held {
+                    if self.select_held {
                         self.double_loop_length();
                     } else if self.selection.len() > 0 {
                         self.redo_selection();
@@ -664,37 +654,26 @@ impl LoopGridLaunchpad {
                     self.clear_loop_snapshot();
                 }
             }
-            LaunchpadEvent::HoldButton(pressed) => {
-                self.holding = pressed;
-                self.holding_at = self.last_pos;
-                self.refresh_selection_override();
-                self.refresh_should_flatten();
-            }
             LaunchpadEvent::SuppressButton(pressed) => {
                 self.suppressing = pressed;
+                self.refresh_suppress_button();
                 self.refresh_selection_override();
                 self.refresh_should_flatten();
             }
-            LaunchpadEvent::ViewModeButton(pressed) => {
-                if pressed {
-                    self.last_selecting_scale = Instant::now();
-                    self.selecting_scale = !self.selecting_scale;
-                } else if self.last_selecting_scale.elapsed() > Duration::from_millis(300) {
-                    self.selecting_scale = !self.selecting_scale;
-                }
-
-                self.selecting_scale_held = pressed;
-
-                self.refresh_selecting_scale();
-                self.refresh_undo_redo_lights();
+            LaunchpadEvent::RepeatButton(pressed) => {
+                self.holding = pressed;
+                self.holding_at = self.last_pos;
+                self.refresh_repeat_button();
+                self.refresh_selection_override();
+                self.refresh_should_flatten();
             }
-            LaunchpadEvent::ShiftButton(pressed) => {
-                self.shift_held = pressed;
+            LaunchpadEvent::ViewModeButton(_pressed) => {}
+            LaunchpadEvent::SelectButton(pressed) => {
+                self.select_held = pressed;
                 if pressed {
                     self.clear_selection()
                 }
 
-                self.refresh_selecting_scale();
                 self.refresh_select_state();
                 self.refresh_undo_redo_lights();
             }
@@ -702,35 +681,28 @@ impl LoopGridLaunchpad {
                 if pressed {
                     let length = LOOP_LENGTHS[id % LOOP_LENGTHS.len()];
                     self.set_loop_length(length);
-                    if self.shift_held {
+                    if self.select_held {
                         self.reloop(length)
                     }
                 }
             }
-            LaunchpadEvent::RateButton { id, pressed } => {
-                let current_index = self.currently_held_rates.iter().position(|v| v == &id);
-
-                if pressed && current_index == None {
-                    self.currently_held_rates.push(id);
-                } else if let Some(index) = current_index {
-                    self.currently_held_rates.remove(index);
-                }
-
-                if self.currently_held_rates.len() > 0 {
-                    let id = *self.currently_held_rates.iter().last().unwrap();
-                    let rate = REPEAT_RATES[id as usize];
-                    self.repeat_off_beat = self.shift_held;
-                    self.set_rate(rate);
-                }
+            LaunchpadEvent::RateButton { id, pressed: _ } => {
+                let rate = REPEAT_RATES[id as usize];
+                self.repeat_off_beat = self.select_held;
+                self.set_rate(rate);
             }
-            LaunchpadEvent::TriggerModeButton { id, pressed } => {
-                if pressed {
-                    self.set_trigger_mode(TriggerMode::from_id(id));
-                }
+            LaunchpadEvent::TriggerModeSelect { id } => {
+                self.set_trigger_mode(TriggerMode::from_id(id));
+            }
+            LaunchpadEvent::SwingControl { value } => {
+                self.set_swing(value);
+            }
+            LaunchpadEvent::TempoControl { value } => {
+                self.set_tempo(value);
             }
             LaunchpadEvent::BankButton { id, pressed } => {
                 if pressed {
-                    if id == 3 && self.shift_held {
+                    if id == 3 && self.select_held {
                         self.toggle_internal_clock();
                     } else {
                         self.set_bank(id as u8);
@@ -749,7 +721,7 @@ impl LoopGridLaunchpad {
                     self.grid_input(id, OutputValue::Off);
                 }
             }
-            LaunchpadEvent::SustainButton(pressed) => {
+            LaunchpadEvent::PrepareButton(pressed) => {
                 self.freeze_button(pressed);
             }
             LaunchpadEvent::None => (),
@@ -770,7 +742,7 @@ impl LoopGridLaunchpad {
                     self.double_loop_length();
                 }
             }
-            LoopGridRemoteEvent::SustainButton(pressed) => {
+            LoopGridRemoteEvent::PrepareButton(pressed) => {
                 self.freeze_button(pressed);
             }
         }
@@ -842,7 +814,9 @@ impl LoopGridLaunchpad {
                 }
             }
 
-            self.refresh_side_buttons();
+            self.refresh_loop_length();
+            self.refresh_loop_button();
+            self.refresh_repeat_button();
             self.refresh_recording();
         }
 
@@ -989,149 +963,124 @@ impl LoopGridLaunchpad {
     fn refresh_selected_bank(&mut self) {
         let internal_clock = self.use_internal_clock.load(atomic::Ordering::Relaxed);
         for (index, id) in BANK_BUTTONS.iter().enumerate() {
-            let bank_color = if internal_clock {
-                95
+            let bank_light = if internal_clock {
+                Light::Purple
             } else {
-                BANK_COLORS[index]
+                Light::Value(BANK_COLORS[index])
             };
             if self.current_bank == index as u8 {
-                self.launchpad_output
-                    .send(&[178, *id as u8, Light::White.value()])
-                    .unwrap();
+                self.send_note_color(2, *id as u8, Light::White);
             } else {
-                self.launchpad_output
-                    .send(&[176, *id as u8, bank_color])
-                    .unwrap();
+                self.send_note_color(2, *id as u8, bank_light);
             }
         }
-    }
-
-    fn refresh_selected_trigger_mode(&mut self) {
-        for (index, id) in TRIGGER_MODE_BUTTONS.iter().enumerate() {
-            if self.trigger_mode.to_id() == index {
-                self.launchpad_output
-                    .send(&[178, *id as u8, Light::White.value()])
-                    .unwrap();
-            } else {
-                self.launchpad_output
-                    .send(&[176, *id as u8, Light::RedLow.value()])
-                    .unwrap();
-            }
-        }
-    }
-
-    fn refresh_side_buttons(&mut self) {
-        let pos = self.last_pos;
-
-        let beat_display_multiplier = (24.0 * 8.0) / self.loop_length.ticks() as f64;
-        let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
-
-        let current_beat_light = RIGHT_SIDE_BUTTONS[shifted_beat_position % 8];
-        let current_repeat_light = RIGHT_SIDE_BUTTONS[REPEAT_RATES
-            .iter()
-            .position(|v| v == &self.rate)
-            .unwrap_or(0)];
-
-        let rate_color = if self.repeat_off_beat {
-            Light::RedMed
-        } else {
-            Light::YellowMed
-        };
-
-        if current_repeat_light != self.last_repeat_light
-            || self.last_repeat_light_out != rate_color
-        {
-            self.launchpad_output
-                .send(&[144, self.last_repeat_light, 0])
-                .unwrap();
-            self.launchpad_output
-                .send(&[144, current_repeat_light, rate_color.value()])
-                .unwrap();
-        }
-
-        let beat_start = pos.is_whole_beat();
-        let base_last_beat_light = if current_repeat_light == self.last_beat_light {
-            rate_color
-        } else {
-            Light::None
-        };
-
-        let base_beat_light = if current_repeat_light == current_beat_light {
-            rate_color
-        } else {
-            Light::None
-        };
-
-        let beat_light = if self.use_internal_clock.load(atomic::Ordering::Relaxed) {
-            Light::Purple
-        } else {
-            Light::GreenLow
-        };
-
-        if current_beat_light != self.last_beat_light {
-            self.launchpad_output
-                .send(&[
-                    144,
-                    self.last_beat_light,
-                    base_last_beat_light.unwrap_or(Light::Off).value(),
-                ])
-                .unwrap();
-            if !beat_start {
-                self.launchpad_output
-                    .send(&[
-                        144,
-                        current_beat_light,
-                        base_beat_light.unwrap_or(beat_light).value(),
-                    ])
-                    .unwrap();
-            }
-        }
-
-        if beat_start {
-            self.launchpad_output
-                .send(&[144, current_beat_light, Light::White.value()])
-                .unwrap();
-        } else if pos.beat_tick() == 3 {
-            self.launchpad_output
-                .send(&[
-                    144,
-                    current_beat_light,
-                    base_beat_light.unwrap_or(beat_light).value(),
-                ])
-                .unwrap();
-        }
-
-        self.last_beat_light = current_beat_light;
-        self.last_repeat_light = current_repeat_light;
-        self.last_repeat_light_out = rate_color;
     }
 
     fn refresh_undo_redo_lights(&mut self) {
-        let color = if self.selecting_scale_held && self.shift_held {
-            // nudging
-            Light::Orange
-        } else if self.shift_held {
+        let color = if self.select_held {
             Light::GreenLow
         } else {
             Light::RedLow
         };
 
-        self.launchpad_output
-            .send(&[176, UNDO_BUTTON, color.value()])
-            .unwrap();
-        self.launchpad_output
-            .send(&[176, REDO_BUTTON, color.value()])
-            .unwrap();
+        self.send_note_color(1, UNDO_BUTTON, color);
+        self.send_note_color(1, REDO_BUTTON, color);
     }
 
     fn refresh_loop_button(&mut self) {
-        self.launchpad_output
-            .send(&[176, LOOP_BUTTON, Light::YellowMed.value()])
-            .unwrap();
+        let offset = if self.repeat_off_beat {
+            self.rate / 2
+        } else {
+            MidiTime::zero()
+        };
+        let cycle_pos = (self.last_pos - offset) % self.rate;
+        let repeat_flash = cycle_pos < MidiTime::from_float(2.0);
+
+        let light = if self.loop_held {
+            Light::White
+        } else {
+            match self.trigger_mode {
+                TriggerMode::Immediate => Light::Green,
+                TriggerMode::Quantized => {
+                    if repeat_flash {
+                        Light::White
+                    } else {
+                        Light::Green
+                    }
+                }
+                TriggerMode::Repeat => {
+                    if cycle_pos < self.rate.half() {
+                        Light::Green
+                    } else {
+                        Light::Off
+                    }
+                }
+                TriggerMode::Cycle => {
+                    if cycle_pos < self.rate.half() {
+                        Light::Green
+                    } else {
+                        Light::Purple
+                    }
+                }
+            }
+        };
+
+        if self.loop_button_out != light {
+            self.send_note_color(1, LOOP_BUTTON, light);
+            self.loop_button_out = light;
+        }
+    }
+
+    fn refresh_suppress_button(&mut self) {
+        let light = if self.suppressing {
+            Light::White
+        } else {
+            Light::Off
+        };
+        self.send_note_color(1, SUPPRESS_BUTTON, light);
+    }
+
+    fn refresh_repeat_button(&mut self) {
+        let offset = if self.repeat_off_beat {
+            self.rate / 2
+        } else {
+            MidiTime::zero()
+        };
+        let cycle_pos = (self.last_pos - offset) % self.rate;
+        let on_color = if is_triplet_rate(self.rate) {
+            Light::Purple
+        } else {
+            Light::Green
+        };
+        let light = if self.holding {
+            Light::White
+        } else if cycle_pos < self.rate.half() {
+            on_color
+        } else {
+            Light::Off
+        };
+
+        if self.repeat_button_out != light {
+            self.send_note_color(1, REPEAT_BUTTON, light);
+            self.repeat_button_out = light;
+        }
     }
 
     fn refresh_loop_length(&mut self) {
-        for (index, id) in LEFT_SIDE_BUTTONS.iter().enumerate() {
+        let pos = self.last_pos;
+        let beat_display_multiplier = (24.0 * 8.0) / self.loop_length.ticks() as f64;
+        let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
+        let current_beat_index = shifted_beat_position % 8;
+        let beat_start = pos % MidiTime::from_beats(1) < MidiTime::from_float(2.0);
+        let selected_color = if self.repeat_off_beat {
+            Light::RedMed
+        } else {
+            Light::YellowMed
+        };
+
+        let mut pending = Vec::new();
+
+        for (index, id) in LENGTH_BUTTONS.iter().enumerate() {
             let prev_button_length = *LOOP_LENGTHS
                 .get(index.wrapping_sub(1))
                 .unwrap_or(&MidiTime::zero());
@@ -1140,12 +1089,8 @@ impl LoopGridLaunchpad {
                 .get(index + 1)
                 .unwrap_or(&(LOOP_LENGTHS[LOOP_LENGTHS.len() - 1] * 2));
 
-            let result = if button_length == self.loop_length {
-                if self.last_loop_snapshot.is_some() {
-                    Light::Green
-                } else {
-                    Light::Yellow
-                }
+            let base = if button_length == self.loop_length {
+                selected_color
             } else if self.loop_length < button_length && self.loop_length > prev_button_length {
                 Light::Red
             } else if self.loop_length > button_length && self.loop_length < next_button_length {
@@ -1154,9 +1099,24 @@ impl LoopGridLaunchpad {
                 Light::Off
             };
 
-            self.launchpad_output
-                .send(&[176, *id, result.value()])
-                .unwrap();
+            let result = if beat_start && index == current_beat_index {
+                Light::White
+            } else {
+                if index == current_beat_index && base == Light::Off {
+                    Light::GreenLow
+                } else {
+                    base
+                }
+            };
+
+            pending.push((*id, result));
+        }
+
+        for (id, light) in pending {
+            if self.length_row_out.get(&id) != Some(&light) {
+                self.send_note_color(1, id, light);
+                self.length_row_out.insert(id, light);
+            }
         }
     }
 
@@ -1176,7 +1136,6 @@ impl LoopGridLaunchpad {
 
     fn grid_input(&mut self, id: u32, value: OutputValue) {
         let current_index = self.currently_held_inputs.iter().position(|v| v == &id);
-        let scale_id = id + 64;
         let mut fresh_trigger = false;
 
         if value.is_on() {
@@ -1188,22 +1147,14 @@ impl LoopGridLaunchpad {
             self.currently_held_inputs.remove(index);
         }
 
-        // use fresh_trigger detection to filter out aftertouch changes
-        if self.shift_held && value.is_on() {
+        if self.select_held && value.is_on() {
             if fresh_trigger {
                 if self.selection.contains(&id) {
-                    self.unselect(scale_id);
                     self.unselect(id);
                 } else {
-                    if self.selecting_scale {
-                        // hack to avoid including drums/vox
-                        self.select(scale_id);
-                    } else {
-                        self.select(id);
-                    }
+                    self.select(id);
                 }
 
-                // range selection
                 if self.currently_held_inputs.len() == 2 {
                     let from = Coords::from(self.currently_held_inputs[0]);
                     let to = Coords::from(self.currently_held_inputs[1]);
@@ -1215,44 +1166,27 @@ impl LoopGridLaunchpad {
 
                     for row in from_row..to_row {
                         for col in from_col..to_col {
-                            let row_offset = if self.selecting_scale { 8 } else { 0 };
-                            let id = Coords::id_from(row + row_offset, col);
-                            self.select(id);
+                            self.select(Coords::id_from(row, col));
                         }
                     }
                 }
             }
-        } else {
-            // HACK: filter out aftertouch if that key wasn't already pressed (e.g. after releasing shift while still holding keys)
-            let in_scale_view = id < 128
-                && (self.selecting_scale
-                    && (self.selection.len() == 0 || !self.selection.contains(&id)))
-                || self.selection.contains(&scale_id);
-            let (target_id, other_id) = if in_scale_view {
-                (scale_id, id)
-            } else {
-                (id, scale_id)
-            };
-
-            if !value.is_on()
-                || fresh_trigger
-                || self
-                    .input_values
-                    .get(&target_id)
-                    .unwrap_or(&OutputValue::Off)
-                    .is_on()
-            {
-                self.input_values.insert(target_id, value);
-                self.input_values.remove(&other_id);
-                self.refresh_input(target_id);
-                self.refresh_input(other_id);
-            }
+        } else if !value.is_on()
+            || fresh_trigger
+            || self
+                .input_values
+                .get(&id)
+                .unwrap_or(&OutputValue::Off)
+                .is_on()
+        {
+            self.input_values.insert(id, value);
+            self.refresh_input(id);
         }
         self.refresh_should_flatten();
     }
 
     fn refresh_all_inputs(&mut self) {
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             self.refresh_input(id);
         }
     }
@@ -1538,7 +1472,7 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_cycle_groups(&mut self) {
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             if let Some(chunk_index) = self.chunk_index_for_id(id) {
                 let repeat_mode = self
                     .chunk_repeat_mode
@@ -1561,10 +1495,9 @@ impl LoopGridLaunchpad {
         }
     }
 
-    fn refresh_bottom_button(&mut self, base_id: u32) {
-        let id = base_id + 128;
-
+    fn refresh_grid_button(&mut self, id: u32) {
         let mapped = self.mapping.get(&Coords::from(id));
+
         let chunk_triggering_override = if let Some(mapped) = mapped {
             let chunk = &self.chunks[mapped.chunk_index];
             chunk.check_triggering(mapped.id)
@@ -1583,7 +1516,7 @@ impl LoopGridLaunchpad {
             Some(value) => value,
         };
 
-        let old_value = self.bottom_button_out.remove(&base_id);
+        let old_value = self.grid_out.remove(&id);
 
         let color = if let Some(mapped) = mapped {
             let chunk = &self.chunks[mapped.chunk_index];
@@ -1596,163 +1529,48 @@ impl LoopGridLaunchpad {
             Light::Off
         };
 
-        let selection_color = Light::Green;
+        let selection_color = if color == Light::Off {
+            Light::GreenDark
+        } else {
+            Light::Green
+        };
 
         let new_value = if triggering && self.selection.contains(&id) {
-            LaunchpadLight::Pulsing(Light::White)
+            LaunchpadLight::Constant(Light::White)
         } else if triggering {
             let trigger_color = if color == Light::Off {
-                Light::Value(1)
+                Light::WhiteMed
             } else {
-                Light::Value(3)
+                Light::White
             };
 
-            if self.active.contains(&id)
-                || loop_triggering && chunk_triggering_override == Some(true)
-            {
-                LaunchpadLight::Pulsing(trigger_color)
-            } else {
-                LaunchpadLight::Constant(trigger_color)
-            }
+            LaunchpadLight::Constant(trigger_color)
         } else if self.selection.contains(&id) {
-            LaunchpadLight::Pulsing(selection_color)
+            LaunchpadLight::Constant(selection_color)
         } else if self.recording.contains(&id) {
-            LaunchpadLight::Pulsing(Light::RedLow)
+            if color == Light::Off {
+                LaunchpadLight::Constant(Light::RedMed)
+            } else {
+                LaunchpadLight::Constant(Light::Red)
+            }
         } else if self.active.contains(&id) {
-            LaunchpadLight::Pulsing(color)
+            LaunchpadLight::Constant(color)
         } else if self.loop_state.is_frozen() {
-            LaunchpadLight::Pulsing(Light::Orange)
+            LaunchpadLight::Constant(Light::Orange)
         } else {
             LaunchpadLight::Constant(color)
         };
 
         if Some(new_value.clone()) != old_value {
-            let midi_id = BOTTOM_BUTTONS.get(base_id as usize);
-            let message = match new_value {
-                LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
-                LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value.value()],
-            };
-            self.launchpad_output.send(&message).unwrap();
+            let midi_id = self.id_to_midi.get(&id).unwrap();
+            match new_value.clone() {
+                LaunchpadLight::Constant(value) | LaunchpadLight::Pulsing(value) => {
+                    self.send_note_color(1, *midi_id, value)
+                }
+            }
         }
 
-        self.bottom_button_out.insert(base_id, new_value);
-    }
-
-    fn refresh_grid_button(&mut self, base_id: u32) {
-        let in_scale_view = (self.selecting_scale
-            && (self.selection.len() == 0 || !self.selection.contains(&base_id)))
-            || (self.shift_held && self.selecting_scale_held)
-            || self.selection.contains(&(base_id + 64));
-
-        let (id, background_id) = if in_scale_view {
-            (base_id + 64, base_id)
-        } else {
-            (base_id, base_id + 64)
-        };
-
-        let mapped = self.mapping.get(&Coords::from(id));
-        let background_mapped = self.mapping.get(&Coords::from(background_id));
-
-        let chunk_triggering_override = if let Some(mapped) = mapped {
-            let chunk = &self.chunks[mapped.chunk_index];
-            chunk.check_triggering(mapped.id)
-        } else {
-            None
-        };
-
-        let loop_triggering = self
-            .out_values
-            .get(&id)
-            .unwrap_or(&OutputValue::Off)
-            .is_on();
-
-        let triggering = match chunk_triggering_override {
-            None => loop_triggering,
-            Some(value) => value,
-        };
-
-        let background_triggering = if self
-            .out_values
-            .get(&background_id)
-            .unwrap_or(&OutputValue::Off)
-            .is_on()
-        {
-            true
-        } else {
-            false
-        };
-
-        let old_value = self.grid_out.remove(&base_id);
-
-        let color = if let Some(mapped) = mapped {
-            let chunk = &self.chunks[mapped.chunk_index];
-            if chunk.check_lit(mapped.id) {
-                self.chunk_colors[mapped.chunk_index]
-            } else {
-                Light::Off
-            }
-        } else {
-            Light::Off
-        };
-
-        let selection_color = if in_scale_view {
-            Light::Purple
-        } else {
-            if color == Light::Off {
-                Light::GreenDark
-            } else {
-                Light::Green
-            }
-        };
-
-        let background_color = if let Some(background_mapped) = background_mapped {
-            self.chunk_colors[background_mapped.chunk_index]
-        } else {
-            Light::Off
-        };
-
-        let new_value = if triggering && self.selection.contains(&id) {
-            LaunchpadLight::Pulsing(Light::Value(28))
-        } else if triggering {
-            let trigger_color = if color == Light::Off {
-                Light::Value(1)
-            } else {
-                Light::Value(3)
-            };
-
-            if self.active.contains(&id)
-                || loop_triggering && chunk_triggering_override == Some(true)
-            {
-                LaunchpadLight::Pulsing(trigger_color)
-            } else {
-                LaunchpadLight::Constant(trigger_color)
-            }
-        } else if self.selection.contains(&id) {
-            LaunchpadLight::Pulsing(selection_color)
-        } else if self.recording.contains(&id) {
-            if color == Light::Off {
-                LaunchpadLight::Pulsing(Light::Value(7))
-            } else {
-                LaunchpadLight::Pulsing(Light::Value(5))
-            }
-        } else if background_triggering {
-            LaunchpadLight::Constant(background_color)
-        } else if self.active.contains(&id) {
-            LaunchpadLight::Pulsing(color)
-        } else {
-            LaunchpadLight::Constant(color)
-        };
-
-        if Some(new_value.clone()) != old_value {
-            let midi_id = self.id_to_midi.get(&base_id);
-            let message = match new_value {
-                LaunchpadLight::Constant(value) => [144, *midi_id.unwrap(), value.value()],
-                LaunchpadLight::Pulsing(value) => [146, *midi_id.unwrap(), value.value()],
-            };
-            self.launchpad_output.send(&message).unwrap();
-        }
-
-        self.grid_out.insert(base_id, new_value);
+        self.grid_out.insert(id, new_value);
     }
 
     fn refresh_selection_override(&mut self) {
@@ -1767,7 +1585,7 @@ impl LoopGridLaunchpad {
             LoopTransform::None
         };
 
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             self.refresh_override(id);
         }
     }
@@ -1833,18 +1651,16 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_select_state(&mut self) {
-        let new_state = if self.shift_held {
+        let new_state = if self.select_held {
             Light::Green
         } else if self.selection.len() > 0 {
             Light::GreenLow
         } else {
-            Light::Off
+            Light::OrangeLow
         };
 
         if self.select_out != new_state {
-            self.launchpad_output
-                .send(&[178, SHIFT_BUTTON, new_state.value()])
-                .unwrap();
+            self.send_note_color(1, SELECT_BUTTON, new_state);
             self.select_out = new_state;
         }
     }
@@ -1894,9 +1710,8 @@ impl LoopGridLaunchpad {
         self.commit_selection_override();
         self.loop_held = true;
         self.loop_from = self.last_pos.round();
-        self.launchpad_output
-            .send(&[176, LOOP_BUTTON, Light::Green.value()])
-            .unwrap();
+        self.loop_button_out = Light::Off;
+        self.refresh_loop_button();
     }
 
     fn end_loop(&mut self) {
@@ -1941,9 +1756,9 @@ impl LoopGridLaunchpad {
             recording_ids.insert(*id);
         }
 
-        for id in 0..136 {
-            // include ids that are recording, or if self.shift_held, all active IDs!
-            let selected = self.shift_held || self.selection.contains(&id);
+        for id in 0..PLAYABLE_GRID_SIZE {
+            // include ids that are recording, or if select is held, all active IDs!
+            let selected = self.select_held || self.selection.contains(&id);
             if recording_ids.contains(&id) || (selected && self.active.contains(&id)) {
                 // only include in loop if there are items in the range
                 let current_event = self.recorder.get_event_at(id, self.loop_from);
@@ -2047,11 +1862,6 @@ impl LoopGridLaunchpad {
     fn clear_selection(&mut self) {
         self.commit_selection_override();
 
-        if !self.selecting_scale {
-            self.selecting_scale = false;
-            self.refresh_selecting_scale();
-        }
-
         for id in &self.selection {
             if let Some(mapped) = self.mapping.get(&Coords::from(*id)) {
                 let chunk = &mut self.chunks[mapped.chunk_index];
@@ -2087,16 +1897,14 @@ impl LoopGridLaunchpad {
             } else {
                 Light::Off
             };
-            self.launchpad_output
-                .send(&[176, FLATTEN_BUTTON, color.value()])
-                .unwrap();
+            self.send_note_color(1, FLATTEN_BUTTON, color);
         }
     }
 
     fn flatten(&mut self) {
         let mut new_loop = self.loop_state.get().clone();
 
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             let transform = self
                 .out_transforms
                 .get(&id)
@@ -2125,9 +1933,7 @@ impl LoopGridLaunchpad {
         let mut new_loop = self.loop_state.get().clone();
 
         let ids: Vec<u32> = match target {
-            TransformTarget::All => (0..136).collect(),
-            TransformTarget::Main => (0..64).collect(),
-            TransformTarget::Scale => (64..136).collect(),
+            TransformTarget::All | TransformTarget::Main => (0..PLAYABLE_GRID_SIZE).collect(),
             TransformTarget::Selected => self.selection.iter().cloned().collect(),
         };
 
@@ -2217,12 +2023,8 @@ impl LoopGridLaunchpad {
             }
         }
 
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             self.refresh_override(id);
-        }
-
-        for id in 0..8 {
-            self.refresh_bottom_button(id);
         }
 
         self.refresh_should_flatten();
@@ -2232,29 +2034,38 @@ impl LoopGridLaunchpad {
         params.cueing = false;
     }
 
-    fn refresh_selecting_scale(&mut self) {
-        if self.selecting_scale {
-            self.launchpad_output
-                .send(&[178, SESSION_BUTTON, Light::Yellow.value()])
-                .unwrap();
-        } else {
-            self.launchpad_output
-                .send(&[176, SESSION_BUTTON, 45])
-                .unwrap();
-        };
-    }
-
     fn set_rate(&mut self, value: MidiTime) {
         self.rate = value;
-        self.refresh_side_buttons();
+        self.repeat_button_out = Light::Off;
+        self.loop_button_out = Light::Off;
+        self.refresh_loop_length();
+        self.refresh_loop_button();
+        self.refresh_repeat_button();
         self.refresh_selection_override();
         self.refresh_override_repeat();
     }
 
+    fn set_swing(&mut self, value: u8) {
+        let mut params = self.params.lock().unwrap();
+        let linear_swing = (value as f64 - 64.0) / 64.0;
+        params.swing = if value == 63 || value == 64 {
+            0.0
+        } else if linear_swing < 0.0 {
+            -linear_swing.abs().powf(2.0)
+        } else {
+            linear_swing.powf(2.0)
+        };
+    }
+
+    fn set_tempo(&mut self, value: u8) {
+        let bpm = tempo_from_cc(value);
+        *self.internal_bpm.lock().unwrap() = bpm;
+    }
+
     fn set_trigger_mode(&mut self, value: TriggerMode) {
         self.trigger_mode = value;
+        self.refresh_loop_button();
         self.refresh_override_repeat();
-        self.refresh_selected_trigger_mode();
         self.refresh_all_inputs();
     }
 
@@ -2320,7 +2131,7 @@ impl LoopGridLaunchpad {
     }
 
     fn initial_loop(&mut self) {
-        for id in 0..136 {
+        for id in 0..PLAYABLE_GRID_SIZE {
             let loop_collection = self.loop_state.get();
 
             let selection_override_loop_collection =
@@ -2778,13 +2589,14 @@ fn get_grid_map() -> (HashMap<u8, u32>, HashMap<u32, u8>) {
     let mut midi_to_id: HashMap<u8, u32> = HashMap::new();
     let mut id_to_midi: HashMap<u32, u8> = HashMap::new();
 
-    for r in 0..8 {
-        for c in 0..8 {
-            let midi = ((8 - r) * 10 + c + 1) as u8;
-            let id = (r * 8 + c) as u32;
-            midi_to_id.insert(midi, id);
-            id_to_midi.insert(id, midi);
-        }
+    for id in 0..PLAYABLE_GRID_SIZE {
+        let midi = if id < 80 {
+            GRID_NOTE_START + id as u8
+        } else {
+            GRID_2_NOTE_START + (id as u8 - 80)
+        };
+        midi_to_id.insert(midi, id);
+        id_to_midi.insert(id, midi);
     }
 
     (midi_to_id, id_to_midi)
@@ -2821,6 +2633,64 @@ fn update_ids<'a>(a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, Ve
 enum LaunchpadLight {
     Constant(Light),
     Pulsing(Light),
+}
+
+fn note_light_messages(channel: u8, note: u8, light: Light) -> Vec<[u8; 3]> {
+    let hue = light_to_hue(light);
+    let mut result = vec![[0x90 + (channel - 1), note, hue]];
+    if channel == 1 {
+        result.push([0x9E, note, light_to_intensity(light)]);
+    }
+    result
+}
+
+fn light_to_hue(light: Light) -> u8 {
+    match light {
+        Light::Off | Light::None => 0,
+        Light::White | Light::WhiteMed => 127,
+        Light::Yellow | Light::YellowMed => 19,
+        Light::Lime | Light::LimeLow => 31,
+        Light::Purple => 95,
+        Light::Green | Light::GreenMed | Light::GreenLow | Light::GreenDark => 40,
+        Light::Orange | Light::OrangeMed | Light::OrangeLow => 13,
+        Light::Red | Light::RedMed | Light::RedLow => 1,
+        Light::BlueDark => 85,
+        Light::Value(value) | Light::ValueLow(value) => value,
+    }
+}
+
+fn light_to_intensity(light: Light) -> u8 {
+    match light {
+        Light::Off | Light::None => 0,
+        Light::GreenDark => 24,
+        Light::GreenLow
+        | Light::LimeLow
+        | Light::RedLow
+        | Light::OrangeLow
+        | Light::ValueLow(..) => 48,
+        Light::GreenMed | Light::YellowMed | Light::RedMed | Light::OrangeMed | Light::WhiteMed => {
+            96
+        }
+        _ => 127,
+    }
+}
+
+fn tempo_from_cc(value: u8) -> f64 {
+    let center_min = 80.0;
+    let center_max = 180.0;
+    if value <= 15 {
+        40.0 + (value as f64 / 15.0) * (center_min - 40.0)
+    } else if value >= 112 {
+        center_max + ((value as f64 - 112.0) / 15.0) * (200.0 - center_max)
+    } else {
+        center_min + ((value as f64 - 16.0) / 95.0) * (center_max - center_min)
+    }
+}
+
+fn is_triplet_rate(rate: MidiTime) -> bool {
+    rate == MidiTime::from_measure(2, 3)
+        || rate == MidiTime::from_measure(1, 3)
+        || rate == MidiTime::from_measure(1, 6)
 }
 
 fn next_repeat(pos: MidiTime, rate: MidiTime, offset: MidiTime) -> MidiTime {
@@ -2899,13 +2769,15 @@ fn is_active(transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) 
 }
 
 fn adjust_velocity(input_velocity: u8) -> u8 {
-    if input_velocity < VELOCITY_THRESHOLD {
+    if input_velocity == 0 {
         0
     } else {
-        let range = 127 - VELOCITY_THRESHOLD;
-        let pos = input_velocity - VELOCITY_THRESHOLD;
-        (pos as f64 / range as f64 * 127.0).min(127.0) as u8
+        127
     }
+}
+
+fn cc_bucket(value: u8, count: usize) -> usize {
+    ((value as usize * count) / 128).min(count.saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -2915,11 +2787,32 @@ mod tests {
     #[test]
     fn test_adjust_velocity() {
         assert_eq!(adjust_velocity(0), 0);
-        assert_eq!(adjust_velocity(VELOCITY_THRESHOLD), 0);
-        assert_eq!(adjust_velocity(VELOCITY_THRESHOLD + 1), 1);
-        assert_eq!(adjust_velocity(VELOCITY_THRESHOLD + 2), 2);
-        assert_eq!(adjust_velocity(64), 52);
-        assert_eq!(adjust_velocity(126), 125);
+        assert_eq!(adjust_velocity(1), 127);
+        assert_eq!(adjust_velocity(64), 127);
         assert_eq!(adjust_velocity(127), 127);
+    }
+
+    #[test]
+    fn test_channel_1_light_sends_hue_and_intensity() {
+        assert_eq!(
+            note_light_messages(1, 7, Light::GreenLow),
+            vec![[0x90, 7, light_to_hue(Light::GreenLow)], [0x9E, 7, 48]]
+        );
+    }
+
+    #[test]
+    fn test_channel_2_light_sends_only_hue() {
+        assert_eq!(
+            note_light_messages(2, 3, Light::White),
+            vec![[0x91, 3, light_to_hue(Light::White)]]
+        );
+    }
+
+    #[test]
+    fn test_off_light_sends_zero_intensity_on_channel_1() {
+        assert_eq!(
+            note_light_messages(1, 12, Light::Off),
+            vec![[0x90, 12, 0], [0x9E, 12, 0]]
+        );
     }
 }

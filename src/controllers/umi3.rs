@@ -18,7 +18,7 @@ impl Umi3 {
                     remote_tx.send(LoopGridRemoteEvent::DoubleButton(velocity > &0)).unwrap();
                 },
                 [144, 64, velocity] => {
-                    remote_tx.send(LoopGridRemoteEvent::SustainButton(velocity > &0)).unwrap();
+                    remote_tx.send(LoopGridRemoteEvent::PrepareButton(velocity > &0)).unwrap();
                 },
                 _ => ()
             }

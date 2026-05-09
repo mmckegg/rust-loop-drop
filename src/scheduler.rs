@@ -16,6 +16,7 @@ pub struct Scheduler {
     sub_ticks: u8,
     rx: mpsc::Receiver<ScheduleTick>,
     use_internal_clock: Arc<AtomicBool>,
+    internal_bpm: Arc<Mutex<f64>>,
     tx_int_tick: mpsc::SyncSender<Option<Duration>>,
     remote_state: Arc<Mutex<RemoteSchedulerState>>,
     _clock_source: Option<midi_connection::ThreadReference>,
@@ -77,7 +78,11 @@ impl RemoteSchedulerState {
 }
 
 impl Scheduler {
-    pub fn start(clock_port_name: &str, use_internal_clock: Arc<AtomicBool>) -> Self {
+    pub fn start(
+        clock_port_name: &str,
+        use_internal_clock: Arc<AtomicBool>,
+        internal_bpm: Arc<Mutex<f64>>,
+    ) -> Self {
         let remote_state = Arc::new(Mutex::new(RemoteSchedulerState {
             tick_durations: CircularQueue::with_capacity(3),
             last_tick_at: None,
@@ -160,6 +165,7 @@ impl Scheduler {
         });
 
         let tx_int_clock = tx.clone();
+        let bpm_clock = Arc::clone(&internal_bpm);
         thread::spawn(move || {
             let mut tick_duration = None;
             let mut next_tick_at = Instant::now();
@@ -176,7 +182,9 @@ impl Scheduler {
                     next_tick_at = Instant::now();
                 }
 
-                if let Some(tick_duration) = tick_duration {
+                if tick_duration.is_some() {
+                    let bpm = *bpm_clock.lock().unwrap();
+                    let tick_duration = Duration::from_secs_f64(60.0 / bpm / 24.0);
                     next_tick_at += tick_duration;
                     tx_int_clock.send(ScheduleTick::MidiTick(false)).unwrap();
                     if SUB_TICKS > 1 {
@@ -199,6 +207,7 @@ impl Scheduler {
             rx,
             tx_int_tick,
             use_internal_clock,
+            internal_bpm,
             last_tick_at: Instant::now(),
             next_pos: MidiTime::zero(),
             remote_state,

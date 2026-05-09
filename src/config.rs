@@ -85,80 +85,69 @@ impl Config {
 
         Config {
             chunks: vec![
-                // EXT SYNTH OFFSET
-                // (also sends pitch mod on channel 2 for slicer)
-                ChunkConfig {
-                    coords: Coords::new(3 + 8, 0),
-                    shape: Shape::new(1, 8),
-                    color: 12,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                    device: DeviceConfig::multi(vec![DeviceConfig::offset("poly")]),
-                },
-                // INCUS OFFSET
+                // BASS OFFSET
                 ChunkConfig {
                     device: DeviceConfig::offset("bass"),
-                    coords: Coords::new(4 + 8, 0),
+                    coords: Coords::new(10 + 0, 0),
                     shape: Shape::new(1, 8),
-                    color: 55, // pink
+                    color: 75, // blue
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
-                // SYNTH OFFSET
+                // LEAD OFFSET
                 ChunkConfig {
                     device: DeviceConfig::offset("lead"),
-                    coords: Coords::new(5 + 8, 0),
+                    coords: Coords::new(10 + 1, 0),
                     shape: Shape::new(1, 8),
-                    color: 43, // blue
+                    color: 122, // pink
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
-                // ROOT NOTE SELECTOR
+                // POLY OFFSET
                 ChunkConfig {
-                    device: DeviceConfig::RootSelect,
-                    coords: Coords::new(6 + 8, 0),
-                    shape: Shape::new(2, 8),
-                    color: 35, // soft green
+                    coords: Coords::new(10 + 2, 0),
+                    shape: Shape::new(1, 8),
+                    color: 97,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
+                    device: DeviceConfig::offset("poly"),
                 },
                 // SCALE MODE SELECTOR
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Second),
-                    coords: Coords::new(16, 0),
+                    coords: Coords::new(10 + 3, 0),
                     shape: Shape::new(1, 2),
-                    color: 95, // purple
+                    color: 28,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
-                    coords: Coords::new(16, 2),
+                    coords: Coords::new(10 + 3, 2),
                     shape: Shape::new(1, 2),
-                    color: 95, // black
+                    color: 28,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
-                    coords: Coords::new(16, 4),
+                    coords: Coords::new(10 + 3, 4),
                     shape: Shape::new(1, 2),
-                    color: 95, // purple
+                    color: 28,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
-                    coords: Coords::new(16, 6),
+                    coords: Coords::new(10 + 3, 6),
                     shape: Shape::new(1, 2),
-                    color: 95, // purple
+                    color: 28,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
@@ -184,6 +173,7 @@ impl Config {
                         velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
                         output: MidiPortConfig::new(rig_port_name, 3),
                         triggers: vec![
+                            MidiTrigger::NoteVelocity(3, 36),
                             MidiTrigger::NoteVelocity(3, 37),
                             MidiTrigger::NoteVelocity(3, 38),
                             MidiTrigger::NoteVelocity(3, 39),
@@ -191,19 +181,10 @@ impl Config {
                             MidiTrigger::NoteVelocity(3, 41),
                             MidiTrigger::NoteVelocity(3, 42),
                             MidiTrigger::NoteVelocity(3, 43),
-                            MidiTrigger::NoteVelocity(3, 44),
-                            MidiTrigger::NoteVelocity(3, 45),
-                            MidiTrigger::NoteVelocity(3, 46),
-                            MidiTrigger::NoteVelocity(3, 47),
-                            MidiTrigger::NoteVelocity(3, 48),
-                            MidiTrigger::NoteVelocity(3, 49),
-                            MidiTrigger::NoteVelocity(3, 50),
-                            MidiTrigger::NoteVelocity(3, 51),
-                            MidiTrigger::NoteVelocity(3, 127),
                         ],
                     }]),
                     coords: Coords::new(1, 0),
-                    shape: Shape::new(2, 8),
+                    shape: Shape::new(1, 8),
                     color: 10, // orange
                     channel: Some(15),
                     trigger_channels: None,
@@ -223,7 +204,7 @@ impl Config {
                     }]),
                     coords: Coords::new(0, 0),
                     shape: Shape::new(1, 4),
-                    color: 8, // warm white
+                    color: 9, // warm white
                     channel: None,
                     trigger_channels: Some(vec![2, 3, 10, 11]),
                     repeat_mode: RepeatMode::NoCycle,
@@ -242,56 +223,56 @@ impl Config {
                     }]),
                     coords: Coords::new(0, 4),
                     shape: Shape::new(1, 4),
-                    color: 15, // yellow
+                    color: 9, // warm white
                     channel: None,
                     trigger_channels: Some(vec![12, 13, 14, 15]),
                     repeat_mode: RepeatMode::NoCycle,
                 },
-                // Telepathy
+                // Bass
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
                         output: MidiPortConfig::new(rig_port_name, 15),
                         velocity_map: None,
                         offset_wrap: false,
                         monophonic: true,
-                        offset_id: String::from("lead"),
+                        offset_id: String::from("bass"),
                         note_offset: -4,
                         octave_offset: -1,
                         midi_offset: 0,
                     },
-                    coords: Coords::new(3, 0),
+                    coords: Coords::new(2, 0),
 
                     shape: Shape::new(5, 4),
-                    color: 43, //
+                    color: 75, //
                     channel: Some(5),
                     trigger_channels: None,
                     repeat_mode: RepeatMode::Global,
                 },
-                // Plaits
+                // Lead
                 ChunkConfig {
                     device: DeviceConfig::MidiKeys {
                         output: MidiPortConfig::new(rig_port_name, 14),
                         velocity_map: None,
                         offset_wrap: false,
-                        offset_id: String::from("bass"),
+                        offset_id: String::from("lead"),
                         monophonic: true,
                         note_offset: -4,
                         octave_offset: -2,
                         midi_offset: 0,
                     },
-                    coords: Coords::new(3, 4),
+                    coords: Coords::new(2, 4),
 
                     shape: Shape::new(5, 4),
-                    color: 59, // pink
+                    color: 122, // pink
                     channel: Some(4),
                     trigger_channels: None,
                     repeat_mode: RepeatMode::Global,
                 },
                 // Poly Synth
                 ChunkConfig {
-                    coords: Coords::new(0 + 8, 0),
+                    coords: Coords::new(7, 0),
                     shape: Shape::new(3, 8),
-                    color: 51,
+                    color: 97,
                     channel: None,
                     trigger_channels: None,
                     repeat_mode: RepeatMode::Global,

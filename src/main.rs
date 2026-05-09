@@ -56,6 +56,7 @@ fn main() {
         config::Config::default()
     };
     let use_internal_clock = Arc::new(AtomicBool::new(false));
+    let internal_bpm = Arc::new(Mutex::new(120.0));
 
     // TODO: enable config persistence when loaded with filepath
     // if Path::new(CONFIG_FILEPATH).exists() {
@@ -89,11 +90,7 @@ fn main() {
         slicer_pitches: HashMap::new(),
     }));
 
-    let launchpad_io_name = if cfg!(target_os = "linux") {
-        "Launchpad Pro MK3"
-    } else {
-        "Launchpad Pro MK3 LPProMK3 MIDI"
-    };
+    let launchpad_io_name = "LOOP DROP ";
 
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
@@ -121,6 +118,7 @@ fn main() {
         chunks,
         Arc::clone(&params),
         Arc::clone(&use_internal_clock),
+        Arc::clone(&internal_bpm),
     );
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();
@@ -194,7 +192,7 @@ fn main() {
         resync_outputs.push(get_port(&mut output_ports, &name))
     }
 
-    for range in Scheduler::start(clock_input_name, use_internal_clock) {
+    for range in Scheduler::start(clock_input_name, use_internal_clock, Arc::clone(&internal_bpm)) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if (range.tick_pos) % MidiTime::from_beats(32) == MidiTime::zero() {
