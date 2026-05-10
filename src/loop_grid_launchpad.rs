@@ -280,6 +280,8 @@ pub struct LoopGridLaunchpad {
     should_flatten: bool,
 
     last_flatten_press_at: Instant,
+    tempo_overlay_until: Option<Instant>,
+    tempo_overlay_value: Option<u16>,
 
     rate: MidiTime,
     recorder: LoopRecorder,
@@ -480,6 +482,8 @@ impl LoopGridLaunchpad {
             loop_from: MidiTime::from_ticks(0),
             should_flatten: false,
             last_flatten_press_at: Instant::now(),
+            tempo_overlay_until: None,
+            tempo_overlay_value: None,
 
             rate: MidiTime::from_beats(2),
             recorder: LoopRecorder::new(),
@@ -1067,49 +1071,57 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_loop_length(&mut self) {
-        let pos = self.last_pos;
-        let beat_display_multiplier = (24.0 * 8.0) / self.loop_length.ticks() as f64;
-        let shifted_beat_position = (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
-        let current_beat_index = shifted_beat_position % 8;
-        let beat_start = pos % MidiTime::from_beats(1) < MidiTime::from_float(2.0);
-        let selected_color = if self.repeat_off_beat {
-            Light::RedMed
-        } else {
-            Light::YellowMed
-        };
-
         let mut pending = Vec::new();
 
-        for (index, id) in LENGTH_BUTTONS.iter().enumerate() {
-            let prev_button_length = *LOOP_LENGTHS
-                .get(index.wrapping_sub(1))
-                .unwrap_or(&MidiTime::zero());
-            let button_length = LOOP_LENGTHS[index];
-            let next_button_length = *LOOP_LENGTHS
-                .get(index + 1)
-                .unwrap_or(&(LOOP_LENGTHS[LOOP_LENGTHS.len() - 1] * 2));
-
-            let base = if button_length == self.loop_length {
-                selected_color
-            } else if self.loop_length < button_length && self.loop_length > prev_button_length {
-                Light::Red
-            } else if self.loop_length > button_length && self.loop_length < next_button_length {
-                Light::Red
+        if self.tempo_overlay_active() {
+            for (col, id) in LENGTH_BUTTONS.iter().enumerate() {
+                let light = self
+                    .tempo_overlay_display_light(0, col)
+                    .unwrap_or(Light::Off);
+                pending.push((*id, light));
+            }
+        } else {
+            let pos = self.last_pos;
+            let beat_display_multiplier = (24.0 * 8.0) / self.loop_length.ticks() as f64;
+            let shifted_beat_position =
+                (pos.ticks() as f64 * beat_display_multiplier / 24.0) as usize;
+            let current_beat_index = shifted_beat_position % 8;
+            let beat_start = pos % MidiTime::from_beats(1) < MidiTime::from_float(2.0);
+            let selected_color = if self.repeat_off_beat {
+                Light::RedMed
             } else {
-                Light::Off
+                Light::YellowMed
             };
 
-            let result = if beat_start && index == current_beat_index {
-                Light::White
-            } else {
-                if index == current_beat_index && base == Light::Off {
+            for (index, id) in LENGTH_BUTTONS.iter().enumerate() {
+                let prev_button_length = *LOOP_LENGTHS
+                    .get(index.wrapping_sub(1))
+                    .unwrap_or(&MidiTime::zero());
+                let button_length = LOOP_LENGTHS[index];
+                let next_button_length = *LOOP_LENGTHS
+                    .get(index + 1)
+                    .unwrap_or(&(LOOP_LENGTHS[LOOP_LENGTHS.len() - 1] * 2));
+
+                let base = if button_length == self.loop_length {
+                    selected_color
+                } else if self.loop_length < button_length && self.loop_length > prev_button_length {
+                    Light::Red
+                } else if self.loop_length > button_length && self.loop_length < next_button_length {
+                    Light::Red
+                } else {
+                    Light::Off
+                };
+
+                let result = if beat_start && index == current_beat_index {
+                    Light::White
+                } else if index == current_beat_index && base == Light::Off {
                     Light::GreenLow
                 } else {
                     base
-                }
-            };
+                };
 
-            pending.push((*id, result));
+                pending.push((*id, result));
+            }
         }
 
         for (id, light) in pending {
@@ -1496,6 +1508,23 @@ impl LoopGridLaunchpad {
     }
 
     fn refresh_grid_button(&mut self, id: u32) {
+        if let Some(light) = self.tempo_overlay_light(id) {
+            let new_value = LaunchpadLight::Constant(light);
+            let old_value = self.grid_out.remove(&id);
+
+            if Some(new_value.clone()) != old_value {
+                let midi_id = self.id_to_midi.get(&id).unwrap();
+                match new_value.clone() {
+                    LaunchpadLight::Constant(value) | LaunchpadLight::Pulsing(value) => {
+                        self.send_note_color(1, *midi_id, value)
+                    }
+                }
+            }
+
+            self.grid_out.insert(id, new_value);
+            return;
+        }
+
         let mapped = self.mapping.get(&Coords::from(id));
 
         let chunk_triggering_override = if let Some(mapped) = mapped {
@@ -1571,6 +1600,60 @@ impl LoopGridLaunchpad {
         }
 
         self.grid_out.insert(id, new_value);
+    }
+
+    fn tempo_overlay_active(&self) -> bool {
+        if let Some(until) = self.tempo_overlay_until {
+            Instant::now() <= until && self.tempo_overlay_value.is_some()
+        } else {
+            false
+        }
+    }
+
+    fn tempo_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
+        if !self.tempo_overlay_active() {
+            return None;
+        }
+
+        let value = self.tempo_overlay_value?;
+        let hundreds = (value / 100) as u8;
+        let tens = ((value / 10) % 10) as u8;
+        let ones = (value % 10) as u8;
+
+        let light = if col == 0 {
+            if value >= 100 && narrow_digit_pixel(hundreds, row) {
+                Light::Green
+            } else {
+                Light::Off
+            }
+        } else if (2..=4).contains(&col) {
+            if wide_digit_pixel(tens, row, col - 2) {
+                Light::White
+            } else {
+                Light::Off
+            }
+        } else if (5..=7).contains(&col) {
+            if wide_digit_pixel(ones, row, col - 5) {
+                Light::Green
+            } else {
+                Light::Off
+            }
+        } else {
+            Light::Off
+        };
+
+        Some(light)
+    }
+
+    fn tempo_overlay_light(&self, id: u32) -> Option<Light> {
+        let coords = Coords::from(id);
+        if coords.row < 10 || coords.row > 13 {
+            return None;
+        }
+
+        let row = (coords.row - 9) as usize;
+        let col = coords.col as usize;
+        self.tempo_overlay_display_light(row, col)
     }
 
     fn refresh_selection_override(&mut self) {
@@ -2060,6 +2143,8 @@ impl LoopGridLaunchpad {
     fn set_tempo(&mut self, value: u8) {
         let bpm = tempo_from_cc(value);
         *self.internal_bpm.lock().unwrap() = bpm;
+        self.tempo_overlay_value = Some(bpm.round().min(199.0) as u16);
+        self.tempo_overlay_until = Some(Instant::now() + Duration::from_millis(1200));
     }
 
     fn set_trigger_mode(&mut self, value: TriggerMode) {
@@ -2673,6 +2758,35 @@ fn light_to_intensity(light: Light) -> u8 {
         }
         _ => 127,
     }
+}
+
+fn narrow_digit_pixel(digit: u8, row: usize) -> bool {
+    match digit {
+        1 => row < 5,
+        _ => false,
+    }
+}
+
+fn wide_digit_pixel(digit: u8, row: usize, col: usize) -> bool {
+    const DIGITS: [[[bool; 3]; 5]; 10] = [
+        [[true, true, true], [true, false, true], [true, false, true], [true, false, true], [true, true, true]],
+        [[false, true, false], [true, true, false], [false, true, false], [false, true, false], [true, true, true]],
+        [[true, true, true], [false, false, true], [true, true, true], [true, false, false], [true, true, true]],
+        [[true, true, true], [false, false, true], [true, true, true], [false, false, true], [true, true, true]],
+        [[true, false, true], [true, false, true], [true, true, true], [false, false, true], [false, false, true]],
+        [[true, true, true], [true, false, false], [true, true, true], [false, false, true], [true, true, true]],
+        [[true, true, true], [true, false, false], [true, true, true], [true, false, true], [true, true, true]],
+        [[true, true, true], [false, false, true], [false, false, true], [false, false, true], [false, false, true]],
+        [[true, true, true], [true, false, true], [true, true, true], [true, false, true], [true, true, true]],
+        [[true, true, true], [true, false, true], [true, true, true], [false, false, true], [true, true, true]],
+    ];
+
+    DIGITS
+        .get(digit as usize)
+        .and_then(|rows| rows.get(row))
+        .and_then(|cols| cols.get(col))
+        .copied()
+        .unwrap_or(false)
 }
 
 fn tempo_from_cc(value: u8) -> f64 {

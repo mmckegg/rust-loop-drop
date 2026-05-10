@@ -90,7 +90,11 @@ fn main() {
         slicer_pitches: HashMap::new(),
     }));
 
-    let launchpad_io_name = "LOOP DROP ";
+    let launchpad_io_name = if cfg!(target_os = "linux") {
+        "LOOP DROP"
+    } else {
+        "LOOP DROP "
+    };
 
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
@@ -192,7 +196,11 @@ fn main() {
         resync_outputs.push(get_port(&mut output_ports, &name))
     }
 
-    for range in Scheduler::start(clock_input_name, use_internal_clock, Arc::clone(&internal_bpm)) {
+    for range in Scheduler::start(
+        clock_input_name,
+        use_internal_clock,
+        Arc::clone(&internal_bpm),
+    ) {
         // sending clock is the highest priority, so lets do these first
         if range.ticked {
             if (range.tick_pos) % MidiTime::from_beats(32) == MidiTime::zero() {
