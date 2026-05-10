@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     controllers::{midi_to_polar, polar_to_msb_lsb},
-    loop_grid_launchpad::LoopGridParams,
+    loop_grid::LoopGridParams,
 };
 
 pub struct CcSlicer {

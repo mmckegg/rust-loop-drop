@@ -4,11 +4,11 @@ const PROGRAMMER_MODE: (u8, u8) = (17, 0);
 const TEMPO_MODE: (u8, u8) = (15, 0);
 const SETTINGS_MODE: (u8, u8) = (18, 0);
 
-pub struct LaunchpadTempo {
+pub struct DawTempo {
     _daw_input: midi_connection::ThreadReference,
 }
 
-impl LaunchpadTempo {
+impl DawTempo {
     pub fn new(daw_port_name: &str) -> Self {
         let mut output = midi_connection::get_shared_output(daw_port_name);
         let mut last_mode: Option<(u8, u8)> = None;
@@ -33,13 +33,13 @@ impl LaunchpadTempo {
             last_mode = new_mode;
         });
 
-        LaunchpadTempo {
+        DawTempo {
             _daw_input: daw_input,
         }
     }
 }
 
-impl ::controllers::Schedulable for LaunchpadTempo {}
+impl ::controllers::Schedulable for DawTempo {}
 
 fn get_mode(message: &[u8]) -> Option<(u8, u8)> {
     match message {

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 pub use scale::{Offset, Scale};
 
 use crate::config::{PerfectQuality, Quality, ScaleDegree};
-use crate::loop_grid_launchpad::LoopGridParams;
+use crate::loop_grid::LoopGridParams;
 
 pub struct ScaleDegreeToggle {
     scale: Arc<Mutex<Scale>>,

@@ -17,7 +17,7 @@ mod controllers;
 mod devices;
 mod lfo;
 mod loop_event;
-mod loop_grid_launchpad;
+mod loop_grid;
 mod loop_recorder;
 mod loop_state;
 mod loop_transform;
@@ -31,7 +31,7 @@ mod trigger_envelope;
 
 use chunk::{ChunkMap, Triggerable};
 use controllers::Modulator;
-use loop_grid_launchpad::{LoopGridLaunchpad, LoopGridParams};
+use loop_grid::{LoopGrid, LoopGridParams};
 use midi_time::MidiTime;
 use scale::{Offset, Scale};
 use scheduler::Scheduler;
@@ -90,12 +90,6 @@ fn main() {
         slicer_pitches: HashMap::new(),
     }));
 
-    let launchpad_io_name = if cfg!(target_os = "linux") {
-        "LOOP DROP"
-    } else {
-        "LOOP DROP "
-    };
-
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
 
@@ -117,8 +111,7 @@ fn main() {
         ))
     }
 
-    let mut launchpad = LoopGridLaunchpad::new(
-        launchpad_io_name,
+    let mut loop_grid = LoopGrid::new(
         chunks,
         Arc::clone(&params),
         Arc::clone(&use_internal_clock),
@@ -156,7 +149,7 @@ fn main() {
             )),
             config::ControllerConfig::Umi3 { port_name } => Box::new(controllers::Umi3::new(
                 &port_name,
-                launchpad.remote_tx.clone(),
+                loop_grid.remote_tx.clone(),
             )),
             config::ControllerConfig::ClockPulse { output, divider } => {
                 let device_port = get_port(&mut output_ports, &output.name);
@@ -166,9 +159,20 @@ fn main() {
                     divider,
                 ))
             }
-            config::ControllerConfig::LaunchpadTempo { daw_port_name } => {
-                Box::new(controllers::LaunchpadTempo::new(&daw_port_name))
+            config::ControllerConfig::DawTempo { daw_port_name } => {
+                Box::new(controllers::DawTempo::new(&daw_port_name))
             }
+            config::ControllerConfig::SampleMixer {
+                output,
+                output_ccs,
+                activity_channels,
+            } => Box::new(controllers::SampleMixer::new(
+                get_port(&mut output_ports, &output.name),
+                output.channel,
+                output_ccs,
+                activity_channels,
+                Arc::clone(&params),
+            )),
             config::ControllerConfig::Init { modulators } => Box::new(controllers::Init::new(
                 resolve_modulators(&mut output_ports, &modulators),
             )),
@@ -216,7 +220,7 @@ fn main() {
         }
 
         let start = Instant::now();
-        launchpad.schedule(range);
+        loop_grid.schedule(range);
         if start.elapsed() > Duration::from_millis(15) {
             println!("[WARN] SCHEDULE TIME {:?}", start.elapsed());
         }
@@ -231,9 +235,10 @@ fn main() {
                 output.send(&[254]).unwrap();
             }
 
-            // reset duck_triggered on every tick
+            // reset shared per-tick flags after all controllers have consumed them
             let mut params = params.lock().unwrap();
             params.duck_triggered = false;
+            params.channel_triggered.clear();
         }
     }
 }

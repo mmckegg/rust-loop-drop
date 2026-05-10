@@ -1,5 +1,5 @@
 use crate::{
-    loop_grid_launchpad::LoopGridParams, scheduler::ScheduleRange,
+    loop_grid::LoopGridParams, scheduler::ScheduleRange,
     trigger_envelope::TriggerEnvelope,
 };
 use std::sync::{Arc, Mutex};

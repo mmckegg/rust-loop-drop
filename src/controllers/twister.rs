@@ -1,5 +1,5 @@
 use lfo::Lfo;
-use loop_grid_launchpad::LoopGridParams;
+use loop_grid::LoopGridParams;
 use loop_recorder::{LoopEvent, LoopRecorder};
 use midi_connection;
 use output_value::OutputValue;
@@ -424,8 +424,6 @@ impl Twister {
                             triggering_channels.insert(*channel);
                             to_refresh.insert(*channel);
                         }
-
-                        params.channel_triggered.clear();
 
                         trigger_envelope.tick(params.duck_triggered);
 

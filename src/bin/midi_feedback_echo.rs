@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const APP_NAME: &str = "Loop Drop MIDI Feedback Echo";
-const DEFAULT_PORT_MATCH: &str = "LOOP DROP ";
+const DEFAULT_PORT_MATCH: &str = "LOOP DROP";
 const SELF_ECHO_WINDOW_MS: u64 = 50;
 
 fn main() {

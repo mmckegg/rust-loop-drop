@@ -1,4 +1,4 @@
-use ::loop_grid_launchpad::LoopGridRemoteEvent;
+use ::loop_grid::LoopGridRemoteEvent;
 use ::midi_connection;
 
 use std::sync::mpsc;

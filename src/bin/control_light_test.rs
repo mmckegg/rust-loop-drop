@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 const APP_NAME: &str = "Loop Drop Control Light Test";
-const DEFAULT_PORT_MATCH: &str = "LOOP DROP ";
+const DEFAULT_PORT_MATCH: &str = "LOOP DROP";
 const CONTROL_NOTES: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
 const CONTROL_CHANNEL: u8 = 1;
 const BANK_NOTES: [u8; 4] = [5, 6, 7, 8];

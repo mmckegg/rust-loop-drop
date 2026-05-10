@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::loop_grid_launchpad::LoopGridParams;
+use crate::loop_grid::LoopGridParams;
 
 pub struct MidiTriggers {
     midi_port: midi_connection::SharedMidiOutputConnection,

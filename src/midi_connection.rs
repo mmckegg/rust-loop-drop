@@ -15,6 +15,7 @@ pub use std::time::SystemTime;
 type Listener = Box<dyn Fn(&mut MidiOutputConnection) + Send + 'static>;
 
 const APP_NAME: &str = "Loop Drop";
+pub const YAELTEX_PORT_NAME: &str = "LOOP DROP";
 
 struct OutputState {
     port: Option<MidiOutputConnection>,
@@ -80,7 +81,7 @@ pub fn get_shared_output(port_name: &str) -> SharedMidiOutputConnection {
             let output = MidiOutput::new(APP_NAME).unwrap();
             let current_port_id = get_outputs(&output)
                 .iter()
-                .position(|item| item == &port_name_notify);
+                .position(|item| same_port_name(item, &port_name_notify));
             if current_port_id.is_some() != has_port {
                 let mut state = state_l.lock().unwrap();
                 state.port = get_output(&port_name_msg);
@@ -116,7 +117,7 @@ where
             let input = MidiInput::new(APP_NAME).unwrap();
             let current_port = get_inputs(&input)
                 .iter()
-                .position(|item| item == &port_name_notify);
+                .position(|item| same_port_name(item, &port_name_notify));
             if last_port.is_some() != current_port.is_some() {
                 if let Some(current_input) = current_input {
                     current_input.close();
@@ -156,7 +157,7 @@ pub fn get_output(port_name: &str) -> Option<MidiOutputConnection> {
     let output = MidiOutput::new(APP_NAME).unwrap();
     let port_number = match get_outputs(&output)
         .iter()
-        .position(|item| item == port_name)
+        .position(|item| same_port_name(item, port_name))
     {
         None => return None,
         Some(value) => value,
@@ -194,7 +195,7 @@ fn normalize_port_names(names: &Vec<String>) -> Vec<String> {
     let mut result = Vec::new();
 
     for name in names {
-        let base_device_name = RE.replace(name, "${2}").into_owned();
+        let base_device_name = RE.replace(name, "${2}").trim_end().to_string();
         let device_port_index = RE.replace(name, "${4}").parse::<u32>().unwrap_or(0);
         let mut device_index = 0;
         let mut device_name = build_name(&base_device_name, device_index, device_port_index);
@@ -209,6 +210,10 @@ fn normalize_port_names(names: &Vec<String>) -> Vec<String> {
     }
 
     result
+}
+
+fn same_port_name(a: &str, b: &str) -> bool {
+    a.trim_end() == b.trim_end()
 }
 
 fn build_name(base: &str, device_id: u32, port_id: u32) -> String {

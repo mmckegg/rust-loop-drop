@@ -1,4 +1,4 @@
-use loop_grid_launchpad::LoopGridParams;
+use loop_grid::LoopGridParams;
 use loop_recorder::{LoopEvent, LoopRecorder};
 use midi_connection;
 use output_value::OutputValue;
@@ -395,8 +395,6 @@ impl ModTwister {
                             triggering_channels.insert(*channel);
                             to_refresh.insert(*channel);
                         }
-
-                        params.channel_triggered.clear();
 
                         for (control, id) in control_ids.iter() {
                             if let Some(channel) = channel_map.get(id) {

@@ -136,7 +136,7 @@ enum RepeatPhase {
 #[allow(dead_code)]
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
 enum Light {
-    // http://launchpaddr.com/mk2palette/
+    // controller palette values
     Value(u8),
     ValueLow(u8),
     Yellow,
@@ -207,7 +207,7 @@ impl Light {
     }
 }
 
-enum LaunchpadEvent {
+enum GridEvent {
     Connected,
 
     LoopButton(bool),
@@ -216,6 +216,7 @@ enum LaunchpadEvent {
     RedoButton(bool),
     SuppressButton(bool),
     RepeatButton(bool),
+    // retained as a no-op placeholder for old controller layout; unused on Yaeltex
     ViewModeButton(bool),
     SelectButton(bool),
     PrepareButton(bool),
@@ -238,7 +239,7 @@ struct CycleStep {
     offset: MidiTime,
 }
 
-pub struct LoopGridLaunchpad {
+pub struct LoopGrid {
     pub remote_tx: mpsc::Sender<LoopGridRemoteEvent>,
     remote_queue: mpsc::Receiver<LoopGridRemoteEvent>,
 
@@ -247,7 +248,7 @@ pub struct LoopGridLaunchpad {
     use_internal_clock: Arc<AtomicBool>,
     internal_bpm: Arc<Mutex<f64>>,
 
-    input_queue: mpsc::Receiver<LaunchpadEvent>,
+    input_queue: mpsc::Receiver<GridEvent>,
 
     mapping: HashMap<Coords, MidiMap>,
     chunks: Vec<Box<dyn Triggerable>>,
@@ -255,7 +256,7 @@ pub struct LoopGridLaunchpad {
     chunk_channels: HashMap<usize, u32>,
     chunk_trigger_channels: HashMap<usize, Vec<u32>>,
     chunk_trigger_ids: Vec<Vec<u32>>,
-    launchpad_output: midi_connection::SharedMidiOutputConnection,
+    controller_output: midi_connection::SharedMidiOutputConnection,
 
     no_suppress: HashSet<u32>,
     no_suppress_held: HashSet<u32>,
@@ -304,7 +305,7 @@ pub struct LoopGridLaunchpad {
     repeat_states: HashMap<u32, RepeatState>,
 
     out_values: HashMap<u32, OutputValue>,
-    grid_out: HashMap<u32, LaunchpadLight>,
+    grid_out: HashMap<u32, GridLight>,
     length_row_out: HashMap<u8, Light>,
     repeat_button_out: Light,
     loop_button_out: Light,
@@ -324,15 +325,14 @@ pub struct LoopGridLaunchpad {
     last_loop_snapshot: Option<LoopSnapshot>,
 }
 
-impl LoopGridLaunchpad {
+impl LoopGrid {
     fn send_note_color(&mut self, channel: u8, note: u8, light: Light) {
         for message in note_light_messages(channel, note, light) {
-            self.launchpad_output.send(&message).unwrap();
+            self.controller_output.send(&message).unwrap();
         }
     }
 
     pub fn new(
-        launchpad_port_name: &str,
         chunk_map: Vec<Box<ChunkMap>>,
         params: Arc<Mutex<LoopGridParams>>,
         use_internal_clock: Arc<AtomicBool>,
@@ -345,7 +345,7 @@ impl LoopGridLaunchpad {
 
         let input_queue_connect_tx = input_queue_tx.clone();
 
-        let input = midi_connection::get_input(&launchpad_port_name, move |stamp, message| {
+        let input = midi_connection::get_input(midi_connection::YAELTEX_PORT_NAME, move |stamp, message| {
             let status = message[0];
             let channel = (status & 0x0F) + 1;
             let message_type = status & 0xF0;
@@ -359,7 +359,7 @@ impl LoopGridLaunchpad {
                     if channel == 1 {
                         if let Some(id) = midi_to_id.get(&note) {
                             input_queue_tx
-                                .send(LaunchpadEvent::GridInput {
+                                .send(GridEvent::GridInput {
                                     stamp,
                                     id: *id,
                                     value,
@@ -368,26 +368,26 @@ impl LoopGridLaunchpad {
                         } else if let Some(id) = CONTROL_BUTTONS.iter().position(|&x| x == note) {
                             input_queue_tx
                                 .send(match id {
-                                    0 => LaunchpadEvent::LoopButton(pressed),
-                                    1 => LaunchpadEvent::FlattenButton(pressed),
-                                    2 => LaunchpadEvent::UndoButton(pressed),
-                                    3 => LaunchpadEvent::RedoButton(pressed),
-                                    4 => LaunchpadEvent::SuppressButton(pressed),
-                                    5 => LaunchpadEvent::RepeatButton(pressed),
-                                    6 => LaunchpadEvent::PrepareButton(pressed),
-                                    7 => LaunchpadEvent::SelectButton(pressed),
-                                    _ => LaunchpadEvent::None,
+                                    0 => GridEvent::LoopButton(pressed),
+                                    1 => GridEvent::FlattenButton(pressed),
+                                    2 => GridEvent::UndoButton(pressed),
+                                    3 => GridEvent::RedoButton(pressed),
+                                    4 => GridEvent::SuppressButton(pressed),
+                                    5 => GridEvent::RepeatButton(pressed),
+                                    6 => GridEvent::PrepareButton(pressed),
+                                    7 => GridEvent::SelectButton(pressed),
+                                    _ => GridEvent::None,
                                 })
                                 .unwrap();
                         } else if let Some(id) = LENGTH_BUTTONS.iter().position(|&x| x == note) {
                             input_queue_tx
-                                .send(LaunchpadEvent::LengthButton { id, pressed })
+                                .send(GridEvent::LengthButton { id, pressed })
                                 .unwrap();
                         }
                     } else if channel == 2 {
                         if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == note) {
                             input_queue_tx
-                                .send(LaunchpadEvent::BankButton { id, pressed })
+                                .send(GridEvent::BankButton { id, pressed })
                                 .unwrap();
                         }
                     }
@@ -398,23 +398,23 @@ impl LoopGridLaunchpad {
                             1 => {
                                 let id = cc_bucket(message[2], REPEAT_RATES.len());
                                 input_queue_tx
-                                    .send(LaunchpadEvent::RateButton { id, pressed: true })
+                                    .send(GridEvent::RateButton { id, pressed: true })
                                     .unwrap();
                             }
                             2 => {
                                 let id = cc_bucket(message[2], 4);
                                 input_queue_tx
-                                    .send(LaunchpadEvent::TriggerModeSelect { id })
+                                    .send(GridEvent::TriggerModeSelect { id })
                                     .unwrap();
                             }
                             3 => {
                                 input_queue_tx
-                                    .send(LaunchpadEvent::SwingControl { value: message[2] })
+                                    .send(GridEvent::SwingControl { value: message[2] })
                                     .unwrap();
                             }
                             4 => {
                                 input_queue_tx
-                                    .send(LaunchpadEvent::TempoControl { value: message[2] })
+                                    .send(GridEvent::TempoControl { value: message[2] })
                                     .unwrap();
                             }
                             _ => {}
@@ -429,16 +429,16 @@ impl LoopGridLaunchpad {
         let loop_length = MidiTime::from_beats(8);
         let mut base_loop = LoopCollection::new(loop_length);
 
-        let mut launchpad_output = midi_connection::get_shared_output(&launchpad_port_name);
-        launchpad_output.on_connect(move |_port| {
+        let mut controller_output = midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
+        controller_output.on_connect(move |_port| {
             input_queue_connect_tx
-                .send(LaunchpadEvent::Connected)
+                .send(GridEvent::Connected)
                 .unwrap();
         });
 
-        let mut instance = LoopGridLaunchpad {
+        let mut instance = LoopGrid {
             _input: input,
-            launchpad_output,
+            controller_output,
             loop_length,
             params,
             use_internal_clock,
@@ -588,10 +588,10 @@ impl LoopGridLaunchpad {
         }
     }
 
-    fn launchpad_input_event(&mut self, event: LaunchpadEvent) {
+    fn grid_input_event(&mut self, event: GridEvent) {
         match event {
-            LaunchpadEvent::Connected => {
-                println!("Launchpad Connected");
+            GridEvent::Connected => {
+                println!("Controller Connected");
                 self.grid_out.clear();
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
@@ -605,14 +605,14 @@ impl LoopGridLaunchpad {
                 self.refresh_repeat_button();
                 self.refresh_select_state();
             }
-            LaunchpadEvent::LoopButton(pressed) => {
+            GridEvent::LoopButton(pressed) => {
                 if pressed {
                     self.start_loop();
                 } else {
                     self.end_loop();
                 }
             }
-            LaunchpadEvent::FlattenButton(pressed) => {
+            GridEvent::FlattenButton(pressed) => {
                 if pressed {
                     if self.last_flatten_press_at.elapsed() > Duration::from_millis(200) {
                         self.commit_selection_override();
@@ -634,7 +634,7 @@ impl LoopGridLaunchpad {
                     self.last_flatten_press_at = Instant::now();
                 }
             }
-            LaunchpadEvent::UndoButton(pressed) => {
+            GridEvent::UndoButton(pressed) => {
                 if pressed {
                     if self.select_held {
                         self.halve_loop_length();
@@ -646,7 +646,7 @@ impl LoopGridLaunchpad {
                     self.clear_loop_snapshot();
                 }
             }
-            LaunchpadEvent::RedoButton(pressed) => {
+            GridEvent::RedoButton(pressed) => {
                 if pressed {
                     if self.select_held {
                         self.double_loop_length();
@@ -658,21 +658,21 @@ impl LoopGridLaunchpad {
                     self.clear_loop_snapshot();
                 }
             }
-            LaunchpadEvent::SuppressButton(pressed) => {
+            GridEvent::SuppressButton(pressed) => {
                 self.suppressing = pressed;
                 self.refresh_suppress_button();
                 self.refresh_selection_override();
                 self.refresh_should_flatten();
             }
-            LaunchpadEvent::RepeatButton(pressed) => {
+            GridEvent::RepeatButton(pressed) => {
                 self.holding = pressed;
                 self.holding_at = self.last_pos;
                 self.refresh_repeat_button();
                 self.refresh_selection_override();
                 self.refresh_should_flatten();
             }
-            LaunchpadEvent::ViewModeButton(_pressed) => {}
-            LaunchpadEvent::SelectButton(pressed) => {
+            GridEvent::ViewModeButton(_pressed) => {}
+            GridEvent::SelectButton(pressed) => {
                 self.select_held = pressed;
                 if pressed {
                     self.clear_selection()
@@ -681,7 +681,7 @@ impl LoopGridLaunchpad {
                 self.refresh_select_state();
                 self.refresh_undo_redo_lights();
             }
-            LaunchpadEvent::LengthButton { id, pressed } => {
+            GridEvent::LengthButton { id, pressed } => {
                 if pressed {
                     let length = LOOP_LENGTHS[id % LOOP_LENGTHS.len()];
                     self.set_loop_length(length);
@@ -690,21 +690,21 @@ impl LoopGridLaunchpad {
                     }
                 }
             }
-            LaunchpadEvent::RateButton { id, pressed: _ } => {
+            GridEvent::RateButton { id, pressed: _ } => {
                 let rate = REPEAT_RATES[id as usize];
                 self.repeat_off_beat = self.select_held;
                 self.set_rate(rate);
             }
-            LaunchpadEvent::TriggerModeSelect { id } => {
+            GridEvent::TriggerModeSelect { id } => {
                 self.set_trigger_mode(TriggerMode::from_id(id));
             }
-            LaunchpadEvent::SwingControl { value } => {
+            GridEvent::SwingControl { value } => {
                 self.set_swing(value);
             }
-            LaunchpadEvent::TempoControl { value } => {
+            GridEvent::TempoControl { value } => {
                 self.set_tempo(value);
             }
-            LaunchpadEvent::BankButton { id, pressed } => {
+            GridEvent::BankButton { id, pressed } => {
                 if pressed {
                     if id == 3 && self.select_held {
                         self.toggle_internal_clock();
@@ -713,7 +713,7 @@ impl LoopGridLaunchpad {
                     }
                 }
             }
-            LaunchpadEvent::GridInput {
+            GridEvent::GridInput {
                 id,
                 value,
                 stamp: _,
@@ -725,10 +725,10 @@ impl LoopGridLaunchpad {
                     self.grid_input(id, OutputValue::Off);
                 }
             }
-            LaunchpadEvent::PrepareButton(pressed) => {
+            GridEvent::PrepareButton(pressed) => {
                 self.freeze_button(pressed);
             }
-            LaunchpadEvent::None => (),
+            GridEvent::None => (),
         }
     }
 
@@ -771,9 +771,9 @@ impl LoopGridLaunchpad {
             }
         }
 
-        let launchpad_events: Vec<LaunchpadEvent> = self.input_queue.try_iter().collect();
-        for event in launchpad_events {
-            self.launchpad_input_event(event)
+        let grid_events: Vec<GridEvent> = self.input_queue.try_iter().collect();
+        for event in grid_events {
+            self.grid_input_event(event)
         }
 
         let remote_events: Vec<LoopGridRemoteEvent> = self.remote_queue.try_iter().collect();
@@ -824,7 +824,7 @@ impl LoopGridLaunchpad {
             self.refresh_recording();
         }
 
-        // consume launchpad and other controllers
+        // consume controller and other controllers
         self.drain_input_events();
 
         // clear repeats from last cycle
@@ -1509,13 +1509,13 @@ impl LoopGridLaunchpad {
 
     fn refresh_grid_button(&mut self, id: u32) {
         if let Some(light) = self.tempo_overlay_light(id) {
-            let new_value = LaunchpadLight::Constant(light);
+            let new_value = GridLight::Constant(light);
             let old_value = self.grid_out.remove(&id);
 
             if Some(new_value.clone()) != old_value {
                 let midi_id = self.id_to_midi.get(&id).unwrap();
                 match new_value.clone() {
-                    LaunchpadLight::Constant(value) | LaunchpadLight::Pulsing(value) => {
+                    GridLight::Constant(value) | GridLight::Pulsing(value) => {
                         self.send_note_color(1, *midi_id, value)
                     }
                 }
@@ -1565,7 +1565,7 @@ impl LoopGridLaunchpad {
         };
 
         let new_value = if triggering && self.selection.contains(&id) {
-            LaunchpadLight::Constant(Light::White)
+            GridLight::Constant(Light::White)
         } else if triggering {
             let trigger_color = if color == Light::Off {
                 Light::WhiteMed
@@ -1573,27 +1573,27 @@ impl LoopGridLaunchpad {
                 Light::White
             };
 
-            LaunchpadLight::Constant(trigger_color)
+            GridLight::Constant(trigger_color)
         } else if self.selection.contains(&id) {
-            LaunchpadLight::Constant(selection_color)
+            GridLight::Constant(selection_color)
         } else if self.recording.contains(&id) {
             if color == Light::Off {
-                LaunchpadLight::Constant(Light::RedMed)
+                GridLight::Constant(Light::RedMed)
             } else {
-                LaunchpadLight::Constant(Light::Red)
+                GridLight::Constant(Light::Red)
             }
         } else if self.active.contains(&id) {
-            LaunchpadLight::Constant(color)
+            GridLight::Constant(color)
         } else if self.loop_state.is_frozen() {
-            LaunchpadLight::Constant(Light::Orange)
+            GridLight::Constant(Light::Orange)
         } else {
-            LaunchpadLight::Constant(color)
+            GridLight::Constant(color)
         };
 
         if Some(new_value.clone()) != old_value {
             let midi_id = self.id_to_midi.get(&id).unwrap();
             match new_value.clone() {
-                LaunchpadLight::Constant(value) | LaunchpadLight::Pulsing(value) => {
+                GridLight::Constant(value) | GridLight::Pulsing(value) => {
                     self.send_note_color(1, *midi_id, value)
                 }
             }
@@ -2715,7 +2715,7 @@ fn update_ids<'a>(a: &'a HashSet<u32>, b: &'a mut HashSet<u32>) -> (Vec<u32>, Ve
 }
 
 #[derive(Clone, PartialEq, Eq)]
-enum LaunchpadLight {
+enum GridLight {
     Constant(Light),
     Pulsing(Light),
 }

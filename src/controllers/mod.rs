@@ -1,8 +1,9 @@
 mod clock_pulse;
 mod duck_output;
 mod init;
-mod launchpad_tempo;
+mod daw_tempo;
 mod mod_twister;
+mod sample_mixer;
 mod twister;
 mod umi3;
 
@@ -15,8 +16,9 @@ use crate::scheduler::ScheduleRange;
 pub use self::clock_pulse::ClockPulse;
 pub use self::duck_output::DuckOutput;
 pub use self::init::Init;
-pub use self::launchpad_tempo::LaunchpadTempo;
+pub use self::daw_tempo::DawTempo;
 pub use self::mod_twister::ModTwister;
+pub use self::sample_mixer::SampleMixer;
 pub use self::twister::Twister;
 pub use self::umi3::Umi3;
 

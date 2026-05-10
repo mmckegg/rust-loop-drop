@@ -28,9 +28,9 @@ impl Config {
     }
 
     pub fn default() -> Self {
-        let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
+        let controller_output_name = "Launchpad Pro MK3 PORT 2";
         let rig_port_name = "Univer Inter";
-        let launchpad_clock_out = "Launchpad Pro MK3";
+        let clock_controller_name = "Launchpad Pro MK3";
 
         let mut channel_map: HashMap<usize, u32> = HashMap::new();
 
@@ -402,7 +402,7 @@ impl Config {
                     output: MidiPortConfig::new(rig_port_name, 12),
                     divider: 6,
                 },
-                ControllerConfig::LaunchpadTempo {
+                ControllerConfig::DawTempo {
                     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
                 },
             ],
@@ -411,9 +411,9 @@ impl Config {
 
     pub fn minimal() -> Self {
         let sp404_port_name = "SP-404MKII"; // drums
-        let launchpad_output_name = "Launchpad Pro MK3 PORT 2";
-        let rig_port_name = launchpad_output_name;
-        let launchpad_clock_out = "Launchpad Pro MK3";
+        let controller_output_name = "Launchpad Pro MK3 PORT 2";
+        let rig_port_name = controller_output_name;
+        let clock_controller_name = "Launchpad Pro MK3";
 
         let mut channel_map = HashMap::new();
         channel_map.insert(4, 2);
@@ -581,8 +581,13 @@ impl Config {
                 ControllerConfig::Umi3 {
                     port_name: String::from("Logidy UMI3"),
                 },
-                ControllerConfig::LaunchpadTempo {
+                ControllerConfig::DawTempo {
                     daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
+                },
+                ControllerConfig::SampleMixer {
+                    output: MidiPortConfig::new(rig_port_name, 10),
+                    output_ccs: vec![11, 12, 13, 14, 15, 16, 17, 18],
+                    activity_channels: vec![2, 3, 10, 11, 12, 13, 14, 15],
                 },
             ],
         }
@@ -717,8 +722,13 @@ pub enum ControllerConfig {
         output: MidiPortConfig,
         divider: i32,
     },
-    LaunchpadTempo {
+    DawTempo {
         daw_port_name: String,
+    },
+    SampleMixer {
+        output: MidiPortConfig,
+        output_ccs: Vec<u8>,
+        activity_channels: Vec<u32>,
     },
     Init {
         modulators: Vec<ModulatorConfig>,
