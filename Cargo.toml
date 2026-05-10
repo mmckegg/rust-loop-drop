@@ -8,6 +8,9 @@ publish = false
 [profile.release]
 debug = true
 
+[build-dependencies]
+serde_json = "1.0"
+
 [dependencies]
 indexmap = "1.6.1"
 midir = "0.5.0"

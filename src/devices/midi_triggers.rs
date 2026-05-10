@@ -62,7 +62,7 @@ impl Triggerable for MidiTriggers {
             OutputValue::On(velocity) => {
                 let channel = self.midi_channel;
                 let note_id = self.trigger_ids[id as usize % self.trigger_ids.len()];
-                let mapped_velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                let mapped_velocity = crate::devices::map_velocity(&self.velocity_map, velocity);
 
                 // send note
                 self.midi_port

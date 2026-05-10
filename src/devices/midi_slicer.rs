@@ -106,7 +106,7 @@ impl Triggerable for MidiSlicer {
 
                 let channel = self.midi_channel;
                 let note_id = self.start_trigger_id.saturating_add(value).min(127);
-                let mapped_velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                let mapped_velocity = crate::devices::map_velocity(&self.velocity_map, velocity);
 
                 let f_pitch = midi_to_polar(*midi_pitch);
                 let (msb, lsb) = polar_to_msb_lsb(f_pitch);

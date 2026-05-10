@@ -1,10 +1,5 @@
-mod clock_pulse;
-mod duck_output;
-mod init;
-mod daw_tempo;
-mod mod_twister;
+mod modulation_surface;
 mod sample_mixer;
-mod twister;
 mod umi3;
 
 use std::collections::HashSet;
@@ -13,28 +8,16 @@ use midi_time::MidiTime;
 
 use crate::scheduler::ScheduleRange;
 
-pub use self::clock_pulse::ClockPulse;
-pub use self::duck_output::DuckOutput;
-pub use self::init::Init;
-pub use self::daw_tempo::DawTempo;
-pub use self::mod_twister::ModTwister;
+pub use self::modulation_surface::ModulationSurface;
 pub use self::sample_mixer::SampleMixer;
-pub use self::twister::Twister;
 pub use self::umi3::Umi3;
 
 pub enum Modulator {
     None,
     MidiModulator(MidiModulator),
-    DuckDecay(u8),
-    DuckAmount(u8),
-    Swing(u8),
-    LfoAmount(usize, u8),
-    LfoSkew(u8),
     LfoSpeed(u8),
-    LfoOffset(u8),
-    LfoHold(u8),
-    SlicerOffset(u32, u32, u8),
-    SlicerPitch(u32, u32, u8),
+    LfoWave(u8),
+    RootNote(u8),
 }
 
 pub struct MidiModulator {

@@ -204,7 +204,7 @@ impl Triggerable for MidiKeys {
                     return;
                 }
 
-                let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                let velocity = crate::devices::map_velocity(&self.velocity_map, velocity);
                 self.last_velocity = velocity;
                 self.trigger_on(id, velocity);
 

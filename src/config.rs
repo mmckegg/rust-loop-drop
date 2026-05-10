@@ -1,15 +1,8 @@
-use crate::controllers::ClockPulse;
-use crate::devices::MidiTrigger;
-use crate::scale::Scale;
-use chunk::{Coords, RepeatMode, Shape};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, to_writer_pretty};
-use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::hash::Hash;
 use std::io::BufReader;
-use std::iter::FromIterator;
 
 impl Config {
     pub fn read(filepath: &str) -> Result<Self, Box<dyn Error>> {
@@ -22,608 +15,771 @@ impl Config {
 
     pub fn write(&self, filepath: &str) -> std::io::Result<()> {
         let myjson = json!(self);
-        // println!("{}", myjson.to_string());
         to_writer_pretty(&File::create(filepath)?, &myjson)?;
         Ok(())
     }
 
     pub fn default() -> Self {
-        let controller_output_name = "Launchpad Pro MK3 PORT 2";
         let rig_port_name = "Univer Inter";
-        let clock_controller_name = "Launchpad Pro MK3";
-
-        let mut channel_map: HashMap<usize, u32> = HashMap::new();
-
-        // C1
-        channel_map.insert(4, 2);
-        channel_map.insert(8, 2);
-        channel_map.insert(12, 2);
-        // C2
-        channel_map.insert(5, 3);
-        channel_map.insert(9, 3);
-        channel_map.insert(13, 3);
-        // T3
-        channel_map.insert(6, 10);
-        channel_map.insert(10, 10);
-        channel_map.insert(14, 10);
-        // T4
-        channel_map.insert(7, 11);
-        channel_map.insert(11, 11);
-        channel_map.insert(15, 11);
-        // T5
-        channel_map.insert(16 + 0, 12);
-        channel_map.insert(16 + 4, 12);
-        channel_map.insert(16 + 8, 12);
-        channel_map.insert(16 + 12, 12);
-        // T6
-        channel_map.insert(16 + 1, 13);
-        channel_map.insert(16 + 5, 13);
-        channel_map.insert(16 + 9, 13);
-        channel_map.insert(16 + 13, 13);
-        // T7
-        channel_map.insert(16 + 2, 14);
-        channel_map.insert(16 + 6, 14);
-        channel_map.insert(16 + 10, 14);
-        channel_map.insert(16 + 14, 14);
-        // T8
-        channel_map.insert(16 + 11, 15);
-        channel_map.insert(16 + 15, 15);
-        // BASS pitch
-        channel_map.insert(16 + 3, 4);
-        // SYNTH pitch
-        channel_map.insert(16 + 7, 5);
-
-        for i in 0..4 {
-            channel_map.insert(16 * 3 + i, 16 + i as u32);
-            channel_map.insert(16 * 3 + i + 4, 16 + i as u32);
-        }
-
-        for i in 0..4 {
-            channel_map.insert(16 * 3 + i + 8, 20 + i as u32);
-            channel_map.insert(16 * 3 + i + 4 + 8, 20 + i as u32);
-        }
 
         Config {
-            chunks: vec![
-                // BASS OFFSET
-                ChunkConfig {
-                    device: DeviceConfig::offset("bass"),
-                    coords: Coords::new(10 + 0, 0),
-                    shape: Shape::new(1, 8),
-                    color: 75, // blue
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // LEAD OFFSET
-                ChunkConfig {
-                    device: DeviceConfig::offset("lead"),
-                    coords: Coords::new(10 + 1, 0),
-                    shape: Shape::new(1, 8),
-                    color: 122, // pink
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // POLY OFFSET
-                ChunkConfig {
-                    coords: Coords::new(10 + 2, 0),
-                    shape: Shape::new(1, 8),
-                    color: 97,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                    device: DeviceConfig::offset("poly"),
-                },
-                // SCALE MODE SELECTOR
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Second),
-                    coords: Coords::new(10 + 3, 0),
-                    shape: Shape::new(1, 2),
-                    color: 28,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
-                    coords: Coords::new(10 + 3, 2),
-                    shape: Shape::new(1, 2),
-                    color: 28,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
-                    coords: Coords::new(10 + 3, 4),
-                    shape: Shape::new(1, 2),
-                    color: 28,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
-                    coords: Coords::new(10 + 3, 6),
-                    shape: Shape::new(1, 2),
-                    color: 28,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // Bitbox granular slice
-                ChunkConfig {
-                    device: DeviceConfig::CcSlicer {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 3),
-                        slicer_channel: 0,
-                        cc: 20,
-                    },
-                    coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 4),
-                    color: 9, // orange
-                    channel: Some(2),
-                    trigger_channels: Some(vec![16, 17, 18, 19]),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // Slicer
-                ChunkConfig {
-                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 3),
-                        triggers: vec![
-                            MidiTrigger::NoteVelocity(3, 36),
-                            MidiTrigger::NoteVelocity(3, 37),
-                            MidiTrigger::NoteVelocity(3, 38),
-                            MidiTrigger::NoteVelocity(3, 39),
-                            MidiTrigger::NoteVelocity(3, 40),
-                            MidiTrigger::NoteVelocity(3, 41),
-                            MidiTrigger::NoteVelocity(3, 42),
-                            MidiTrigger::NoteVelocity(3, 43),
-                        ],
-                    }]),
-                    coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 8),
-                    color: 10, // orange
-                    channel: Some(15),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // Triggers A
-                ChunkConfig {
-                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 2),
-                        triggers: vec![
-                            MidiTrigger::NoteVelocity(10, 40),
-                            MidiTrigger::NoteVelocity(10, 41),
-                            MidiTrigger::NoteVelocity(10, 42),
-                            MidiTrigger::NoteVelocity(10, 43),
-                        ],
-                    }]),
-                    coords: Coords::new(0, 0),
-                    shape: Shape::new(1, 4),
-                    color: 9, // warm white
-                    channel: None,
-                    trigger_channels: Some(vec![2, 3, 10, 11]),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // Triggers B
-                ChunkConfig {
-                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 10),
-                        triggers: vec![
-                            MidiTrigger::NoteVelocity(10, 36),
-                            MidiTrigger::NoteVelocity(10, 37),
-                            MidiTrigger::NoteVelocity(10, 38),
-                            MidiTrigger::NoteVelocity(10, 39),
-                        ],
-                    }]),
-                    coords: Coords::new(0, 4),
-                    shape: Shape::new(1, 4),
-                    color: 9, // warm white
-                    channel: None,
-                    trigger_channels: Some(vec![12, 13, 14, 15]),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // Bass
-                ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 15),
-                        velocity_map: None,
-                        offset_wrap: false,
-                        monophonic: true,
-                        offset_id: String::from("bass"),
-                        note_offset: -4,
-                        octave_offset: -1,
-                        midi_offset: 0,
-                    },
-                    coords: Coords::new(2, 0),
-
-                    shape: Shape::new(5, 4),
-                    color: 75, //
-                    channel: Some(5),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                },
-                // Lead
-                ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 14),
-                        velocity_map: None,
-                        offset_wrap: false,
-                        offset_id: String::from("lead"),
-                        monophonic: true,
-                        note_offset: -4,
-                        octave_offset: -2,
-                        midi_offset: 0,
-                    },
-                    coords: Coords::new(2, 4),
-
-                    shape: Shape::new(5, 4),
-                    color: 122, // pink
-                    channel: Some(4),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                },
-                // Poly Synth
-                ChunkConfig {
-                    coords: Coords::new(7, 0),
-                    shape: Shape::new(3, 8),
-                    color: 97,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                    device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
-                        offset_wrap: true,
-                        output: MidiPortConfig::new(rig_port_name, 7),
-                        velocity_map: Some(vec![100, 100, 100, 100, 100, 100, 127]),
-                        monophonic: false,
-                        offset_id: String::from("poly"),
-                        note_offset: -4,
-                        octave_offset: -1,
-                        midi_offset: 0,
-                    }]),
-                },
-            ],
-            clock_input_port_name: String::from("Launchpad Pro MK3"),
+            clock_input_port_name: None,
             clock_output_port_names: vec![rig_port_name.to_string()],
             resync_port_names: vec![rig_port_name.to_string()],
             keep_alive_port_names: vec![],
-            controllers: vec![
-                ControllerConfig::Umi3 {
-                    port_name: String::from("Logidy UMI3"),
-                },
-                ControllerConfig::ModTwister {
-                    port_name: String::from("Midi Fighter Twister"),
-                    continuously_send: vec![],
-                    continuously_send_rr: Vec::from_iter(16..32),
-                    channel_map,
-                    modulators: vec![
-                        // row 1
-                        ModulatorConfig::Swing(0), // global shuffle
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(10, 63)), // Delay Time
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(9, 0)),    // mod a
-                        ModulatorConfig::new(rig_port_name, 2, Modulator::Cc(10, 0)),   // mod b
-                        // row 2
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(31, 63)), // T1 Decay
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(32, 63)), // T2 Decay
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(33, 63)), // T3 Decay
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(34, 63)), // T4 Decay
-                        // row 3
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(21, 63)), // T1 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(22, 63)), // T2 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(23, 63)), // T3 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(24, 63)), // T4 Pitch
-                        // row 4
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(11, 100)), // T1 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(12, 100)), // T2 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(13, 100)), // T3 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(14, 100)), // T4 Volume
-                        ////////////////////////
-                        // row 1
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(45, 63)), // T5 Stretch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(46, 63)), // T6 Stretch
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::PitchBend(0.0)), // bass pitch
-                        ModulatorConfig::new(rig_port_name, 14, Modulator::PitchBend(0.0)), // lead pitch
-                        // ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(47, 63)), // T7 Stretch
-
-                        // row 2
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(35, 0)), // T5 Start
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(36, 0)), // T6 Start
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(37, 64)), // T7 Filter
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(38, 64)), // T8 Filter
-                        // row 3
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(25, 63)), // T5 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(26, 63)), // T6 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(27, 63)), // T7 Pitch
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(28, 63)), // T8 Pitch
-                        // row 4
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(15, 100)), // T5 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(16, 100)), // T6 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(17, 100)), // T7 Volume
-                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(18, 100)), // T8 Volume
-                        ////////////////////////
-                        // TELEPATHY
-                        // row 1
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(14, 63)), // PITCH
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(70, 0)),  // WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(11, 0)),  // PW
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(10, 0)),  // NOISE
-                        // row 2
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(74, 63)), // CUTOFF
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(81, 0)),  // HPF
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(71, 0)),  // RES
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(23, 0)),  // FFM
-                        // row 3
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(25, 0)), // VCF ENV WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(26, 32)), // VCF ENV TIME
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(29, 63)), // VCF ENV SUSTAIN
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(3, 63)), // VCF ENV AMOUNT
-                        // row 4
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(27, 0)), // VCA ENV WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(28, 63)), // VCA ENV TIME
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(31, 63)), // VCA ENV SUSTAIN
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(13, 0)),  // PITCH ENV
-                        ////////////////////////
-                        // BITBOX SLICERS
-                        // row 1
-                        ModulatorConfig::SlicerOffset(0, 0, 0), // A1 Offset
-                        ModulatorConfig::SlicerOffset(0, 1, 32), // A2 Offset
-                        ModulatorConfig::SlicerOffset(0, 2, 64), // A3 Offset
-                        ModulatorConfig::SlicerOffset(0, 3, 96), // A4 Offset
-                        // row 2
-                        ModulatorConfig::SlicerPitch(0, 0, 63), // A1 Pitch
-                        ModulatorConfig::SlicerPitch(0, 1, 63), // A2 Pitch
-                        ModulatorConfig::SlicerPitch(0, 2, 63), // A3 Pitch
-                        ModulatorConfig::SlicerPitch(0, 3, 63), // A4 Pitch
-                        // row 3
-                        ModulatorConfig::SlicerOffset(1, 0, 0), // B1 Offset
-                        ModulatorConfig::SlicerOffset(1, 1, 42), // B2 Offset
-                        ModulatorConfig::SlicerOffset(1, 2, 84), // B3 Offset
-                        ModulatorConfig::SlicerOffset(1, 3, 0), // B4 Offset
-                        // row 4
-                        ModulatorConfig::SlicerPitch(1, 0, 63), // B1 Pitch
-                        ModulatorConfig::SlicerPitch(1, 1, 63), // B2 Pitch
-                        ModulatorConfig::SlicerPitch(1, 2, 63), // B3 Pitch
-                        ModulatorConfig::SlicerPitch(1, 3, 63), // B4 Pitch
-                    ],
-                },
-                // ControllerConfig::DuckOutput {
-                //     modulators: vec![ModulatorConfig::new(
-                //         rig_port_name,
-                //         2,
-                //         Modulator::InvertMaxCc(5, 127, 0),
-                //     )],
-                // },
-                ControllerConfig::ClockPulse {
-                    output: MidiPortConfig::new(rig_port_name, 12),
-                    divider: 6,
-                },
-                ControllerConfig::DawTempo {
-                    daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
-                },
-            ],
-        }
-    }
-
-    pub fn minimal() -> Self {
-        let sp404_port_name = "SP-404MKII"; // drums
-        let controller_output_name = "Launchpad Pro MK3 PORT 2";
-        let rig_port_name = controller_output_name;
-        let clock_controller_name = "Launchpad Pro MK3";
-
-        let mut channel_map = HashMap::new();
-        channel_map.insert(4, 2);
-        channel_map.insert(5, 4);
-        channel_map.insert(6, 5);
-        channel_map.insert(7, 6);
-
-        Config {
-            chunks: vec![
-                // EXT SYNTH OFFSET
-                // (also sends pitch mod on channel 2 for slicer)
-                ChunkConfig {
-                    coords: Coords::new(3 + 8, 0),
-                    shape: Shape::new(1, 8),
-                    color: 12, // soft yellow
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                    device: DeviceConfig::multi(vec![DeviceConfig::offset("ext")]),
-                },
-                // BASS OFFSET
-                ChunkConfig {
-                    device: DeviceConfig::offset("bass"),
-                    coords: Coords::new(4 + 8, 0),
-                    shape: Shape::new(1, 8),
-                    color: 62,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // SYNTH OFFSET
-                ChunkConfig {
-                    device: DeviceConfig::offset("keys"),
-                    coords: Coords::new(5 + 8, 0),
-                    shape: Shape::new(1, 8),
-                    color: 94,
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // ROOT NOTE SELECTOR
-                ChunkConfig {
-                    device: DeviceConfig::RootSelect,
-                    coords: Coords::new(6 + 8, 0),
-                    shape: Shape::new(2, 8),
-                    color: 35, // soft green
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // SCALE MODE SELECTOR
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Second),
-                    coords: Coords::new(16, 0),
-                    shape: Shape::new(1, 2),
-                    color: 95, // purple
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
-                    coords: Coords::new(16, 2),
-                    shape: Shape::new(1, 2),
-                    color: 95, // black
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
-                    coords: Coords::new(16, 4),
-                    shape: Shape::new(1, 2),
-                    color: 95, // purple
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                ChunkConfig {
-                    device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
-                    coords: Coords::new(16, 6),
-                    shape: Shape::new(1, 2),
-                    color: 95, // purple
-                    channel: None,
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
-                },
-                // SP-404mk2 samples (schedule first so that samples coinciding with drum triggers don't get delayed, drums are fine because running on USB midi)
-                ChunkConfig {
-                    device: DeviceConfig::Sp404Mk2 {
-                        port_name: String::from(sp404_port_name),
-                        velocity_map: Some(vec![10, 20, 30, 40, 50, 60, 70, 70, 70, 90, 100]),
-                        sidechain_output: None,
+            samples: SampleRackConfig {
+                output: MidiPortConfig::new(rig_port_name, 10),
+                notes: [40, 41, 42, 43, 36, 37, 38, 39],
+                volume_ccs: [11, 12, 13, 14, 15, 16, 17, 18],
+                color: ChunkColor::Orange,
+            },
+            triggers: TriggerRackConfig {
+                output: MidiPortConfig::new(rig_port_name, 3),
+                notes: [36, 37, 38, 39, 40, 41, 42, 43],
+                color: ChunkColor::Yellow,
+            },
+            voice_a: VoiceConfig {
+                output: MidiPortConfig::new(rig_port_name, 15),
+                note_offset: -4,
+                octave_offset: -1,
+                monophonic: true,
+                offset_wrap: false,
+                color: ChunkColor::Blue,
+            },
+            voice_b: VoiceConfig {
+                output: MidiPortConfig::new(rig_port_name, 14),
+                note_offset: -4,
+                octave_offset: -2,
+                monophonic: true,
+                offset_wrap: false,
+                color: ChunkColor::Pink,
+            },
+            voice_c: VoiceConfig {
+                output: MidiPortConfig::new(rig_port_name, 7),
+                note_offset: -4,
+                octave_offset: -1,
+                monophonic: false,
+                offset_wrap: true,
+                color: ChunkColor::Purple,
+            },
+            modulation: ModulationSurfaceConfig {
+                tap_ms: 200,
+                double_tap_ms: 350,
+                hold_ms: 350,
+                encoders: vec![
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 1, col: 5 },
+                        label: String::from("Voice A Bend"),
+                        color: EncoderColor::Blue,
+                        assignment: EncoderAssignment::PitchBend {
+                            output: MidiPortConfig::new(rig_port_name, 15),
+                            bipolar: true,
+                            default: 64,
+                        },
                     },
-                    coords: Coords::new(0, 0),
-                    shape: Shape::new(2, 8),
-                    color: 9, // orange
-                    channel: Some(1),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                },
-                // WESTON B2
-                ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 14),
-                        velocity_map: None,
-                        offset_wrap: false,
-                        monophonic: true,
-                        offset_id: String::from("bass"),
-                        note_offset: -4,
-                        octave_offset: -1,
-                        midi_offset: 0,
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 1, col: 6 },
+                        label: String::from("Voice B Bend"),
+                        color: EncoderColor::Pink,
+                        assignment: EncoderAssignment::PitchBend {
+                            output: MidiPortConfig::new(rig_port_name, 14),
+                            bipolar: true,
+                            default: 64,
+                        },
                     },
-                    coords: Coords::new(2, 0),
-                    shape: Shape::new(6, 4),
-                    color: 15, // blue
-                    channel: Some(4),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                },
-                // NYMPHES
-                ChunkConfig {
-                    device: DeviceConfig::MidiKeys {
-                        output: MidiPortConfig::new(rig_port_name, 7),
-                        velocity_map: None,
-                        offset_wrap: false,
-                        offset_id: String::from("keys"),
-                        monophonic: false,
-                        note_offset: -4,
-                        octave_offset: -2,
-                        midi_offset: 0,
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 1, col: 7 },
+                        label: String::from("Voice C Bend"),
+                        color: EncoderColor::Purple,
+                        assignment: EncoderAssignment::PitchBend {
+                            output: MidiPortConfig::new(rig_port_name, 7),
+                            bipolar: true,
+                            default: 64,
+                        },
                     },
-                    coords: Coords::new(2, 0),
-                    shape: Shape::new(6, 8),
-                    color: 51, // pink
-                    channel: Some(5),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                },
-                // 404 chromatic
-                ChunkConfig {
-                    coords: Coords::new(0 + 8, 0),
-                    shape: Shape::new(3, 8),
-                    color: 11,
-                    channel: Some(6),
-                    trigger_channels: None,
-                    repeat_mode: RepeatMode::Global,
-                    device: DeviceConfig::multi(vec![DeviceConfig::MidiKeys {
-                        offset_wrap: true,
-                        output: MidiPortConfig::new(sp404_port_name, 16),
-                        velocity_map: None,
-                        monophonic: true,
-                        offset_id: String::from("ext"),
-                        note_offset: -4,
-                        octave_offset: -1,
-                        midi_offset: 0,
-                    }]),
-                },
-            ],
-            clock_input_port_name: String::from("Launchpad Pro MK3"),
-            clock_output_port_names: vec![rig_port_name.to_string()],
-            resync_port_names: vec![rig_port_name.to_string()],
-            keep_alive_port_names: vec![],
-            controllers: vec![
-                ControllerConfig::Umi3 {
-                    port_name: String::from("Logidy UMI3"),
-                },
-                ControllerConfig::DawTempo {
-                    daw_port_name: String::from("Launchpad Pro MK3 PORT 3"),
-                },
-                ControllerConfig::SampleMixer {
-                    output: MidiPortConfig::new(rig_port_name, 10),
-                    output_ccs: vec![11, 12, 13, 14, 15, 16, 17, 18],
-                    activity_channels: vec![2, 3, 10, 11, 12, 13, 14, 15],
-                },
-            ],
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 1, col: 8 },
+                        label: String::from("Root Note"),
+                        color: EncoderColor::White,
+                        assignment: EncoderAssignment::RootNote { default: 64 },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 1 },
+                        label: String::from("Decay 1"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 31,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 2 },
+                        label: String::from("Decay 2"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 32,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 3 },
+                        label: String::from("Decay 3"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 33,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 4 },
+                        label: String::from("Decay 4"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 34,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 5 },
+                        label: String::from("Filter 1"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 37,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 6 },
+                        label: String::from("Filter 2"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 38,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 7 },
+                        label: String::from("Filter 3"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 39,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 2, col: 8 },
+                        label: String::from("Filter 4"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 40,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 1 },
+                        label: String::from("Pitch 1"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 21,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 2 },
+                        label: String::from("Pitch 2"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 22,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 3 },
+                        label: String::from("Pitch 3"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 23,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 4 },
+                        label: String::from("Pitch 4"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 24,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 5 },
+                        label: String::from("Pitch 5"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 25,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 6 },
+                        label: String::from("Pitch 6"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 26,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 7 },
+                        label: String::from("Pitch 7"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 27,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 3, col: 8 },
+                        label: String::from("Pitch 8"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 28,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 1 },
+                        label: String::from("Gran 5 Time"),
+                        color: EncoderColor::Yellow,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 45,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 2 },
+                        label: String::from("Gran 5 Start"),
+                        color: EncoderColor::Yellow,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 35,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 3 },
+                        label: String::from("Gran 6 Time"),
+                        color: EncoderColor::Yellow,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 46,
+                            default: 63,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 4 },
+                        label: String::from("Gran 6 Start"),
+                        color: EncoderColor::Yellow,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 36,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 1 },
+                        label: String::from("CV 1"),
+                        color: EncoderColor::Cyan,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 2),
+                            cc: 20,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 2 },
+                        label: String::from("CV 2"),
+                        color: EncoderColor::Cyan,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 2),
+                            cc: 21,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 3 },
+                        label: String::from("LFO Speed"),
+                        color: EncoderColor::Cyan,
+                        assignment: EncoderAssignment::LfoSpeed { default: 50 },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 4 },
+                        label: String::from("LFO Wave"),
+                        color: EncoderColor::Cyan,
+                        assignment: EncoderAssignment::LfoWave { default: 64 },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 1 },
+                        label: String::from("Expr 1"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 41,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 2 },
+                        label: String::from("Expr 2"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 42,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 3 },
+                        label: String::from("Expr 3"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 43,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 4 },
+                        label: String::from("Expr 4"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 44,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 1 },
+                        label: String::from("Expr 5"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 47,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 2 },
+                        label: String::from("Expr 6"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 48,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 3 },
+                        label: String::from("Expr 7"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 49,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 4 },
+                        label: String::from("Expr 8"),
+                        color: EncoderColor::Orange,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 50,
+                            default: 127,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 1 },
+                        label: String::from("Send A1"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 0,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 2 },
+                        label: String::from("Send A2"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 1,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 3 },
+                        label: String::from("Send A3"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 2,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 4 },
+                        label: String::from("Send A4"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 3,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 1 },
+                        label: String::from("Send B1"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 4,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 2 },
+                        label: String::from("Send B2"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 5,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 3 },
+                        label: String::from("Send B3"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 6,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 4 },
+                        label: String::from("Send B4"),
+                        color: EncoderColor::Green,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 7,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 1 },
+                        label: String::from("Pan 1"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 8,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 2 },
+                        label: String::from("Pan 2"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 9,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 3 },
+                        label: String::from("Pan 3"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 10,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 4 },
+                        label: String::from("Pan 4"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 11,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 1 },
+                        label: String::from("Reverb Time"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 12,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 2 },
+                        label: String::from("Delay Time"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 13,
+                            default: 0,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 3 },
+                        label: String::from("Tone"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 14,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 4 },
+                        label: String::from("Spare"),
+                        color: EncoderColor::Red,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 11),
+                            cc: 15,
+                            default: 0,
+                        },
+                    },
+                ],
+            },
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub chunks: Vec<ChunkConfig>,
-    pub clock_input_port_name: String,
+    pub clock_input_port_name: Option<String>,
     pub clock_output_port_names: Vec<String>,
     pub keep_alive_port_names: Vec<String>,
     pub resync_port_names: Vec<String>,
-    pub controllers: Vec<ControllerConfig>,
+    pub samples: SampleRackConfig,
+    pub triggers: TriggerRackConfig,
+    pub voice_a: VoiceConfig,
+    pub voice_b: VoiceConfig,
+    pub voice_c: VoiceConfig,
+    pub modulation: ModulationSurfaceConfig,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ChunkConfig {
-    pub coords: Coords,
-    pub shape: Shape,
-    pub color: u8,
-    pub channel: Option<u32>,
-    pub trigger_channels: Option<Vec<u32>>,
-    pub repeat_mode: RepeatMode,
-    pub device: DeviceConfig,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SampleRackConfig {
+    pub output: MidiPortConfig,
+    pub notes: [u8; 8],
+    pub volume_ccs: [u8; 8],
+    pub color: ChunkColor,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TriggerRackConfig {
+    pub output: MidiPortConfig,
+    pub notes: [u8; 8],
+    pub color: ChunkColor,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct VoiceConfig {
+    pub output: MidiPortConfig,
+    pub note_offset: i32,
+    pub octave_offset: i32,
+    pub monophonic: bool,
+    pub offset_wrap: bool,
+    pub color: ChunkColor,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ModulationSurfaceConfig {
+    pub tap_ms: u64,
+    pub double_tap_ms: u64,
+    pub hold_ms: u64,
+    pub encoders: Vec<EncoderConfig>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EncoderConfig {
+    pub slot: EncoderSlot,
+    pub label: String,
+    #[serde(default)]
+    pub color: EncoderColor,
+    pub assignment: EncoderAssignment,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum EncoderSlot {
+    Fixed { row: u8, col: u8 },
+    Banked { bank: BankId, row: u8, col: u8 },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BankId {
+    A,
+    B,
+    C,
+    D,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub enum EncoderColor {
+    White,
+    Yellow,
+    Orange,
+    Blue,
+    Purple,
+    Pink,
+    Cyan,
+    Lime,
+    Red,
+    Green,
+}
+
+impl Default for EncoderColor {
+    fn default() -> Self {
+        EncoderColor::White
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum EncoderAssignment {
+    None,
+    MidiCc {
+        output: MidiPortConfig,
+        cc: u8,
+        default: u8,
+    },
+    InvertMidiCc {
+        output: MidiPortConfig,
+        cc: u8,
+        default: u8,
+    },
+    MaxMidiCc {
+        output: MidiPortConfig,
+        cc: u8,
+        max: u8,
+        default: u8,
+    },
+    InvertMaxMidiCc {
+        output: MidiPortConfig,
+        cc: u8,
+        max: u8,
+        default: u8,
+    },
+    PolarCcSwitch {
+        output: MidiPortConfig,
+        cc_low: Option<u8>,
+        cc_high: Option<u8>,
+        cc_switch: Option<u8>,
+        default: u8,
+    },
+    PitchBend {
+        output: MidiPortConfig,
+        bipolar: bool,
+        default: u8,
+    },
+    Aftertouch {
+        output: MidiPortConfig,
+        default: u8,
+    },
+    LfoSpeed {
+        default: u8,
+    },
+    LfoWave {
+        default: u8,
+    },
+    RootNote {
+        default: u8,
+    },
+}
+
+impl EncoderAssignment {
+    pub fn default_value(&self) -> u8 {
+        match self {
+            EncoderAssignment::None => 0,
+            EncoderAssignment::MidiCc { default, .. }
+            | EncoderAssignment::InvertMidiCc { default, .. }
+            | EncoderAssignment::MaxMidiCc { default, .. }
+            | EncoderAssignment::InvertMaxMidiCc { default, .. }
+            | EncoderAssignment::PolarCcSwitch { default, .. }
+            | EncoderAssignment::PitchBend { default, .. }
+            | EncoderAssignment::Aftertouch { default, .. }
+            | EncoderAssignment::LfoSpeed { default }
+            | EncoderAssignment::LfoWave { default }
+            | EncoderAssignment::RootNote { default } => *default,
+        }
+    }
+
+    pub fn supports_lfo_lane(&self) -> bool {
+        match self {
+            EncoderAssignment::None
+            | EncoderAssignment::LfoSpeed { .. }
+            | EncoderAssignment::LfoWave { .. }
+            | EncoderAssignment::RootNote { .. } => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub enum ChunkColor {
+    Yellow,
+    Orange,
+    Blue,
+    Purple,
+    Pink,
+    Cyan,
+    Lime,
+}
+
+impl ChunkColor {
+    pub fn to_midi(self) -> u8 {
+        match self {
+            ChunkColor::Yellow => 28,
+            ChunkColor::Orange => 10,
+            ChunkColor::Blue => 75,
+            ChunkColor::Purple => 97,
+            ChunkColor::Pink => 122,
+            ChunkColor::Cyan => 39,
+            ChunkColor::Lime => 17,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MidiPortConfig {
     pub name: String,
     pub channel: u8,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SidechainOutput {
-    pub id: u32,
 }
 
 impl MidiPortConfig {
@@ -636,135 +792,11 @@ impl MidiPortConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum DeviceConfig {
-    Multi {
-        devices: Vec<DeviceConfig>,
-    },
-    MidiKeys {
-        output: MidiPortConfig,
-        offset_id: String,
-        offset_wrap: bool,
-        note_offset: i32,
-        midi_offset: i8,
-        velocity_map: Option<Vec<u8>>,
-        octave_offset: i32,
-        monophonic: bool,
-    },
-    OffsetChunk {
-        id: String,
-    },
-    PitchOffsetChunk {
-        output: MidiPortConfig,
-    },
-    RootSelect,
-    ScaleDegreeToggle(ScaleDegree),
-    MidiTriggers {
-        output: MidiPortConfig,
-        trigger_ids: Vec<u8>,
-        velocity_map: Option<Vec<u8>>,
-        sidechain_output: Option<SidechainOutput>,
-    },
-    MidiSlicer {
-        output: MidiPortConfig,
-        slicer_channel: u32,
-        start_trigger_id: u8,
-        trigger_count: u32,
-        velocity_map: Option<Vec<u8>>,
-    },
-    CcSlicer {
-        output: MidiPortConfig,
-        slicer_channel: u32,
-        cc: u32,
-        velocity_map: Option<Vec<u8>>,
-    },
-    CcTriggers {
-        output: MidiPortConfig,
-        velocity_map: Option<Vec<u8>>,
-        triggers: Vec<MidiTrigger>,
-    },
-    Sp404Mk2 {
-        port_name: String,
-        velocity_map: Option<Vec<u8>>,
-        sidechain_output: Option<SidechainOutput>,
-    },
-}
-
-impl DeviceConfig {
-    pub fn offset(id: &str) -> Self {
-        DeviceConfig::OffsetChunk {
-            id: String::from(id),
-        }
-    }
-
-    pub fn multi(devices: Vec<DeviceConfig>) -> Self {
-        DeviceConfig::Multi { devices }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub enum ControllerConfig {
-    Twister {
-        port_name: String,
-        mixer_port: MidiPortConfig,
-        modulators: Vec<ModulatorConfig>,
-    },
-    ModTwister {
-        port_name: String,
-        continuously_send: Vec<usize>,
-        continuously_send_rr: Vec<usize>,
-        modulators: Vec<ModulatorConfig>,
-        channel_map: HashMap<usize, u32>,
-    },
-    Umi3 {
-        port_name: String,
-    },
-    ClockPulse {
-        output: MidiPortConfig,
-        divider: i32,
-    },
-    DawTempo {
-        daw_port_name: String,
-    },
-    SampleMixer {
-        output: MidiPortConfig,
-        output_ccs: Vec<u8>,
-        activity_channels: Vec<u32>,
-    },
-    Init {
-        modulators: Vec<ModulatorConfig>,
-    },
-    DuckOutput {
-        modulators: Vec<ModulatorConfig>,
-    },
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub enum ModulatorConfig {
-    None,
-    Midi {
-        port: MidiPortConfig,
-        rx_port: Option<MidiPortConfig>,
-        modulator: Modulator,
-    },
-    SlicerOffset(u32, u32, u8),
-    SlicerPitch(u32, u32, u8),
-    LfoAmount(usize, u8),
-    LfoSpeed(u8),
-    LfoHold(u8),
-    LfoOffset(u8),
-    LfoSkew(u8),
-    DuckDecay(u8),
-    DuckAmount(u8),
-    Swing(u8),
-}
-
-#[derive(Serialize, Deserialize, Clone)]
 pub enum Modulator {
     Cc(u8, u8),
     InvertCc(u8, u8),
     InvertMaxCc(u8, u8, u8),
     TriggerWhen(TriggerCondition, (u8, u8)),
-    // id, max, default
     MaxCc(u8, u8, u8),
     PolarCcSwitch {
         cc_low: Option<u8>,
@@ -798,23 +830,6 @@ impl Modulator {
         match self {
             Modulator::Multi(values) => values.clone(),
             _ => vec![self.clone()],
-        }
-    }
-}
-
-impl ModulatorConfig {
-    pub fn new(port_name: &str, port_number: u8, modulator: Modulator) -> ModulatorConfig {
-        ModulatorConfig::Midi {
-            port: MidiPortConfig::new(port_name, port_number),
-            rx_port: None,
-            modulator,
-        }
-    }
-    pub fn rx(port_name: &str, port_number: u8, modulator: Modulator) -> ModulatorConfig {
-        ModulatorConfig::Midi {
-            port: MidiPortConfig::new(port_name, port_number),
-            rx_port: Some(MidiPortConfig::new(port_name, port_number)),
-            modulator,
         }
     }
 }

@@ -6,7 +6,6 @@ extern crate serde;
 extern crate serde_json;
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -29,8 +28,7 @@ mod scheduler;
 mod throttled_output;
 mod trigger_envelope;
 
-use chunk::{ChunkMap, Triggerable};
-use controllers::Modulator;
+use chunk::{ChunkMap, RepeatMode, Shape, Triggerable};
 use loop_grid::{LoopGrid, LoopGridParams};
 use midi_time::MidiTime;
 use scale::{Offset, Scale};
@@ -46,15 +44,8 @@ fn main() {
     let output = midi_connection::MidiOutput::new(APP_NAME).unwrap();
     let input = midi_connection::MidiInput::new(APP_NAME).unwrap();
     let inputs = midi_connection::get_inputs(&input);
-    let has_tr6s = inputs.iter().any(|x| x == "TR-6S");
-    let has_sp404 = inputs.iter().any(|x| x == "SP-404MKII");
 
-    let mut chunks = Vec::new();
-    let myconfig = if has_sp404 && !has_tr6s {
-        config::Config::minimal()
-    } else {
-        config::Config::default()
-    };
+    let myconfig = config::Config::default();
     let use_internal_clock = Arc::new(AtomicBool::new(false));
     let internal_bpm = Arc::new(Mutex::new(120.0));
 
@@ -70,13 +61,19 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", &inputs);
 
-    let clock_input_name = &myconfig.clock_input_port_name;
+    let clock_input_name = myconfig
+        .clock_input_port_name
+        .as_deref()
+        .unwrap_or(midi_connection::YAELTEX_PORT_NAME);
 
     let scale = Scale::new(60);
 
     let params = Arc::new(Mutex::new(LoopGridParams {
         swing: 0.0,
         bank: 0,
+        select_held: false,
+        root_overlay_until: None,
+        root_overlay_note: None,
         frozen: false,
         cueing: false,
         duck_triggered: false,
@@ -92,24 +89,7 @@ fn main() {
 
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
-
-    for chunk in myconfig.chunks {
-        chunks.push(ChunkMap::new(
-            make_device(
-                chunk.device,
-                &mut output_ports,
-                &mut offset_lookup,
-                &scale,
-                &params,
-            ),
-            chunk.coords,
-            chunk.shape,
-            chunk.color,
-            chunk.channel,
-            chunk.trigger_channels,
-            chunk.repeat_mode,
-        ))
-    }
+    let chunks = build_chunks(&myconfig, &mut output_ports, &mut offset_lookup, &scale, &params);
 
     let mut loop_grid = LoopGrid::new(
         chunks,
@@ -118,72 +98,28 @@ fn main() {
         Arc::clone(&internal_bpm),
     );
 
-    let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();
-
-    for controller in myconfig.controllers {
-        controller_references.push(match controller {
-            config::ControllerConfig::Twister {
-                port_name,
-                mixer_port,
-                modulators,
-            } => Box::new(controllers::Twister::new(
-                &port_name,
-                get_port(&mut output_ports, &mixer_port.name),
-                mixer_port.channel,
-                resolve_modulators(&mut output_ports, &modulators),
-                Arc::clone(&params),
-            )),
-            config::ControllerConfig::ModTwister {
-                port_name,
-                modulators,
-                continuously_send,
-                continuously_send_rr,
-                channel_map,
-            } => Box::new(controllers::ModTwister::new(
-                &port_name,
-                resolve_modulators(&mut output_ports, &modulators),
-                Arc::clone(&params),
-                continuously_send,
-                continuously_send_rr,
-                channel_map,
-            )),
-            config::ControllerConfig::Umi3 { port_name } => Box::new(controllers::Umi3::new(
-                &port_name,
-                loop_grid.remote_tx.clone(),
-            )),
-            config::ControllerConfig::ClockPulse { output, divider } => {
-                let device_port = get_port(&mut output_ports, &output.name);
-                Box::new(controllers::ClockPulse::new(
-                    device_port,
-                    output.channel,
-                    divider,
-                ))
-            }
-            config::ControllerConfig::DawTempo { daw_port_name } => {
-                Box::new(controllers::DawTempo::new(&daw_port_name))
-            }
-            config::ControllerConfig::SampleMixer {
-                output,
-                output_ccs,
-                activity_channels,
-            } => Box::new(controllers::SampleMixer::new(
-                get_port(&mut output_ports, &output.name),
-                output.channel,
-                output_ccs,
-                activity_channels,
-                Arc::clone(&params),
-            )),
-            config::ControllerConfig::Init { modulators } => Box::new(controllers::Init::new(
-                resolve_modulators(&mut output_ports, &modulators),
-            )),
-            config::ControllerConfig::DuckOutput { modulators } => {
-                Box::new(controllers::DuckOutput::new(
-                    resolve_modulators(&mut output_ports, &modulators),
-                    Arc::clone(&params),
-                ))
-            }
-        })
-    }
+    let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = vec![
+        Box::new(controllers::Umi3::new(
+            "Logidy UMI3",
+            loop_grid.remote_tx.clone(),
+        )),
+        Box::new(controllers::ModulationSurface::new(
+            myconfig.modulation.encoders.clone(),
+            myconfig.modulation.tap_ms,
+            myconfig.modulation.double_tap_ms,
+            myconfig.modulation.hold_ms,
+            Arc::clone(&params),
+            Arc::clone(&scale),
+            &mut output_ports,
+        )),
+        Box::new(controllers::SampleMixer::new(
+            get_port(&mut output_ports, &myconfig.samples.output.name),
+            myconfig.samples.output.channel,
+            myconfig.samples.volume_ccs.to_vec(),
+            vec![2, 3, 10, 11, 12, 13, 14, 15],
+            Arc::clone(&params),
+        )),
+    ];
 
     let mut clock_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
     for name in myconfig.clock_output_port_names {
@@ -244,44 +180,6 @@ fn main() {
 }
 
 // Helper functions
-fn resolve_modulators(
-    output_ports: &mut PortLookup,
-    modulators: &Vec<config::ModulatorConfig>,
-) -> Vec<controllers::Modulator> {
-    modulators
-        .iter()
-        .map(|modulator| match modulator {
-            config::ModulatorConfig::None => Modulator::None,
-            config::ModulatorConfig::Midi {
-                port,
-                rx_port,
-                modulator,
-            } => Modulator::MidiModulator(controllers::MidiModulator::new(
-                get_port(output_ports, &port.name),
-                port.channel,
-                modulator.clone(),
-                rx_port.clone(),
-            )),
-            &config::ModulatorConfig::DuckDecay(default) => Modulator::DuckDecay(default),
-            &config::ModulatorConfig::DuckAmount(default) => Modulator::DuckAmount(default),
-            &config::ModulatorConfig::SlicerOffset(channel, slice, default) => {
-                Modulator::SlicerOffset(channel, slice, default)
-            }
-            &config::ModulatorConfig::SlicerPitch(channel, slice, default) => {
-                Modulator::SlicerPitch(channel, slice, default)
-            }
-            &config::ModulatorConfig::Swing(default) => Modulator::Swing(default),
-            &config::ModulatorConfig::LfoAmount(modulator_index, default) => {
-                Modulator::LfoAmount(modulator_index, default)
-            }
-            &config::ModulatorConfig::LfoSpeed(default) => Modulator::LfoSpeed(default),
-            &config::ModulatorConfig::LfoHold(default) => Modulator::LfoHold(default),
-            &config::ModulatorConfig::LfoOffset(default) => Modulator::LfoOffset(default),
-            &config::ModulatorConfig::LfoSkew(default) => Modulator::LfoSkew(default),
-        })
-        .collect()
-}
-
 fn get_port(
     ports_lookup: &mut PortLookup,
     port_name: &str,
@@ -310,156 +208,189 @@ fn set_offset(offset: Arc<Mutex<Offset>>, note_offset: &i32) {
     value.base = *note_offset;
 }
 
-fn make_device(
-    device: config::DeviceConfig,
+fn build_chunks(
+    config: &config::Config,
     output_ports: &mut PortLookup,
     offset_lookup: &mut OffsetLookup,
     scale: &Arc<Mutex<Scale>>,
     params: &Arc<Mutex<LoopGridParams>>,
-) -> Box<dyn Triggerable + Send> {
-    let mut output_ports = output_ports;
-    let mut offset_lookup = offset_lookup;
+) -> Vec<Box<ChunkMap>> {
+    let mut chunks = Vec::new();
 
-    match device {
-        config::DeviceConfig::Multi { devices } => {
-            let instances = devices
-                .iter()
-                .map(|device| {
-                    make_device(device.clone(), output_ports, offset_lookup, scale, params)
-                })
-                .collect();
-            Box::new(devices::MultiChunk::new(instances))
-        }
-        config::DeviceConfig::MidiKeys {
-            output,
-            offset_id,
-            note_offset,
-            midi_offset,
-            octave_offset,
-            velocity_map,
-            offset_wrap,
-            monophonic,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
-            let offset = get_offset(&mut offset_lookup, &offset_id);
-            set_offset(offset.clone(), &note_offset);
+    let make_offset = |id: &str, offset_lookup: &mut OffsetLookup| {
+        Box::new(devices::OffsetChunk::new(get_offset(offset_lookup, id))) as Box<dyn Triggerable + Send>
+    };
 
-            Box::new(devices::MidiKeys::new(
-                device_port,
-                output.channel,
-                scale.clone(),
-                offset,
-                octave_offset,
-                velocity_map,
-                offset_wrap,
-                monophonic,
-                midi_offset,
-            ))
-        }
-        config::DeviceConfig::OffsetChunk { id } => Box::new(devices::OffsetChunk::new(
-            get_offset(&mut offset_lookup, &id),
+    let make_voice = |voice: &config::VoiceConfig,
+                      offset_id: &str,
+                      output_ports: &mut PortLookup,
+                      offset_lookup: &mut OffsetLookup,
+                      scale: &Arc<Mutex<Scale>>| {
+        let device_port = get_port(output_ports, &voice.output.name);
+        let offset = get_offset(offset_lookup, offset_id);
+        set_offset(offset.clone(), &voice.note_offset);
+        Box::new(devices::MidiKeys::new(
+            device_port,
+            voice.output.channel,
+            scale.clone(),
+            offset,
+            voice.octave_offset,
+            None,
+            voice.offset_wrap,
+            voice.monophonic,
+            0,
+        )) as Box<dyn Triggerable + Send>
+    };
+
+    let make_note_triggers = |output: &config::MidiPortConfig,
+                              notes: &[u8],
+                              output_ports: &mut PortLookup| {
+        Box::new(devices::MidiTriggers::new(
+            get_port(output_ports, &output.name),
+            output.channel,
+            None,
+            notes.to_vec(),
+            None,
+        )) as Box<dyn Triggerable + Send>
+    };
+
+    chunks.push(ChunkMap::new(
+        make_offset("voice_a", offset_lookup),
+        chunk::Coords::new(10, 0),
+        Shape::new(1, 8),
+        config.voice_a.color.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+    chunks.push(ChunkMap::new(
+        make_offset("voice_b", offset_lookup),
+        chunk::Coords::new(11, 0),
+        Shape::new(1, 8),
+        config.voice_b.color.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+    chunks.push(ChunkMap::new(
+        make_offset("voice_c", offset_lookup),
+        chunk::Coords::new(12, 0),
+        Shape::new(1, 8),
+        config.voice_c.color.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+
+    chunks.push(ChunkMap::new(
+        Box::new(devices::ScaleDegreeToggle::new(
+            scale.clone(),
+            config::ScaleDegree::Second,
+            params.clone(),
         )),
-        config::DeviceConfig::RootSelect => Box::new(devices::RootSelect::new(scale.clone())),
-        config::DeviceConfig::ScaleDegreeToggle(degree) => Box::new(
-            devices::ScaleDegreeToggle::new(scale.clone(), degree, params.clone()),
-        ),
-        config::DeviceConfig::PitchOffsetChunk { output } => {
-            Box::new(devices::PitchOffsetChunk::new(
-                get_port(&mut output_ports, &output.name),
-                output.channel,
-            ))
-        }
-        config::DeviceConfig::MidiTriggers {
-            output,
-            sidechain_output,
-            trigger_ids,
-            velocity_map,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
+        chunk::Coords::new(13, 0),
+        Shape::new(1, 2),
+        config::ChunkColor::Yellow.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+    chunks.push(ChunkMap::new(
+        Box::new(devices::ScaleDegreeToggle::new(
+            scale.clone(),
+            config::ScaleDegree::Third,
+            params.clone(),
+        )),
+        chunk::Coords::new(13, 2),
+        Shape::new(1, 2),
+        config::ChunkColor::Yellow.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+    chunks.push(ChunkMap::new(
+        Box::new(devices::ScaleDegreeToggle::new(
+            scale.clone(),
+            config::ScaleDegree::Sixth,
+            params.clone(),
+        )),
+        chunk::Coords::new(13, 4),
+        Shape::new(1, 2),
+        config::ChunkColor::Yellow.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
+    chunks.push(ChunkMap::new(
+        Box::new(devices::ScaleDegreeToggle::new(
+            scale.clone(),
+            config::ScaleDegree::Seventh,
+            params.clone(),
+        )),
+        chunk::Coords::new(13, 6),
+        Shape::new(1, 2),
+        config::ChunkColor::Yellow.to_midi(),
+        None,
+        None,
+        RepeatMode::OnlyQuant,
+    ));
 
-            let sidechain_output = if let Some(sidechain_output) = sidechain_output {
-                Some(devices::SidechainOutput {
-                    params: Arc::clone(params),
-                    id: sidechain_output.id,
-                })
-            } else {
-                None
-            };
+    chunks.push(ChunkMap::new(
+        make_note_triggers(&config.triggers.output, &config.triggers.notes, output_ports),
+        chunk::Coords::new(1, 0),
+        Shape::new(1, 8),
+        config.triggers.color.to_midi(),
+        Some(15),
+        None,
+        RepeatMode::NoCycle,
+    ));
 
-            Box::new(devices::MidiTriggers::new(
-                device_port,
-                output.channel,
-                sidechain_output,
-                trigger_ids,
-                velocity_map,
-            ))
-        }
-        config::DeviceConfig::MidiSlicer {
-            output,
-            slicer_channel,
-            start_trigger_id,
-            trigger_count,
-            velocity_map,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
+    chunks.push(ChunkMap::new(
+        make_note_triggers(&config.samples.output, &config.samples.notes[0..4], output_ports),
+        chunk::Coords::new(0, 0),
+        Shape::new(1, 4),
+        config.samples.color.to_midi(),
+        None,
+        Some(vec![2, 3, 10, 11]),
+        RepeatMode::NoCycle,
+    ));
+    chunks.push(ChunkMap::new(
+        make_note_triggers(&config.samples.output, &config.samples.notes[4..8], output_ports),
+        chunk::Coords::new(0, 4),
+        Shape::new(1, 4),
+        config.samples.color.to_midi(),
+        None,
+        Some(vec![12, 13, 14, 15]),
+        RepeatMode::NoCycle,
+    ));
 
-            Box::new(devices::MidiSlicer::new(
-                Arc::clone(params),
-                device_port,
-                output.channel,
-                slicer_channel,
-                start_trigger_id,
-                trigger_count,
-                velocity_map,
-            ))
-        }
-        config::DeviceConfig::CcSlicer {
-            output,
-            slicer_channel,
-            cc,
-            velocity_map,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
+    chunks.push(ChunkMap::new(
+        make_voice(&config.voice_a, "voice_a", output_ports, offset_lookup, scale),
+        chunk::Coords::new(2, 0),
+        Shape::new(5, 4),
+        config.voice_a.color.to_midi(),
+        Some(5),
+        None,
+        RepeatMode::Global,
+    ));
+    chunks.push(ChunkMap::new(
+        make_voice(&config.voice_b, "voice_b", output_ports, offset_lookup, scale),
+        chunk::Coords::new(2, 4),
+        Shape::new(5, 4),
+        config.voice_b.color.to_midi(),
+        Some(4),
+        None,
+        RepeatMode::Global,
+    ));
+    chunks.push(ChunkMap::new(
+        make_voice(&config.voice_c, "voice_c", output_ports, offset_lookup, scale),
+        chunk::Coords::new(7, 0),
+        Shape::new(3, 8),
+        config.voice_c.color.to_midi(),
+        None,
+        None,
+        RepeatMode::Global,
+    ));
 
-            Box::new(devices::CcSlicer::new(
-                Arc::clone(params),
-                device_port,
-                output.channel,
-                slicer_channel,
-                cc as u8,
-                velocity_map,
-            ))
-        }
-        config::DeviceConfig::CcTriggers {
-            output,
-            triggers,
-            velocity_map,
-        } => {
-            let device_port = get_port(&mut output_ports, &output.name);
-            Box::new(devices::CcTriggers::new(
-                device_port,
-                triggers,
-                velocity_map,
-            ))
-        }
-        config::DeviceConfig::Sp404Mk2 {
-            port_name,
-            velocity_map,
-            sidechain_output,
-        } => {
-            let sidechain_output = if let Some(sidechain_output) = sidechain_output {
-                Some(devices::SidechainOutput {
-                    params: Arc::clone(params),
-                    id: sidechain_output.id,
-                })
-            } else {
-                None
-            };
-            Box::new(devices::Sp404Mk2::new(
-                &port_name,
-                velocity_map,
-                sidechain_output,
-            ))
-        }
-    }
+    chunks
 }

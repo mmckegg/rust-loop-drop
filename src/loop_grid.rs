@@ -66,6 +66,9 @@ lazy_static! {
 pub struct LoopGridParams {
     pub swing: f64,
     pub bank: u8,
+    pub select_held: bool,
+    pub root_overlay_until: Option<Instant>,
+    pub root_overlay_note: Option<i32>,
     pub frozen: bool,
     pub cueing: bool,
     pub duck_triggered: bool,
@@ -217,7 +220,6 @@ enum GridEvent {
     SuppressButton(bool),
     RepeatButton(bool),
     // retained as a no-op placeholder for old controller layout; unused on Yaeltex
-    ViewModeButton(bool),
     SelectButton(bool),
     PrepareButton(bool),
 
@@ -273,7 +275,6 @@ pub struct LoopGrid {
     holding_at: MidiTime,
     select_held: bool,
     selection_override_offset: Option<isize>,
-    refresh_loop_length_in: Option<i32>,
     id_to_midi: HashMap<u32, u8>,
 
     loop_held: bool,
@@ -297,7 +298,6 @@ pub struct LoopGrid {
     override_values: HashMap<u32, LoopTransform>,
     input_values: HashMap<u32, OutputValue>,
     currently_held_inputs: Vec<u32>,
-    currently_held_rates: Vec<usize>,
     last_changed_triggers: HashMap<u32, MidiTime>,
     // out state
     current_swing: f64,
@@ -476,7 +476,6 @@ impl LoopGrid {
             holding_at: MidiTime::zero(),
             select_held: false,
             selection_override_offset: None,
-            refresh_loop_length_in: None,
 
             loop_held: false,
             loop_from: MidiTime::from_ticks(0),
@@ -498,7 +497,6 @@ impl LoopGrid {
             override_values: HashMap::new(),
             input_values: HashMap::new(),
             currently_held_inputs: Vec::new(),
-            currently_held_rates: Vec::new(),
             last_changed_triggers: HashMap::new(),
 
             // out state
@@ -671,9 +669,9 @@ impl LoopGrid {
                 self.refresh_selection_override();
                 self.refresh_should_flatten();
             }
-            GridEvent::ViewModeButton(_pressed) => {}
             GridEvent::SelectButton(pressed) => {
                 self.select_held = pressed;
+                self.params.lock().unwrap().select_held = pressed;
                 if pressed {
                     self.clear_selection()
                 }
@@ -809,14 +807,6 @@ impl LoopGrid {
 
         if range.ticked {
             // handle revert of loop length button
-            if let Some(remain) = self.refresh_loop_length_in {
-                if remain > 0 {
-                    self.refresh_loop_length_in = Some(remain - 1);
-                } else {
-                    self.refresh_loop_length_in = None;
-                    self.refresh_loop_length();
-                }
-            }
 
             self.refresh_loop_length();
             self.refresh_loop_button();
@@ -1602,6 +1592,54 @@ impl LoopGrid {
         self.grid_out.insert(id, new_value);
     }
 
+    fn root_overlay_active(&self) -> bool {
+        let params = self.params.lock().unwrap();
+        if let Some(until) = params.root_overlay_until {
+            Instant::now() <= until && params.root_overlay_note.is_some()
+        } else {
+            false
+        }
+    }
+
+    fn root_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
+        if !self.root_overlay_active() {
+            return None;
+        }
+
+        let params = self.params.lock().unwrap();
+        let note = params.root_overlay_note?;
+        let pitch_class = note.rem_euclid(12) as u8;
+        let (name, sharp) = pitch_class_name(pitch_class);
+
+        let light = if sharp {
+            if (1..=3).contains(&col) {
+                if note_letter_pixel(name, row, col - 1) {
+                    Light::White
+                } else {
+                    Light::Off
+                }
+            } else if (5..=6).contains(&col) {
+                if sharp_pixel(row, col - 5) {
+                    Light::BlueDark
+                } else {
+                    Light::Off
+                }
+            } else {
+                Light::Off
+            }
+        } else if (2..=4).contains(&col) {
+            if note_letter_pixel(name, row, col - 2) {
+                Light::White
+            } else {
+                Light::Off
+            }
+        } else {
+            Light::Off
+        };
+
+        Some(light)
+    }
+
     fn tempo_overlay_active(&self) -> bool {
         if let Some(until) = self.tempo_overlay_until {
             Instant::now() <= until && self.tempo_overlay_value.is_some()
@@ -1611,6 +1649,12 @@ impl LoopGrid {
     }
 
     fn tempo_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
+        if let Some(light) = self.root_overlay_display_light(row, col) {
+            if light != Light::Off {
+                return Some(light);
+            }
+        }
+
         if !self.tempo_overlay_active() {
             return None;
         }
@@ -2758,6 +2802,108 @@ fn light_to_intensity(light: Light) -> u8 {
         }
         _ => 127,
     }
+}
+
+fn pitch_class_name(pitch_class: u8) -> (char, bool) {
+    match pitch_class % 12 {
+        0 => ('C', false),
+        1 => ('C', true),
+        2 => ('D', false),
+        3 => ('D', true),
+        4 => ('E', false),
+        5 => ('F', false),
+        6 => ('F', true),
+        7 => ('G', false),
+        8 => ('G', true),
+        9 => ('A', false),
+        10 => ('A', true),
+        _ => ('B', false),
+    }
+}
+
+fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
+    const C: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, false],
+        [true, false, false],
+        [true, false, false],
+        [true, true, true],
+    ];
+    const D: [[bool; 3]; 5] = [
+        [true, true, false],
+        [true, false, true],
+        [true, false, true],
+        [true, false, true],
+        [true, true, false],
+    ];
+    const E: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, false],
+        [true, true, false],
+        [true, false, false],
+        [true, true, true],
+    ];
+    const F: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, false],
+        [true, true, false],
+        [true, false, false],
+        [true, false, false],
+    ];
+    const G: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, false],
+        [true, false, true],
+        [true, false, true],
+        [true, true, true],
+    ];
+    const A: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, true],
+        [true, true, true],
+        [true, false, true],
+        [true, false, true],
+    ];
+    const B: [[bool; 3]; 5] = [
+        [true, true, false],
+        [true, false, true],
+        [true, true, false],
+        [true, false, true],
+        [true, true, false],
+    ];
+
+    let pixels = match letter {
+        'C' => &C,
+        'D' => &D,
+        'E' => &E,
+        'F' => &F,
+        'G' => &G,
+        'A' => &A,
+        'B' => &B,
+        _ => return false,
+    };
+
+    pixels
+        .get(row)
+        .and_then(|cols| cols.get(col))
+        .copied()
+        .unwrap_or(false)
+}
+
+fn sharp_pixel(row: usize, col: usize) -> bool {
+    const SHARP: [[bool; 2]; 5] = [
+        [true, false],
+        [true, true],
+        [true, false],
+        [true, true],
+        [true, false],
+    ];
+
+    SHARP
+        .get(row)
+        .and_then(|cols| cols.get(col))
+        .copied()
+        .unwrap_or(false)
 }
 
 fn narrow_digit_pixel(digit: u8, row: usize) -> bool {

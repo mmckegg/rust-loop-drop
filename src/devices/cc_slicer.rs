@@ -80,7 +80,7 @@ impl Triggerable for CcSlicer {
                     .copied()
                     .unwrap_or(0);
 
-                let mapped_velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+                let mapped_velocity = crate::devices::map_velocity(&self.velocity_map, velocity);
 
                 let f_pitch = midi_to_polar(midi_pitch);
                 let (msb, lsb) = polar_to_msb_lsb(f_pitch);

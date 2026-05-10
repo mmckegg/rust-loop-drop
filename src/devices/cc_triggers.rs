@@ -30,7 +30,7 @@ impl CcTriggers {
     }
 
     fn trigger_on(&mut self, trigger: &MidiTrigger, velocity: u8) {
-        let velocity = ::devices::map_velocity(&self.velocity_map, velocity);
+        let velocity = crate::devices::map_velocity(&self.velocity_map, velocity);
 
         match trigger {
             MidiTrigger::Cc(channel, cc, value) => {

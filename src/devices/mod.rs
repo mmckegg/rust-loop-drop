@@ -9,22 +9,10 @@ mod pitch_offset_chunk;
 mod root_offset_chunk;
 mod root_select;
 mod scale_select;
-mod sp404mk2;
 
-pub use self::cc_triggers::CcTriggers;
-pub use self::cc_triggers::MidiTrigger;
 pub use self::midi_triggers::MidiTriggers;
-pub use self::midi_triggers::SidechainOutput;
-pub use self::multi::MultiChunk;
-pub use self::sp404mk2::Sp404Mk2;
-
-pub use self::cc_slicer::CcSlicer;
 pub use self::midi_keys::MidiKeys;
-pub use self::midi_slicer::MidiSlicer;
 pub use self::offset::OffsetChunk;
-pub use self::pitch_offset_chunk::PitchOffsetChunk;
-pub use self::root_offset_chunk::RootOffsetChunk;
-pub use self::root_select::RootSelect;
 pub use self::scale_select::ScaleDegreeToggle;
 
 pub fn map_velocity(velocity_map: &Option<Vec<u8>>, velocity: u8) -> u8 {

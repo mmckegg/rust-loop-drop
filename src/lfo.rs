@@ -17,43 +17,53 @@ lazy_static! {
 
 // midi 0-127 for all values
 pub struct Lfo {
-    pub skew: u8, 
-    pub hold: u8,
     pub speed: u8,
-    pub offset: u8
+    pub wave: u8,
 }
 
 impl Lfo {
     // Returns a value between 0 and 1
-    pub fn new () -> Self {
-        Lfo {
-            skew: 0,
-            hold: 0,
-            speed: 50,
-            offset: 64
-        }
+    pub fn new() -> Self {
+        Lfo { speed: 50, wave: 64 }
     }
-    pub fn get_value_at (&self, pos: MidiTime) -> f64 { 
+
+    pub fn get_value_at(&self, pos: MidiTime) -> f64 {
         let rate_index = (self.speed as f64 * (RATES.len() as f64 / 128.0)) as usize;
-        let cycle_duration = RATES[rate_index];
-        let offset = MidiTime::from_float(cycle_duration.as_float() * ((self.offset as f64 - 64.0) / 64.0) / 2.0);
-        let phase = ((pos + offset) % cycle_duration).as_float() / cycle_duration.as_float();
-        let mid = self.skew as f64 / 127.0;
-        let hold = self.hold as f64 / 127.0;
-        if mid <= 0.0 {
-            1.0 - get_held_pos(phase, hold)
-        } else if phase < mid {
-            get_held_pos(phase / mid, hold)
+        let cycle_duration = RATES[rate_index.min(RATES.len() - 1)];
+        let phase = (pos % cycle_duration).as_float() / cycle_duration.as_float();
+        let wave = self.wave as f64 / 127.0;
+
+        if wave < 0.2 {
+            triangle(phase)
+        } else if wave < 0.4 {
+            phase
+        } else if wave < 0.6 {
+            held_ramp(phase, remap(wave, 0.4, 0.6, 0.0, 0.8))
+        } else if wave < 0.8 {
+            1.0 - held_ramp(phase, remap(wave, 0.6, 0.8, 0.0, 0.8))
         } else {
-            1.0 - get_held_pos((phase - mid) / (1.0 - mid), hold)
+            1.0 - phase
         }
     }
 }
 
-fn get_held_pos (pos: f64, hold: f64) -> f64 {
-    if pos < (1.0 - hold) {
-        pos / (1.0 - hold)
+fn triangle(phase: f64) -> f64 {
+    if phase < 0.5 {
+        phase * 2.0
+    } else {
+        1.0 - ((phase - 0.5) * 2.0)
+    }
+}
+
+fn held_ramp(phase: f64, hold: f64) -> f64 {
+    if phase < (1.0 - hold) {
+        phase / (1.0 - hold)
     } else {
         1.0
     }
+}
+
+fn remap(value: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> f64 {
+    let normalized = ((value - in_min) / (in_max - in_min)).max(0.0).min(1.0);
+    out_min + normalized * (out_max - out_min)
 }
