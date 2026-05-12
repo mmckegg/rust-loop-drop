@@ -2,6 +2,7 @@ use crate::loop_grid::LoopGridParams;
 use crate::midi_connection;
 use crate::scheduler::ScheduleRange;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 const SLIDER_CCS: [u8; 8] = [16, 17, 18, 19, 20, 21, 22, 23];
 const MUTE_NOTES: [u8; 8] = [61, 62, 63, 64, 65, 66, 67, 68];
@@ -23,7 +24,6 @@ pub struct SampleMixer {
     activity_channels: Vec<u32>,
     slider_values: Arc<Mutex<[u8; 8]>>,
     muted: Arc<Mutex<[bool; 8]>>,
-    flash_ticks: [u8; 8],
     last_lights: [u8; 8],
 }
 
@@ -98,7 +98,6 @@ impl SampleMixer {
             activity_channels,
             slider_values,
             muted,
-            flash_ticks: [0; 8],
             last_lights: [255; 8],
         };
 
@@ -107,9 +106,16 @@ impl SampleMixer {
     }
 
     fn refresh_lights(&mut self) {
+        let now = Instant::now();
         let muted = *self.muted.lock().unwrap();
+        let params = self.params.lock().unwrap();
         for index in 0..8 {
-            let light = if self.flash_ticks[index] > 0 {
+            let light = if params
+                .activity_flash_until
+                .get(&self.activity_channels[index])
+                .map(|until| *until > now)
+                .unwrap_or(false)
+            {
                 LED_WHITE
             } else if muted[index] {
                 LED_RED
@@ -131,21 +137,6 @@ impl ::controllers::Schedulable for SampleMixer {
     fn schedule(&mut self, range: ScheduleRange) {
         if !range.ticked {
             return;
-        }
-
-        {
-            let params = self.params.lock().unwrap();
-            for (index, channel) in self.activity_channels.iter().enumerate() {
-                if params.channel_triggered.contains(channel) {
-                    self.flash_ticks[index] = 2;
-                }
-            }
-        }
-
-        for flash in &mut self.flash_ticks {
-            if *flash > 0 {
-                *flash -= 1;
-            }
         }
 
         self.refresh_lights();

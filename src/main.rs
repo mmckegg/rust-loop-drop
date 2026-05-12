@@ -80,6 +80,7 @@ fn main() {
         duck_tick_multiplier: 0.1,
         duck_reduction: 0.5,
         channel_triggered: HashSet::new(),
+        activity_flash_until: HashMap::new(),
         reset_automation: false,
         reset_beat: 0,
         active_notes: HashSet::new(),
@@ -177,6 +178,8 @@ fn main() {
             let mut params = params.lock().unwrap();
             params.duck_triggered = false;
             params.channel_triggered.clear();
+            let now = Instant::now();
+            params.activity_flash_until.retain(|_, until| *until > now);
         }
     }
 }

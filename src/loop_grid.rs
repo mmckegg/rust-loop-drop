@@ -75,6 +75,7 @@ pub struct LoopGridParams {
     pub duck_tick_multiplier: f64,
     pub duck_reduction: f64,
     pub channel_triggered: HashSet<u32>,
+    pub activity_flash_until: HashMap<u32, Instant>,
     pub reset_automation: bool,
     pub reset_beat: u32,
     pub active_notes: HashSet<u8>,
@@ -348,95 +349,99 @@ impl LoopGrid {
 
         let input_queue_connect_tx = input_queue_tx.clone();
 
-        let input = midi_connection::get_input(midi_connection::YAELTEX_PORT_NAME, move |stamp, message| {
-            let status = message[0];
-            let channel = (status & 0x0F) + 1;
-            let message_type = status & 0xF0;
+        let input = midi_connection::get_input(
+            midi_connection::YAELTEX_PORT_NAME,
+            move |stamp, message| {
+                let status = message[0];
+                let channel = (status & 0x0F) + 1;
+                let message_type = status & 0xF0;
 
-            match message_type {
-                0x90 | 0x80 => {
-                    let note = message[1];
-                    let value = if message_type == 0x80 { 0 } else { message[2] };
-                    let pressed = value > 0;
+                match message_type {
+                    0x90 | 0x80 => {
+                        let note = message[1];
+                        let value = if message_type == 0x80 { 0 } else { message[2] };
+                        let pressed = value > 0;
 
-                    if channel == 1 {
-                        if let Some(id) = midi_to_id.get(&note) {
-                            input_queue_tx
-                                .send(GridEvent::GridInput {
-                                    stamp,
-                                    id: *id,
-                                    value,
-                                })
-                                .unwrap();
-                        } else if let Some(id) = CONTROL_BUTTONS.iter().position(|&x| x == note) {
-                            input_queue_tx
-                                .send(match id {
-                                    0 => GridEvent::LoopButton(pressed),
-                                    1 => GridEvent::FlattenButton(pressed),
-                                    2 => GridEvent::UndoButton(pressed),
-                                    3 => GridEvent::RedoButton(pressed),
-                                    4 => GridEvent::SuppressButton(pressed),
-                                    5 => GridEvent::RepeatButton(pressed),
-                                    6 => GridEvent::PrepareButton(pressed),
-                                    7 => GridEvent::SelectButton(pressed),
-                                    _ => GridEvent::None,
-                                })
-                                .unwrap();
-                        } else if let Some(id) = LENGTH_BUTTONS.iter().position(|&x| x == note) {
-                            input_queue_tx
-                                .send(GridEvent::LengthButton { id, pressed })
-                                .unwrap();
-                        }
-                    } else if channel == 2 {
-                        if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == note) {
-                            input_queue_tx
-                                .send(GridEvent::BankButton { id, pressed })
-                                .unwrap();
+                        if channel == 1 {
+                            if let Some(id) = midi_to_id.get(&note) {
+                                input_queue_tx
+                                    .send(GridEvent::GridInput {
+                                        stamp,
+                                        id: *id,
+                                        value,
+                                    })
+                                    .unwrap();
+                            } else if let Some(id) = CONTROL_BUTTONS.iter().position(|&x| x == note)
+                            {
+                                input_queue_tx
+                                    .send(match id {
+                                        0 => GridEvent::LoopButton(pressed),
+                                        1 => GridEvent::FlattenButton(pressed),
+                                        2 => GridEvent::UndoButton(pressed),
+                                        3 => GridEvent::RedoButton(pressed),
+                                        4 => GridEvent::SuppressButton(pressed),
+                                        5 => GridEvent::RepeatButton(pressed),
+                                        6 => GridEvent::PrepareButton(pressed),
+                                        7 => GridEvent::SelectButton(pressed),
+                                        _ => GridEvent::None,
+                                    })
+                                    .unwrap();
+                            } else if let Some(id) = LENGTH_BUTTONS.iter().position(|&x| x == note)
+                            {
+                                input_queue_tx
+                                    .send(GridEvent::LengthButton { id, pressed })
+                                    .unwrap();
+                            }
+                        } else if channel == 2 {
+                            if let Some(id) = BANK_BUTTONS.iter().position(|&x| x == note) {
+                                input_queue_tx
+                                    .send(GridEvent::BankButton { id, pressed })
+                                    .unwrap();
+                            }
                         }
                     }
-                }
-                0xB0 => {
-                    if channel == 2 {
-                        match message[1] {
-                            1 => {
-                                let id = cc_bucket(message[2], REPEAT_RATES.len());
-                                input_queue_tx
-                                    .send(GridEvent::RateButton { id, pressed: true })
-                                    .unwrap();
+                    0xB0 => {
+                        if channel == 2 {
+                            match message[1] {
+                                1 => {
+                                    let id = cc_bucket(message[2], REPEAT_RATES.len());
+                                    input_queue_tx
+                                        .send(GridEvent::RateButton { id, pressed: true })
+                                        .unwrap();
+                                }
+                                2 => {
+                                    let id = cc_bucket(message[2], 4);
+                                    input_queue_tx
+                                        .send(GridEvent::TriggerModeSelect { id })
+                                        .unwrap();
+                                }
+                                3 => {
+                                    input_queue_tx
+                                        .send(GridEvent::SwingControl { value: message[2] })
+                                        .unwrap();
+                                }
+                                4 => {
+                                    input_queue_tx
+                                        .send(GridEvent::TempoControl { value: message[2] })
+                                        .unwrap();
+                                }
+                                _ => {}
                             }
-                            2 => {
-                                let id = cc_bucket(message[2], 4);
-                                input_queue_tx
-                                    .send(GridEvent::TriggerModeSelect { id })
-                                    .unwrap();
-                            }
-                            3 => {
-                                input_queue_tx
-                                    .send(GridEvent::SwingControl { value: message[2] })
-                                    .unwrap();
-                            }
-                            4 => {
-                                input_queue_tx
-                                    .send(GridEvent::TempoControl { value: message[2] })
-                                    .unwrap();
-                            }
-                            _ => {}
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
-            }
-        });
+            },
+        );
 
         let (_midi_to_id, id_to_midi) = get_grid_map();
         let loop_length = MidiTime::from_beats(8);
         let mut base_loop = LoopCollection::new(loop_length);
 
-        let mut controller_output = midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
+        let mut controller_output =
+            midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
         controller_output.on_connect(move |_port| {
-            input_queue_connect_tx
-                .send(GridEvent::Connected)
-                .unwrap();
+            input_queue_connect_tx.send(GridEvent::Connected).unwrap();
         });
 
         let mut instance = LoopGrid {
@@ -1122,9 +1127,11 @@ impl LoopGrid {
 
                 let base = if button_length == self.loop_length {
                     selected_color
-                } else if self.loop_length < button_length && self.loop_length > prev_button_length {
+                } else if self.loop_length < button_length && self.loop_length > prev_button_length
+                {
                     Light::Red
-                } else if self.loop_length > button_length && self.loop_length < next_button_length {
+                } else if self.loop_length > button_length && self.loop_length < next_button_length
+                {
                     Light::Red
                 } else {
                     Light::Off
@@ -2323,12 +2330,18 @@ impl LoopGrid {
                 if let Some(channel) = self.chunk_channels.get(&map.chunk_index) {
                     let mut params = self.params.lock().unwrap();
                     params.channel_triggered.insert(*channel);
+                    params
+                        .activity_flash_until
+                        .insert(*channel, Instant::now() + Duration::from_millis(100));
                 }
 
                 if let Some(trigger_channels) = self.chunk_trigger_channels.get(&map.chunk_index) {
                     if let Some(channel) = trigger_channels.get(map.id as usize) {
                         let mut params = self.params.lock().unwrap();
                         params.channel_triggered.insert(*channel);
+                        params
+                            .activity_flash_until
+                            .insert(*channel, Instant::now() + Duration::from_millis(100));
                     }
                 }
             }
@@ -2943,16 +2956,76 @@ fn narrow_digit_pixel(digit: u8, row: usize) -> bool {
 
 fn wide_digit_pixel(digit: u8, row: usize, col: usize) -> bool {
     const DIGITS: [[[bool; 3]; 5]; 10] = [
-        [[true, true, true], [true, false, true], [true, false, true], [true, false, true], [true, true, true]],
-        [[false, true, false], [true, true, false], [false, true, false], [false, true, false], [true, true, true]],
-        [[true, true, true], [false, false, true], [true, true, true], [true, false, false], [true, true, true]],
-        [[true, true, true], [false, false, true], [true, true, true], [false, false, true], [true, true, true]],
-        [[true, false, true], [true, false, true], [true, true, true], [false, false, true], [false, false, true]],
-        [[true, true, true], [true, false, false], [true, true, true], [false, false, true], [true, true, true]],
-        [[true, true, true], [true, false, false], [true, true, true], [true, false, true], [true, true, true]],
-        [[true, true, true], [false, false, true], [false, false, true], [false, false, true], [false, false, true]],
-        [[true, true, true], [true, false, true], [true, true, true], [true, false, true], [true, true, true]],
-        [[true, true, true], [true, false, true], [true, true, true], [false, false, true], [true, true, true]],
+        [
+            [true, true, true],
+            [true, false, true],
+            [true, false, true],
+            [true, false, true],
+            [true, true, true],
+        ],
+        [
+            [false, true, false],
+            [true, true, false],
+            [false, true, false],
+            [false, true, false],
+            [true, true, true],
+        ],
+        [
+            [true, true, true],
+            [false, false, true],
+            [true, true, true],
+            [true, false, false],
+            [true, true, true],
+        ],
+        [
+            [true, true, true],
+            [false, false, true],
+            [true, true, true],
+            [false, false, true],
+            [true, true, true],
+        ],
+        [
+            [true, false, true],
+            [true, false, true],
+            [true, true, true],
+            [false, false, true],
+            [false, false, true],
+        ],
+        [
+            [true, true, true],
+            [true, false, false],
+            [true, true, true],
+            [false, false, true],
+            [true, true, true],
+        ],
+        [
+            [true, true, true],
+            [true, false, false],
+            [true, true, true],
+            [true, false, true],
+            [true, true, true],
+        ],
+        [
+            [true, true, true],
+            [false, false, true],
+            [false, false, true],
+            [false, false, true],
+            [false, false, true],
+        ],
+        [
+            [true, true, true],
+            [true, false, true],
+            [true, true, true],
+            [true, false, true],
+            [true, true, true],
+        ],
+        [
+            [true, true, true],
+            [true, false, true],
+            [true, true, true],
+            [false, false, true],
+            [true, true, true],
+        ],
     ];
 
     DIGITS

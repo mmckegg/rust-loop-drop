@@ -1,4 +1,7 @@
-use crate::config::{BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot, LfoMode};
+use crate::config::{
+    ActivityHighlight, BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot,
+    LfoMode,
+};
 use crate::controllers::{midi_to_float, midi_to_polar, Modulator};
 use crate::lfo::Lfo;
 use crate::loop_event::LoopEvent;
@@ -16,6 +19,7 @@ use std::time::{Duration, Instant};
 
 const AUTOMATION_DIM_INTENSITY: u8 = 48;
 const AUTOMATION_BRIGHT_INTENSITY: u8 = 127;
+const ACTIVITY_FLASH_INTENSITY: u8 = 127;
 const SWITCH_IDLE_INTENSITY: u8 = 96;
 const RING_IDLE_INTENSITY: u8 = 127;
 const LFO_ACTIVE_COLOR_SWAP_INTERVAL_TICKS: i32 = 24;
@@ -231,6 +235,7 @@ impl ModulationSurface {
                             &lfo_amounts,
                             &loops,
                             &recording_started,
+                            &params,
                             shift,
                             current_bank,
                             pulsing,
@@ -319,6 +324,7 @@ impl ModulationSurface {
                             &lfo_amounts,
                             &loops,
                             &recording_started,
+                            &params,
                             shift,
                             current_bank,
                             pulsing,
@@ -396,6 +402,7 @@ impl ModulationSurface {
                             &lfo_amounts,
                             &loops,
                             &recording_started,
+                            &params,
                             shift,
                             current_bank,
                             pulsing,
@@ -749,6 +756,7 @@ fn refresh_feedback(
     lfo_amounts: &HashMap<EncoderSlot, u8>,
     loops: &HashMap<Lane, AutomationLoop>,
     recording_started: &HashMap<Lane, MidiTime>,
+    params: &Arc<Mutex<LoopGridParams>>,
     shift: bool,
     current_bank: BankId,
     pulse: f64,
@@ -765,6 +773,7 @@ fn refresh_feedback(
             lfo_amounts,
             loops,
             recording_started,
+            params,
             shift,
             pulse,
             pos,
@@ -789,6 +798,7 @@ fn refresh_feedback(
             lfo_amounts,
             loops,
             recording_started,
+            params,
             shift,
             pulse,
             pos,
@@ -827,6 +837,7 @@ fn render_slot(
     lfo_amounts: &HashMap<EncoderSlot, u8>,
     loops: &HashMap<Lane, AutomationLoop>,
     recording_started: &HashMap<Lane, MidiTime>,
+    params: &Arc<Mutex<LoopGridParams>>,
     shift: bool,
     pulse: f64,
     pos: MidiTime,
@@ -852,8 +863,15 @@ fn render_slot(
     let is_recording = recording_started.contains_key(&active_lane);
     let has_loop = loops.contains_key(&active_lane);
 
-    let switch_color = encoder_color_to_midi(config.color);
-    let switch_intensity = if has_loop {
+    let activity_flash = has_activity_flash(&config.activity_highlights, params);
+    let switch_color = if activity_flash {
+        COLOR_WHITE
+    } else {
+        encoder_color_to_midi(config.color)
+    };
+    let switch_intensity = if activity_flash {
+        ACTIVITY_FLASH_INTENSITY
+    } else if has_loop {
         if pulse >= 0.5 {
             AUTOMATION_BRIGHT_INTENSITY
         } else {
@@ -980,6 +998,102 @@ fn is_centered_banked_encoder(
 
 fn root_note_from_value(value: u8) -> i32 {
     60 + (((value as i32 - 64) * 12) / 63)
+}
+
+fn has_activity_flash(
+    highlights: &[ActivityHighlight],
+    params: &Arc<Mutex<LoopGridParams>>,
+) -> bool {
+    if highlights.is_empty() {
+        return false;
+    }
+
+    let now = Instant::now();
+    let params = params.lock().unwrap();
+
+    for highlight in highlights {
+        match highlight {
+            ActivityHighlight::Sample(index) => {
+                if params
+                    .activity_flash_until
+                    .get(&sample_activity_channel(*index))
+                    .map(|until| *until > now)
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+            ActivityHighlight::SampleRange(start, end) => {
+                for index in *start..=*end {
+                    if params
+                        .activity_flash_until
+                        .get(&sample_activity_channel(index))
+                        .map(|until| *until > now)
+                        .unwrap_or(false)
+                    {
+                        return true;
+                    }
+                }
+            }
+            ActivityHighlight::Samples => {
+                for index in 0..8 {
+                    if params
+                        .activity_flash_until
+                        .get(&sample_activity_channel(index))
+                        .map(|until| *until > now)
+                        .unwrap_or(false)
+                    {
+                        return true;
+                    }
+                }
+            }
+            ActivityHighlight::VoiceA => {
+                if params
+                    .activity_flash_until
+                    .get(&5)
+                    .map(|until| *until > now)
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+            ActivityHighlight::VoiceB => {
+                if params
+                    .activity_flash_until
+                    .get(&4)
+                    .map(|until| *until > now)
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+            ActivityHighlight::VoiceC => {
+                if params
+                    .activity_flash_until
+                    .get(&6)
+                    .map(|until| *until > now)
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn sample_activity_channel(index: u8) -> u32 {
+    match index {
+        0 => 2,
+        1 => 3,
+        2 => 10,
+        3 => 11,
+        4 => 12,
+        5 => 13,
+        6 => 14,
+        _ => 15,
+    }
 }
 
 fn encoder_color_to_midi(color: EncoderColor) -> u8 {
