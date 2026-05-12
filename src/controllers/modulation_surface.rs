@@ -137,6 +137,7 @@ impl ModulationSurface {
             let mut active_record_lane: HashMap<EncoderSlot, Lane> = HashMap::new();
             let mut base_values: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut lfo_amounts: HashMap<EncoderSlot, u8> = HashMap::new();
+            let mut last_sent_output: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut last_feedback: HashMap<u8, SlotFeedback> = HashMap::new();
             let mut last_pos = MidiTime::zero();
             let mut lfo = Lfo::new();
@@ -145,8 +146,25 @@ impl ModulationSurface {
             for (slot, config) in &configs {
                 base_values.insert(*slot, config.assignment.default_value());
                 lfo_amounts.insert(*slot, 64);
+                last_sent_output.insert(*slot, 255);
                 recorder.allocate(lane_id(Lane::Base(*slot)), 50000);
                 recorder.allocate(lane_id(Lane::LfoAmount(*slot)), 50000);
+            }
+
+            for (slot, config) in &configs {
+                let value = config.assignment.default_value();
+                match modulators.get_mut(slot).unwrap_or(&mut Modulator::None) {
+                    Modulator::None => {}
+                    Modulator::MidiModulator(instance) => {
+                        instance.send(value);
+                        last_sent_output.insert(*slot, value);
+                    }
+                    Modulator::LfoSpeed(..) => lfo.speed = value,
+                    Modulator::LfoWave(..) => lfo.wave = value,
+                    Modulator::RootNote(..) => {
+                        scale.lock().unwrap().root = root_note_from_value(value);
+                    }
+                }
             }
 
             loop {
@@ -163,32 +181,47 @@ impl ModulationSurface {
                         };
                         let slot = slot_in_current_bank(slot, current_bank);
                         let lane = active_lane(slot, shift, &configs);
+                        let release_guard = recent_record_release_at
+                            .get(&slot)
+                            .map(|last| {
+                                Instant::now().duration_since(*last)
+                                    <= Duration::from_millis(tap_ms)
+                            })
+                            .unwrap_or(false);
 
-                        match lane {
-                            Lane::Base(slot) => {
-                                base_values.insert(slot, value);
-                                loops.remove(&Lane::Base(slot));
-                                send_lane_value(
-                                    slot,
-                                    Lane::Base(slot),
-                                    value,
-                                    last_pos,
-                                    &configs,
-                                    &lfo_amounts,
-                                    &mut modulators,
-                                    &mut lfo,
-                                    &scale,
-                                    &params,
-                                );
-                                recorder.add(LoopEvent {
-                                    id: lane_id(Lane::Base(slot)),
-                                    value: OutputValue::On(value),
-                                    pos: last_pos,
-                                });
-                            }
-                            Lane::LfoAmount(slot) => {
-                                lfo_amounts.insert(slot, value);
-                                loops.remove(&Lane::LfoAmount(slot));
+                        if !release_guard {
+                            match lane {
+                                Lane::Base(slot) => {
+                                    base_values.insert(slot, value);
+                                    loops.remove(&Lane::Base(slot));
+                                    send_lane_value(
+                                        slot,
+                                        Lane::Base(slot),
+                                        value,
+                                        last_pos,
+                                        &configs,
+                                        &lfo_amounts,
+                                        &mut last_sent_output,
+                                        &mut modulators,
+                                        &mut lfo,
+                                        &scale,
+                                        &params,
+                                    );
+                                    recorder.add(LoopEvent {
+                                        id: lane_id(Lane::Base(slot)),
+                                        value: OutputValue::On(value),
+                                        pos: last_pos,
+                                    });
+                                }
+                                Lane::LfoAmount(slot) => {
+                                    lfo_amounts.insert(slot, value);
+                                    loops.remove(&Lane::LfoAmount(slot));
+                                    recorder.add(LoopEvent {
+                                        id: lane_id(Lane::LfoAmount(slot)),
+                                        value: OutputValue::On(value),
+                                        pos: last_pos,
+                                    });
+                                }
                             }
                         }
 
@@ -266,6 +299,7 @@ impl ModulationSurface {
                                             &mut base_values,
                                             &mut lfo_amounts,
                                             &mut loops,
+                                            &mut last_sent_output,
                                             &mut modulators,
                                             &mut lfo,
                                             &scale,
@@ -324,7 +358,23 @@ impl ModulationSurface {
                             }
                         }
 
-                        for (slot, value) in base_values.clone() {
+                        let mut slots_to_update = std::collections::HashSet::new();
+                        for lane in loops.keys() {
+                            match *lane {
+                                Lane::Base(slot) | Lane::LfoAmount(slot) => {
+                                    slots_to_update.insert(slot);
+                                }
+                            }
+                        }
+                        for (slot, amount) in &lfo_amounts {
+                            if *amount != 64 {
+                                slots_to_update.insert(*slot);
+                            }
+                        }
+                        for slot in slots_to_update {
+                            let value = *base_values
+                                .get(&slot)
+                                .unwrap_or(&configs.get(&slot).map(|c| c.assignment.default_value()).unwrap_or(0));
                             send_lane_value(
                                 slot,
                                 Lane::Base(slot),
@@ -332,6 +382,7 @@ impl ModulationSurface {
                                 pos,
                                 &configs,
                                 &lfo_amounts,
+                                &mut last_sent_output,
                                 &mut modulators,
                                 &mut lfo,
                                 &scale,
@@ -572,6 +623,7 @@ fn send_lane_value(
     pos: MidiTime,
     configs: &HashMap<EncoderSlot, EncoderConfig>,
     lfo_amounts: &HashMap<EncoderSlot, u8>,
+    last_sent_output: &mut HashMap<EncoderSlot, u8>,
     modulators: &mut HashMap<EncoderSlot, Modulator>,
     lfo: &mut Lfo,
     scale: &Arc<Mutex<Scale>>,
@@ -593,9 +645,20 @@ fn send_lane_value(
         value
     };
 
+    let should_send = last_sent_output
+        .get(&slot)
+        .copied()
+        .map(|last| last != output_value)
+        .unwrap_or(true);
+
     match modulators.get_mut(&slot).unwrap_or(&mut Modulator::None) {
         Modulator::None => {}
-        Modulator::MidiModulator(instance) => instance.send(output_value),
+        Modulator::MidiModulator(instance) => {
+            if should_send {
+                instance.send(output_value);
+                last_sent_output.insert(slot, output_value);
+            }
+        }
         Modulator::LfoSpeed(..) => lfo.speed = value,
         Modulator::LfoWave(..) => {
             lfo.wave = value;
@@ -647,6 +710,7 @@ fn reset_lane(
     base_values: &mut HashMap<EncoderSlot, u8>,
     lfo_amounts: &mut HashMap<EncoderSlot, u8>,
     loops: &mut HashMap<Lane, AutomationLoop>,
+    last_sent_output: &mut HashMap<EncoderSlot, u8>,
     modulators: &mut HashMap<EncoderSlot, Modulator>,
     lfo: &mut Lfo,
     scale: &Arc<Mutex<Scale>>,
@@ -665,6 +729,7 @@ fn reset_lane(
                     MidiTime::zero(),
                     configs,
                     lfo_amounts,
+                    last_sent_output,
                     modulators,
                     lfo,
                     scale,
