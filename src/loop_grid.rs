@@ -212,6 +212,7 @@ impl Light {
 
 enum GridEvent {
     Connected,
+    DelayedRefresh,
 
     LoopButton(bool),
     FlattenButton(bool),
@@ -282,6 +283,8 @@ pub struct LoopGrid {
     should_flatten: bool,
 
     last_flatten_press_at: Instant,
+    delayed_refresh_at: Option<Instant>,
+    delayed_refresh_done: bool,
     tempo_overlay_until: Option<Instant>,
     tempo_overlay_value: Option<u16>,
 
@@ -481,6 +484,8 @@ impl LoopGrid {
             loop_from: MidiTime::from_ticks(0),
             should_flatten: false,
             last_flatten_press_at: Instant::now(),
+            delayed_refresh_at: None,
+            delayed_refresh_done: false,
             tempo_overlay_until: None,
             tempo_overlay_value: None,
 
@@ -590,6 +595,22 @@ impl LoopGrid {
         match event {
             GridEvent::Connected => {
                 println!("Controller Connected");
+                self.grid_out.clear();
+                self.length_row_out.clear();
+                self.repeat_button_out = Light::Off;
+                self.loop_button_out = Light::Off;
+                self.delayed_refresh_at = Some(Instant::now() + Duration::from_millis(1000));
+                self.delayed_refresh_done = false;
+                self.refresh_grid_buttons();
+                self.refresh_loop_button();
+                self.refresh_undo_redo_lights();
+                self.refresh_suppress_button();
+                self.refresh_selected_bank();
+                self.refresh_loop_length();
+                self.refresh_repeat_button();
+                self.refresh_select_state();
+            }
+            GridEvent::DelayedRefresh => {
                 self.grid_out.clear();
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
@@ -766,6 +787,13 @@ impl LoopGrid {
 
             if event == LoopStateChange::Set {
                 self.clear_recording();
+            }
+        }
+
+        if let Some(at) = self.delayed_refresh_at {
+            if !self.delayed_refresh_done && Instant::now() >= at {
+                self.delayed_refresh_done = true;
+                self.grid_input_event(GridEvent::DelayedRefresh);
             }
         }
 

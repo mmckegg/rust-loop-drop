@@ -31,12 +31,12 @@ impl Config {
                 output: MidiPortConfig::new(rig_port_name, 10),
                 notes: [40, 41, 42, 43, 36, 37, 38, 39],
                 volume_ccs: [11, 12, 13, 14, 15, 16, 17, 18],
-                color: ChunkColor::Orange,
+                color: ChunkColor::Yellow,
             },
             triggers: TriggerRackConfig {
                 output: MidiPortConfig::new(rig_port_name, 3),
                 notes: [36, 37, 38, 39, 40, 41, 42, 43],
-                color: ChunkColor::Yellow,
+                color: ChunkColor::Orange,
             },
             voice_a: VoiceConfig {
                 output: MidiPortConfig::new(rig_port_name, 15),
@@ -71,6 +71,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 1, col: 5 },
                         label: String::from("Voice A Bend"),
                         color: EncoderColor::Blue,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new(rig_port_name, 15),
                             bipolar: true,
@@ -81,6 +82,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 1, col: 6 },
                         label: String::from("Voice B Bend"),
                         color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new(rig_port_name, 14),
                             bipolar: true,
@@ -91,6 +93,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 1, col: 7 },
                         label: String::from("Voice C Bend"),
                         color: EncoderColor::Purple,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new(rig_port_name, 7),
                             bipolar: true,
@@ -101,52 +104,58 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 1, col: 8 },
                         label: String::from("Root Note"),
                         color: EncoderColor::White,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::RootNote { default: 64 },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 1 },
                         label: String::from("Decay 1"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 31,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 2 },
                         label: String::from("Decay 2"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 32,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 3 },
                         label: String::from("Decay 3"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 33,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 4 },
                         label: String::from("Decay 4"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 34,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 5 },
                         label: String::from("Filter 1"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 37,
@@ -157,6 +166,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 2, col: 6 },
                         label: String::from("Filter 2"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 38,
@@ -167,6 +177,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 2, col: 7 },
                         label: String::from("Filter 3"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 39,
@@ -177,6 +188,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 2, col: 8 },
                         label: String::from("Filter 4"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 40,
@@ -187,6 +199,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 1 },
                         label: String::from("Pitch 1"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 21,
@@ -197,6 +210,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 2 },
                         label: String::from("Pitch 2"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 22,
@@ -207,6 +221,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 3 },
                         label: String::from("Pitch 3"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 23,
@@ -217,6 +232,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 4 },
                         label: String::from("Pitch 4"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 24,
@@ -227,6 +243,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 5 },
                         label: String::from("Pitch 5"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 25,
@@ -237,6 +254,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 6 },
                         label: String::from("Pitch 6"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 26,
@@ -247,6 +265,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 7 },
                         label: String::from("Pitch 7"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 27,
@@ -257,6 +276,7 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 3, col: 8 },
                         label: String::from("Pitch 8"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 28,
@@ -264,19 +284,29 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 1,
+                            col: 1,
+                        },
                         label: String::from("Gran 5 Time"),
                         color: EncoderColor::Yellow,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 45,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 1,
+                            col: 2,
+                        },
                         label: String::from("Gran 5 Start"),
-                        color: EncoderColor::Yellow,
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 35,
@@ -284,19 +314,29 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 1,
+                            col: 3,
+                        },
                         label: String::from("Gran 6 Time"),
                         color: EncoderColor::Yellow,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 46,
-                            default: 63,
+                            default: 64,
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 1, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 1,
+                            col: 4,
+                        },
                         label: String::from("Gran 6 Start"),
-                        color: EncoderColor::Yellow,
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 36,
@@ -304,9 +344,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 2,
+                            col: 1,
+                        },
                         label: String::from("CV 1"),
                         color: EncoderColor::Cyan,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 2),
                             cc: 20,
@@ -314,9 +359,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 2,
+                            col: 2,
+                        },
                         label: String::from("CV 2"),
                         color: EncoderColor::Cyan,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 2),
                             cc: 21,
@@ -324,21 +374,36 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 2,
+                            col: 3,
+                        },
                         label: String::from("LFO Speed"),
-                        color: EncoderColor::Cyan,
+                        color: EncoderColor::Purple,
+                        lfo_mode: LfoMode::None,
                         assignment: EncoderAssignment::LfoSpeed { default: 50 },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::A, row: 2, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::A,
+                            row: 2,
+                            col: 4,
+                        },
                         label: String::from("LFO Wave"),
-                        color: EncoderColor::Cyan,
+                        color: EncoderColor::Purple,
+                        lfo_mode: LfoMode::None,
                         assignment: EncoderAssignment::LfoWave { default: 64 },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 1,
+                            col: 1,
+                        },
                         label: String::from("Expr 1"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 41,
@@ -346,9 +411,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 1,
+                            col: 2,
+                        },
                         label: String::from("Expr 2"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 42,
@@ -356,9 +426,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 1,
+                            col: 3,
+                        },
                         label: String::from("Expr 3"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 43,
@@ -366,9 +441,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 1, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 1,
+                            col: 4,
+                        },
                         label: String::from("Expr 4"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 44,
@@ -376,9 +456,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 2,
+                            col: 1,
+                        },
                         label: String::from("Expr 5"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 47,
@@ -386,9 +471,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 2,
+                            col: 2,
+                        },
                         label: String::from("Expr 6"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 48,
@@ -396,9 +486,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 2,
+                            col: 3,
+                        },
                         label: String::from("Expr 7"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 49,
@@ -406,9 +501,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::B, row: 2, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::B,
+                            row: 2,
+                            col: 4,
+                        },
                         label: String::from("Expr 8"),
                         color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
                             cc: 50,
@@ -416,9 +516,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 1,
+                            col: 1,
+                        },
                         label: String::from("Send A1"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Blue,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 0,
@@ -426,9 +531,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 1,
+                            col: 2,
+                        },
                         label: String::from("Send A2"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 1,
@@ -436,9 +546,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 1,
+                            col: 3,
+                        },
                         label: String::from("Send A3"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Yellow,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 2,
@@ -446,9 +561,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 1, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 1,
+                            col: 4,
+                        },
                         label: String::from("Send A4"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 3,
@@ -456,9 +576,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 2,
+                            col: 1,
+                        },
                         label: String::from("Send B1"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Blue,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 4,
@@ -466,9 +591,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 2,
+                            col: 2,
+                        },
                         label: String::from("Send B2"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 5,
@@ -476,9 +606,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 2,
+                            col: 3,
+                        },
                         label: String::from("Send B3"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Yellow,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 6,
@@ -486,9 +621,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::C, row: 2, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::C,
+                            row: 2,
+                            col: 4,
+                        },
                         label: String::from("Send B4"),
-                        color: EncoderColor::Green,
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 7,
@@ -496,9 +636,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 1,
+                            col: 1,
+                        },
                         label: String::from("Pan 1"),
                         color: EncoderColor::Red,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 8,
@@ -506,9 +651,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 1,
+                            col: 2,
+                        },
                         label: String::from("Pan 2"),
                         color: EncoderColor::Red,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 9,
@@ -516,9 +666,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 1,
+                            col: 3,
+                        },
                         label: String::from("Pan 3"),
                         color: EncoderColor::Red,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 10,
@@ -526,9 +681,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 1, col: 4 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 1,
+                            col: 4,
+                        },
                         label: String::from("Pan 4"),
                         color: EncoderColor::Red,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 11,
@@ -536,9 +696,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 1 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 2,
+                            col: 1,
+                        },
                         label: String::from("Reverb Time"),
-                        color: EncoderColor::Red,
+                        color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 12,
@@ -546,9 +711,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 2 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 2,
+                            col: 2,
+                        },
                         label: String::from("Delay Time"),
-                        color: EncoderColor::Red,
+                        color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::UnipolarMultiply,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 13,
@@ -556,9 +726,14 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 3 },
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 2,
+                            col: 3,
+                        },
                         label: String::from("Tone"),
-                        color: EncoderColor::Red,
+                        color: EncoderColor::Pink,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
                             cc: 14,
@@ -566,13 +741,18 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Banked { bank: BankId::D, row: 2, col: 4 },
-                        label: String::from("Spare"),
-                        color: EncoderColor::Red,
+                        slot: EncoderSlot::Banked {
+                            bank: BankId::D,
+                            row: 2,
+                            col: 4,
+                        },
+                        label: String::from("DJ Filter"),
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
                         assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 11),
-                            cc: 15,
-                            default: 0,
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 51,
+                            default: 64,
                         },
                     },
                 ],
@@ -634,6 +814,8 @@ pub struct EncoderConfig {
     pub label: String,
     #[serde(default)]
     pub color: EncoderColor,
+    #[serde(default)]
+    pub lfo_mode: LfoMode,
     pub assignment: EncoderAssignment,
 }
 
@@ -663,6 +845,19 @@ pub enum EncoderColor {
     Lime,
     Red,
     Green,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum LfoMode {
+    None,
+    UnipolarMultiply,
+    BipolarOffset,
+}
+
+impl Default for LfoMode {
+    fn default() -> Self {
+        LfoMode::None
+    }
 }
 
 impl Default for EncoderColor {
@@ -765,13 +960,13 @@ pub enum ChunkColor {
 impl ChunkColor {
     pub fn to_midi(self) -> u8 {
         match self {
-            ChunkColor::Yellow => 28,
+            ChunkColor::Yellow => 19,
             ChunkColor::Orange => 10,
             ChunkColor::Blue => 75,
             ChunkColor::Purple => 97,
             ChunkColor::Pink => 122,
             ChunkColor::Cyan => 39,
-            ChunkColor::Lime => 17,
+            ChunkColor::Lime => 37,
         }
     }
 }

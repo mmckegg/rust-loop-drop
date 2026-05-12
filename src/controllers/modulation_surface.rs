@@ -1,18 +1,24 @@
-use crate::config::{BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot};
+use crate::config::{BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot, LfoMode};
 use crate::controllers::{midi_to_float, midi_to_polar, Modulator};
 use crate::lfo::Lfo;
 use crate::loop_event::LoopEvent;
 use crate::loop_grid::LoopGridParams;
-use crate::scale::Scale;
 use crate::loop_recorder::LoopRecorder;
 use crate::midi_connection;
 use crate::midi_time::MidiTime;
 use crate::output_value::OutputValue;
+use crate::scale::Scale;
 use crate::scheduler::ScheduleRange;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+
+const AUTOMATION_DIM_INTENSITY: u8 = 48;
+const AUTOMATION_BRIGHT_INTENSITY: u8 = 127;
+const SWITCH_IDLE_INTENSITY: u8 = 96;
+const RING_IDLE_INTENSITY: u8 = 127;
+const LFO_ACTIVE_COLOR_SWAP_INTERVAL_TICKS: i32 = 24;
 
 const ROTARY_STATUS: u8 = 176;
 const SWITCH_FIRST_CC: u8 = 32;
@@ -23,10 +29,11 @@ const RING_MODE_STATUS: u8 = 176;
 
 include!(concat!(env!("OUT_DIR"), "/controller_modes.rs"));
 const FEEDBACK_INTENSITY_CHANNEL: u8 = 15;
+const FEEDBACK_COLOR_CHANNEL: u8 = 16;
 const COLOR_OFF: u8 = 0;
-const COLOR_WHITE: u8 = 3;
-const COLOR_RED: u8 = 5;
-const COLOR_PURPLE: u8 = 49;
+const COLOR_WHITE: u8 = 127;
+const COLOR_RED: u8 = 1;
+const COLOR_PURPLE: u8 = 97;
 const ROOT_OVERLAY_MS: u64 = 1200;
 
 pub struct ModulationSurface {
@@ -63,10 +70,20 @@ struct AutomationLoop {
     length: MidiTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SlotFeedback {
+    switch_color: u8,
+    switch_intensity: u8,
+    ring_color: u8,
+    ring_intensity: u8,
+    ring_mode: u8,
+    ring_value: u8,
+}
+
 impl ModulationSurface {
     pub fn new(
         encoders: Vec<EncoderConfig>,
-        _tap_ms: u64,
+        tap_ms: u64,
         double_tap_ms: u64,
         hold_ms: u64,
         params: Arc<Mutex<LoopGridParams>>,
@@ -76,14 +93,14 @@ impl ModulationSurface {
         let (tx, rx) = mpsc::channel();
         let tx_input = tx.clone();
         let tx_clock = tx.clone();
-        let mut feedback =
-            midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
+        let mut feedback = midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
 
         let slot_by_rotary = build_rotary_slot_map();
         let slot_by_switch = build_switch_slot_map();
 
-        let input = midi_connection::get_input(midi_connection::YAELTEX_PORT_NAME, move |_stamp, message| {
-            match message {
+        let input = midi_connection::get_input(
+            midi_connection::YAELTEX_PORT_NAME,
+            move |_stamp, message| match message {
                 [status, cc, value] if *status == ROTARY_STATUS => {
                     if let Some(slot) = slot_by_rotary.get(cc) {
                         tx_input
@@ -103,8 +120,8 @@ impl ModulationSurface {
                     }
                 }
                 _ => {}
-            }
-        });
+            },
+        );
 
         let configs: HashMap<EncoderSlot, EncoderConfig> =
             encoders.into_iter().map(|c| (c.slot, c)).collect();
@@ -115,10 +132,12 @@ impl ModulationSurface {
             let mut loops: HashMap<Lane, AutomationLoop> = HashMap::new();
             let mut recording_started: HashMap<Lane, MidiTime> = HashMap::new();
             let mut last_press_at: HashMap<EncoderSlot, Instant> = HashMap::new();
+            let mut recent_record_release_at: HashMap<EncoderSlot, Instant> = HashMap::new();
             let mut held_since: HashMap<EncoderSlot, Instant> = HashMap::new();
             let mut active_record_lane: HashMap<EncoderSlot, Lane> = HashMap::new();
             let mut base_values: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut lfo_amounts: HashMap<EncoderSlot, u8> = HashMap::new();
+            let mut last_feedback: HashMap<u8, SlotFeedback> = HashMap::new();
             let mut last_pos = MidiTime::zero();
             let mut lfo = Lfo::new();
             let mut pulsing = 0.0f64;
@@ -153,7 +172,9 @@ impl ModulationSurface {
                                     slot,
                                     Lane::Base(slot),
                                     value,
+                                    last_pos,
                                     &configs,
+                                    &lfo_amounts,
                                     &mut modulators,
                                     &mut lfo,
                                     &scale,
@@ -180,6 +201,8 @@ impl ModulationSurface {
                             shift,
                             current_bank,
                             pulsing,
+                            last_pos,
+                            &mut last_feedback,
                             &mut feedback,
                         );
                     }
@@ -193,48 +216,66 @@ impl ModulationSurface {
 
                         if pressed {
                             held_since.insert(slot, at);
+                            active_record_lane.insert(slot, lane);
+                            recording_started.insert(lane, last_pos);
                         } else if let Some(pressed_at) = held_since.remove(&slot) {
                             let held_for = at.duration_since(pressed_at);
+                            let recorded_lane = active_record_lane.remove(&slot).unwrap_or(lane);
+
                             if held_for >= Duration::from_millis(hold_ms) {
-                                if active_record_lane.remove(&slot).is_some() {
-                                    if let Some(start) = recording_started.remove(&lane) {
-                                        let length = MidiTime::quantize_length(last_pos - start);
-                                        if length < MidiTime::from_ticks(16) {
-                                            loops.remove(&lane);
-                                        } else {
-                                            loops.insert(
-                                                lane,
-                                                AutomationLoop {
-                                                    offset: last_pos - length,
-                                                    length,
-                                                },
-                                            );
-                                        }
+                                recent_record_release_at.insert(slot, at);
+                                if let Some(start) = recording_started.remove(&recorded_lane) {
+                                    let length = MidiTime::quantize_length(last_pos - start);
+                                    if length < MidiTime::from_ticks(16) {
+                                        loops.remove(&recorded_lane);
+                                    } else {
+                                        loops.insert(
+                                            recorded_lane,
+                                            AutomationLoop {
+                                                offset: last_pos - length,
+                                                length,
+                                            },
+                                        );
                                     }
                                 }
                             } else {
+                                recording_started.remove(&recorded_lane);
+
                                 let now = at;
-                                let double_tap = last_press_at
+                                let release_guard = recent_record_release_at
                                     .get(&slot)
-                                    .map(|last| now.duration_since(*last) <= Duration::from_millis(double_tap_ms))
+                                    .map(|last| {
+                                        now.duration_since(*last)
+                                            <= Duration::from_millis(tap_ms)
+                                    })
                                     .unwrap_or(false);
 
-                                if double_tap {
-                                    reset_lane(
-                                        lane,
-                                        &configs,
-                                        &mut base_values,
-                                        &mut lfo_amounts,
-                                        &mut loops,
-                                        &mut modulators,
-                                        &mut lfo,
-                                        &scale,
-                                        &params,
-                                    );
-                                } else {
-                                    loops.remove(&lane);
+                                if !release_guard {
+                                    let double_tap = last_press_at
+                                        .get(&slot)
+                                        .map(|last| {
+                                            now.duration_since(*last)
+                                                <= Duration::from_millis(double_tap_ms)
+                                        })
+                                        .unwrap_or(false);
+
+                                    if double_tap {
+                                        reset_lane(
+                                            recorded_lane,
+                                            &configs,
+                                            &mut base_values,
+                                            &mut lfo_amounts,
+                                            &mut loops,
+                                            &mut modulators,
+                                            &mut lfo,
+                                            &scale,
+                                            &params,
+                                        );
+                                    } else {
+                                        loops.remove(&recorded_lane);
+                                    }
+                                    last_press_at.insert(slot, now);
                                 }
-                                last_press_at.insert(slot, now);
                             }
                         }
 
@@ -247,6 +288,8 @@ impl ModulationSurface {
                             shift,
                             current_bank,
                             pulsing,
+                            last_pos,
+                            &mut last_feedback,
                             &mut feedback,
                         );
                     }
@@ -272,16 +315,6 @@ impl ModulationSurface {
                                         Lane::Base(slot) => {
                                             let value = event.value.value();
                                             base_values.insert(slot, value);
-                                            send_lane_value(
-                                                slot,
-                                                lane,
-                                                value,
-                                                &configs,
-                                                &mut modulators,
-                                                &mut lfo,
-                                                &scale,
-                                                &params,
-                                            );
                                         }
                                         Lane::LfoAmount(slot) => {
                                             lfo_amounts.insert(slot, event.value.value());
@@ -291,15 +324,19 @@ impl ModulationSurface {
                             }
                         }
 
-                        let now = Instant::now();
-                        for (slot, pressed_at) in held_since.clone() {
-                            if now.duration_since(pressed_at) >= Duration::from_millis(hold_ms)
-                                && !active_record_lane.contains_key(&slot)
-                            {
-                                let lane = active_lane(slot, shift, &configs);
-                                active_record_lane.insert(slot, lane);
-                                recording_started.insert(lane, pos);
-                            }
+                        for (slot, value) in base_values.clone() {
+                            send_lane_value(
+                                slot,
+                                Lane::Base(slot),
+                                value,
+                                pos,
+                                &configs,
+                                &lfo_amounts,
+                                &mut modulators,
+                                &mut lfo,
+                                &scale,
+                                &params,
+                            );
                         }
 
                         refresh_feedback(
@@ -311,6 +348,8 @@ impl ModulationSurface {
                             shift,
                             current_bank,
                             pulsing,
+                            pos,
+                            &mut last_feedback,
                             &mut feedback,
                         );
                     }
@@ -346,22 +385,26 @@ fn build_modulators(
     for (slot, config) in configs {
         let modulator = match &config.assignment {
             EncoderAssignment::None => Modulator::None,
-            EncoderAssignment::MidiCc { output, cc, default } => Modulator::MidiModulator(
-                crate::controllers::MidiModulator::new(
-                    get_port(output_ports, &output.name),
-                    output.channel,
-                    crate::config::Modulator::Cc(*cc, *default),
-                    None,
-                ),
-            ),
-            EncoderAssignment::InvertMidiCc { output, cc, default } => Modulator::MidiModulator(
-                crate::controllers::MidiModulator::new(
-                    get_port(output_ports, &output.name),
-                    output.channel,
-                    crate::config::Modulator::InvertCc(*cc, *default),
-                    None,
-                ),
-            ),
+            EncoderAssignment::MidiCc {
+                output,
+                cc,
+                default,
+            } => Modulator::MidiModulator(crate::controllers::MidiModulator::new(
+                get_port(output_ports, &output.name),
+                output.channel,
+                crate::config::Modulator::Cc(*cc, *default),
+                None,
+            )),
+            EncoderAssignment::InvertMidiCc {
+                output,
+                cc,
+                default,
+            } => Modulator::MidiModulator(crate::controllers::MidiModulator::new(
+                get_port(output_ports, &output.name),
+                output.channel,
+                crate::config::Modulator::InvertCc(*cc, *default),
+                None,
+            )),
             EncoderAssignment::MaxMidiCc {
                 output,
                 cc,
@@ -415,14 +458,14 @@ fn build_modulators(
                 },
                 None,
             )),
-            EncoderAssignment::Aftertouch { output, default } => Modulator::MidiModulator(
-                crate::controllers::MidiModulator::new(
+            EncoderAssignment::Aftertouch { output, default } => {
+                Modulator::MidiModulator(crate::controllers::MidiModulator::new(
                     get_port(output_ports, &output.name),
                     output.channel,
                     crate::config::Modulator::Aftertouch(*default),
                     None,
-                ),
-            ),
+                ))
+            }
             EncoderAssignment::LfoSpeed { default } => Modulator::LfoSpeed(*default),
             EncoderAssignment::LfoWave { default } => Modulator::LfoWave(*default),
             EncoderAssignment::RootNote { default } => Modulator::RootNote(*default),
@@ -526,7 +569,9 @@ fn send_lane_value(
     slot: EncoderSlot,
     lane: Lane,
     value: u8,
+    pos: MidiTime,
     configs: &HashMap<EncoderSlot, EncoderConfig>,
+    lfo_amounts: &HashMap<EncoderSlot, u8>,
     modulators: &mut HashMap<EncoderSlot, Modulator>,
     lfo: &mut Lfo,
     scale: &Arc<Mutex<Scale>>,
@@ -536,9 +581,21 @@ fn send_lane_value(
         return;
     }
 
+    let output_value = if let Some(config) = configs.get(&slot) {
+        apply_lfo_to_value(
+            value,
+            lfo_amounts.get(&slot).copied().unwrap_or(64),
+            pos,
+            config,
+            lfo,
+        )
+    } else {
+        value
+    };
+
     match modulators.get_mut(&slot).unwrap_or(&mut Modulator::None) {
         Modulator::None => {}
-        Modulator::MidiModulator(instance) => instance.send(value),
+        Modulator::MidiModulator(instance) => instance.send(output_value),
         Modulator::LfoSpeed(..) => lfo.speed = value,
         Modulator::LfoWave(..) => {
             lfo.wave = value;
@@ -548,7 +605,38 @@ fn send_lane_value(
             scale.lock().unwrap().root = note;
             let mut params = params.lock().unwrap();
             params.root_overlay_note = Some(note);
-            params.root_overlay_until = Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+            params.root_overlay_until =
+                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+        }
+    }
+}
+
+fn apply_lfo_to_value(
+    base_value: u8,
+    lfo_amount: u8,
+    pos: MidiTime,
+    config: &EncoderConfig,
+    lfo: &Lfo,
+) -> u8 {
+    if !config.assignment.supports_lfo_lane() || lfo_amount == 64 {
+        return base_value;
+    }
+
+    let phase = (lfo.get_value_at(pos) * 2.0) - 1.0;
+    let depth = crate::controllers::midi_to_polar(lfo_amount).abs();
+
+    match config.lfo_mode {
+        LfoMode::None => base_value,
+        LfoMode::BipolarOffset => {
+            let base = crate::controllers::midi_to_float(base_value);
+            let amount = base + (phase * depth * 0.5);
+            crate::controllers::float_to_midi(amount.max(0.0).min(1.0))
+        }
+        LfoMode::UnipolarMultiply => {
+            let base = crate::controllers::midi_to_float(base_value);
+            let uni = lfo.get_value_at(pos);
+            let amount = base * (1.0 + (uni * depth));
+            crate::controllers::float_to_midi(amount.max(0.0).min(1.0))
         }
     }
 }
@@ -570,7 +658,18 @@ fn reset_lane(
             if let Some(config) = configs.get(&slot) {
                 let value = config.assignment.default_value();
                 base_values.insert(slot, value);
-                send_lane_value(slot, lane, value, configs, modulators, lfo, scale, params);
+                send_lane_value(
+                    slot,
+                    lane,
+                    value,
+                    MidiTime::zero(),
+                    configs,
+                    lfo_amounts,
+                    modulators,
+                    lfo,
+                    scale,
+                    params,
+                );
             }
         }
         Lane::LfoAmount(slot) => {
@@ -588,6 +687,8 @@ fn refresh_feedback(
     shift: bool,
     current_bank: BankId,
     pulse: f64,
+    pos: MidiTime,
+    last_feedback: &mut HashMap<u8, SlotFeedback>,
     feedback: &mut midi_connection::SharedMidiOutputConnection,
 ) {
     for (index, slot) in fixed_slots().iter().enumerate() {
@@ -601,6 +702,8 @@ fn refresh_feedback(
             recording_started,
             shift,
             pulse,
+            pos,
+            last_feedback,
             feedback,
         );
     }
@@ -623,6 +726,8 @@ fn refresh_feedback(
             recording_started,
             shift,
             pulse,
+            pos,
+            last_feedback,
             feedback,
         );
     }
@@ -659,13 +764,22 @@ fn render_slot(
     recording_started: &HashMap<Lane, MidiTime>,
     shift: bool,
     pulse: f64,
+    pos: MidiTime,
+    last_feedback: &mut HashMap<u8, SlotFeedback>,
     feedback: &mut midi_connection::SharedMidiOutputConnection,
 ) {
     let config = if let Some(config) = configs.get(&slot) {
         config
     } else {
-        send_color_feedback(feedback, SWITCH_FEEDBACK_STATUS, SWITCH_FIRST_CC + physical_index, COLOR_OFF, 0);
-        send_color_feedback(feedback, RING_FEEDBACK_STATUS, RING_FIRST_CC + physical_index, COLOR_OFF, 0);
+        let new_feedback = SlotFeedback {
+            switch_color: COLOR_OFF,
+            switch_intensity: 0,
+            ring_color: COLOR_OFF,
+            ring_intensity: 0,
+            ring_mode: PHYSICAL_ENCODER_RING_MODES[physical_index as usize],
+            ring_value: 0,
+        };
+        send_slot_feedback(physical_index, new_feedback, last_feedback, feedback);
         return;
     };
 
@@ -675,50 +789,128 @@ fn render_slot(
 
     let switch_color = encoder_color_to_midi(config.color);
     let switch_intensity = if has_loop {
-        (48.0 + pulse * 79.0) as u8
+        if pulse >= 0.5 {
+            AUTOMATION_BRIGHT_INTENSITY
+        } else {
+            AUTOMATION_DIM_INTENSITY
+        }
     } else {
-        96
+        SWITCH_IDLE_INTENSITY
     };
 
-    let ring_color = if is_recording {
-        COLOR_RED
-    } else if shift && config.assignment.supports_lfo_lane() {
-        COLOR_PURPLE
+    let lfo_amount = lfo_amounts.get(&slot).copied().unwrap_or(64);
+    let has_lfo = config.assignment.supports_lfo_lane() && lfo_amount != 64;
+    let lfo_color_phase = if has_lfo && !shift {
+        let interval = MidiTime::from_ticks(LFO_ACTIVE_COLOR_SWAP_INTERVAL_TICKS);
+        (pos % (interval * 2)).as_float() < interval.as_float()
     } else {
-        COLOR_WHITE
+        false
     };
 
     let ring_value = if shift && config.assignment.supports_lfo_lane() {
         *lfo_amounts.get(&slot).unwrap_or(&64)
     } else {
-        *base_values.get(&slot).unwrap_or(&config.assignment.default_value())
+        *base_values
+            .get(&slot)
+            .unwrap_or(&config.assignment.default_value())
     };
 
-    let ring_intensity = if !shift && config.assignment.supports_lfo_lane() {
-        let amount = lfo_amounts.get(&slot).copied().unwrap_or(64);
-        let depth = (midi_to_polar(amount)).abs();
-        (64.0 + (pulse * depth * 63.0)) as u8
+    let centered_banked = is_centered_banked_encoder(slot, &config.assignment, ring_value);
+
+    let ring_color = if is_recording {
+        COLOR_RED
+    } else if shift && config.assignment.supports_lfo_lane() {
+        COLOR_PURPLE
+    } else if lfo_color_phase {
+        COLOR_PURPLE
+    } else if centered_banked {
+        45
     } else {
-        127
+        COLOR_WHITE
     };
 
-    send_color_feedback(
+    let ring_intensity = RING_IDLE_INTENSITY;
+
+    let new_feedback = SlotFeedback {
+        switch_color,
+        switch_intensity,
+        ring_color,
+        ring_intensity,
+        ring_mode: PHYSICAL_ENCODER_RING_MODES[physical_index as usize],
+        ring_value,
+    };
+
+    send_slot_feedback(physical_index, new_feedback, last_feedback, feedback);
+}
+
+fn send_slot_feedback(
+    physical_index: u8,
+    new_feedback: SlotFeedback,
+    last_feedback: &mut HashMap<u8, SlotFeedback>,
+    feedback: &mut midi_connection::SharedMidiOutputConnection,
+) {
+    if last_feedback
+        .get(&physical_index)
+        .copied()
+        .map(|prev| prev == new_feedback)
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    let _ = last_feedback.insert(physical_index, new_feedback);
+
+    send_switch_feedback(
         feedback,
         SWITCH_FEEDBACK_STATUS,
         SWITCH_FIRST_CC + physical_index,
-        switch_color,
-        switch_intensity,
+        new_feedback.switch_color,
+        new_feedback.switch_intensity,
     );
-    send_color_feedback(
+    send_ring_feedback(
         feedback,
-        RING_FEEDBACK_STATUS,
         RING_FIRST_CC + physical_index,
-        ring_color,
-        ring_intensity,
+        new_feedback.ring_color,
+        new_feedback.ring_intensity,
+        new_feedback.ring_mode,
+        new_feedback.ring_value,
     );
-    let ring_mode_value = PHYSICAL_ENCODER_RING_MODES[physical_index as usize];
-    let _ = feedback.send(&[RING_MODE_STATUS, RING_FIRST_CC + physical_index, ring_mode_value]);
-    let _ = feedback.send(&[RING_FEEDBACK_STATUS, RING_FIRST_CC + physical_index, ring_value]);
+}
+
+fn send_ring_feedback(
+    feedback: &mut midi_connection::SharedMidiOutputConnection,
+    cc: u8,
+    color: u8,
+    intensity: u8,
+    mode: u8,
+    value: u8,
+) {
+    let _ = feedback.send(&[RING_MODE_STATUS, cc, mode]);
+    let _ = feedback.send(&[RING_FEEDBACK_STATUS, cc, value]);
+    let _ = feedback.send(&[cc_status(FEEDBACK_COLOR_CHANNEL), cc, color]);
+    let _ = feedback.send(&[cc_status(FEEDBACK_INTENSITY_CHANNEL), cc, intensity]);
+}
+
+fn send_switch_feedback(
+    feedback: &mut midi_connection::SharedMidiOutputConnection,
+    status: u8,
+    cc: u8,
+    color: u8,
+    intensity: u8,
+) {
+    let _ = feedback.send(&[status, cc, color]);
+    let _ = feedback.send(&[cc_status(FEEDBACK_INTENSITY_CHANNEL), cc, intensity]);
+}
+
+fn is_centered_banked_encoder(
+    slot: EncoderSlot,
+    assignment: &EncoderAssignment,
+    value: u8,
+) -> bool {
+    match slot {
+        EncoderSlot::Banked { .. } => assignment.default_value() == 64 && value == 64,
+        _ => false,
+    }
 }
 
 fn root_note_from_value(value: u8) -> i32 {
@@ -729,26 +921,19 @@ fn encoder_color_to_midi(color: EncoderColor) -> u8 {
     match color {
         EncoderColor::White => COLOR_WHITE,
         EncoderColor::Yellow => 13,
-        EncoderColor::Orange => 9,
-        EncoderColor::Blue => 45,
+        EncoderColor::Orange => 10,
+        EncoderColor::Blue => 75,
         EncoderColor::Purple => COLOR_PURPLE,
-        EncoderColor::Pink => 53,
-        EncoderColor::Cyan => 33,
-        EncoderColor::Lime => 17,
+        EncoderColor::Pink => 122,
+        EncoderColor::Cyan => 39,
+        EncoderColor::Lime => 37,
         EncoderColor::Red => COLOR_RED,
-        EncoderColor::Green => 17,
+        EncoderColor::Green => 43,
     }
 }
 
-fn send_color_feedback(
-    feedback: &mut midi_connection::SharedMidiOutputConnection,
-    status: u8,
-    cc: u8,
-    color: u8,
-    intensity: u8,
-) {
-    let _ = feedback.send(&[status, cc, color]);
-    let _ = feedback.send(&[176 - 1 + FEEDBACK_INTENSITY_CHANNEL, cc, intensity]);
+fn cc_status(channel: u8) -> u8 {
+    176 - 1 + channel
 }
 
 fn get_port(

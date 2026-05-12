@@ -89,7 +89,13 @@ fn main() {
 
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
-    let chunks = build_chunks(&myconfig, &mut output_ports, &mut offset_lookup, &scale, &params);
+    let chunks = build_chunks(
+        &myconfig,
+        &mut output_ports,
+        &mut offset_lookup,
+        &scale,
+        &params,
+    );
 
     let mut loop_grid = LoopGrid::new(
         chunks,
@@ -99,10 +105,6 @@ fn main() {
     );
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = vec![
-        Box::new(controllers::Umi3::new(
-            "Logidy UMI3",
-            loop_grid.remote_tx.clone(),
-        )),
         Box::new(controllers::ModulationSurface::new(
             myconfig.modulation.encoders.clone(),
             myconfig.modulation.tap_ms,
@@ -218,7 +220,8 @@ fn build_chunks(
     let mut chunks = Vec::new();
 
     let make_offset = |id: &str, offset_lookup: &mut OffsetLookup| {
-        Box::new(devices::OffsetChunk::new(get_offset(offset_lookup, id))) as Box<dyn Triggerable + Send>
+        Box::new(devices::OffsetChunk::new(get_offset(offset_lookup, id)))
+            as Box<dyn Triggerable + Send>
     };
 
     let make_voice = |voice: &config::VoiceConfig,
@@ -242,17 +245,16 @@ fn build_chunks(
         )) as Box<dyn Triggerable + Send>
     };
 
-    let make_note_triggers = |output: &config::MidiPortConfig,
-                              notes: &[u8],
-                              output_ports: &mut PortLookup| {
-        Box::new(devices::MidiTriggers::new(
-            get_port(output_ports, &output.name),
-            output.channel,
-            None,
-            notes.to_vec(),
-            None,
-        )) as Box<dyn Triggerable + Send>
-    };
+    let make_note_triggers =
+        |output: &config::MidiPortConfig, notes: &[u8], output_ports: &mut PortLookup| {
+            Box::new(devices::MidiTriggers::new(
+                get_port(output_ports, &output.name),
+                output.channel,
+                None,
+                notes.to_vec(),
+                None,
+            )) as Box<dyn Triggerable + Send>
+        };
 
     chunks.push(ChunkMap::new(
         make_offset("voice_a", offset_lookup),
@@ -336,7 +338,11 @@ fn build_chunks(
     ));
 
     chunks.push(ChunkMap::new(
-        make_note_triggers(&config.triggers.output, &config.triggers.notes, output_ports),
+        make_note_triggers(
+            &config.triggers.output,
+            &config.triggers.notes,
+            output_ports,
+        ),
         chunk::Coords::new(1, 0),
         Shape::new(1, 8),
         config.triggers.color.to_midi(),
@@ -346,7 +352,11 @@ fn build_chunks(
     ));
 
     chunks.push(ChunkMap::new(
-        make_note_triggers(&config.samples.output, &config.samples.notes[0..4], output_ports),
+        make_note_triggers(
+            &config.samples.output,
+            &config.samples.notes[0..4],
+            output_ports,
+        ),
         chunk::Coords::new(0, 0),
         Shape::new(1, 4),
         config.samples.color.to_midi(),
@@ -355,7 +365,11 @@ fn build_chunks(
         RepeatMode::NoCycle,
     ));
     chunks.push(ChunkMap::new(
-        make_note_triggers(&config.samples.output, &config.samples.notes[4..8], output_ports),
+        make_note_triggers(
+            &config.samples.output,
+            &config.samples.notes[4..8],
+            output_ports,
+        ),
         chunk::Coords::new(0, 4),
         Shape::new(1, 4),
         config.samples.color.to_midi(),
@@ -365,7 +379,13 @@ fn build_chunks(
     ));
 
     chunks.push(ChunkMap::new(
-        make_voice(&config.voice_a, "voice_a", output_ports, offset_lookup, scale),
+        make_voice(
+            &config.voice_a,
+            "voice_a",
+            output_ports,
+            offset_lookup,
+            scale,
+        ),
         chunk::Coords::new(2, 0),
         Shape::new(5, 4),
         config.voice_a.color.to_midi(),
@@ -374,7 +394,13 @@ fn build_chunks(
         RepeatMode::Global,
     ));
     chunks.push(ChunkMap::new(
-        make_voice(&config.voice_b, "voice_b", output_ports, offset_lookup, scale),
+        make_voice(
+            &config.voice_b,
+            "voice_b",
+            output_ports,
+            offset_lookup,
+            scale,
+        ),
         chunk::Coords::new(2, 4),
         Shape::new(5, 4),
         config.voice_b.color.to_midi(),
@@ -383,7 +409,13 @@ fn build_chunks(
         RepeatMode::Global,
     ));
     chunks.push(ChunkMap::new(
-        make_voice(&config.voice_c, "voice_c", output_ports, offset_lookup, scale),
+        make_voice(
+            &config.voice_c,
+            "voice_c",
+            output_ports,
+            offset_lookup,
+            scale,
+        ),
         chunk::Coords::new(7, 0),
         Shape::new(3, 8),
         config.voice_c.color.to_midi(),
