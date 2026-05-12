@@ -69,6 +69,10 @@ pub struct LoopGridParams {
     pub select_held: bool,
     pub root_overlay_until: Option<Instant>,
     pub root_overlay_note: Option<i32>,
+    pub lfo_speed_overlay_until: Option<Instant>,
+    pub lfo_speed_overlay_value: Option<String>,
+    pub lfo_wave_overlay_until: Option<Instant>,
+    pub lfo_wave_overlay_mode: Option<&'static str>,
     pub frozen: bool,
     pub cueing: bool,
     pub duck_triggered: bool,
@@ -288,6 +292,11 @@ pub struct LoopGrid {
     delayed_refresh_done: bool,
     tempo_overlay_until: Option<Instant>,
     tempo_overlay_value: Option<u16>,
+    control_overlay_until: Option<Instant>,
+    control_overlay_label: Option<&'static str>,
+    control_overlay_value: Option<String>,
+    control_overlay_mode: Option<&'static str>,
+    peek_root_overlay: bool,
 
     rate: MidiTime,
     recorder: LoopRecorder,
@@ -493,6 +502,11 @@ impl LoopGrid {
             delayed_refresh_done: false,
             tempo_overlay_until: None,
             tempo_overlay_value: None,
+            control_overlay_until: None,
+            control_overlay_label: None,
+            control_overlay_value: None,
+            control_overlay_mode: None,
+            peek_root_overlay: false,
 
             rate: MidiTime::from_beats(2),
             recorder: LoopRecorder::new(),
@@ -700,6 +714,8 @@ impl LoopGrid {
                 self.params.lock().unwrap().select_held = pressed;
                 if pressed {
                     self.clear_selection()
+                } else {
+                    self.peek_root_overlay = false;
                 }
 
                 self.refresh_select_state();
@@ -729,12 +745,12 @@ impl LoopGrid {
                 self.set_tempo(value);
             }
             GridEvent::BankButton { id, pressed } => {
-                if pressed {
-                    if id == 3 && self.select_held {
-                        self.toggle_internal_clock();
-                    } else {
-                        self.set_bank(id as u8);
+                if self.select_held {
+                    if pressed {
+                        self.show_peek_overlay_for_bank(id);
                     }
+                } else if pressed {
+                    self.set_bank(id as u8);
                 }
             }
             GridEvent::GridInput {
@@ -1096,11 +1112,9 @@ impl LoopGrid {
     fn refresh_loop_length(&mut self) {
         let mut pending = Vec::new();
 
-        if self.tempo_overlay_active() {
+        if self.display_overlay_active() {
             for (col, id) in LENGTH_BUTTONS.iter().enumerate() {
-                let light = self
-                    .tempo_overlay_display_light(0, col)
-                    .unwrap_or(Light::Off);
+                let light = self.display_overlay_light(0, col).unwrap_or(Light::Off);
                 pending.push((*id, light));
             }
         } else {
@@ -1629,11 +1643,22 @@ impl LoopGrid {
 
     fn root_overlay_active(&self) -> bool {
         let params = self.params.lock().unwrap();
+        if self.peek_root_overlay {
+            return true;
+        }
         if let Some(until) = params.root_overlay_until {
             Instant::now() <= until && params.root_overlay_note.is_some()
         } else {
             false
         }
+    }
+
+    fn display_overlay_active(&self) -> bool {
+        self.root_overlay_active()
+            || self.lfo_speed_overlay_active()
+            || self.lfo_wave_overlay_active()
+            || self.tempo_overlay_active()
+            || self.control_overlay_active()
     }
 
     fn root_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
@@ -1642,7 +1667,7 @@ impl LoopGrid {
         }
 
         let params = self.params.lock().unwrap();
-        let note = params.root_overlay_note?;
+        let note = params.root_overlay_note.unwrap_or(60);
         let pitch_class = note.rem_euclid(12) as u8;
         let (name, sharp) = pitch_class_name(pitch_class);
 
@@ -1675,6 +1700,24 @@ impl LoopGrid {
         Some(light)
     }
 
+    fn lfo_speed_overlay_active(&self) -> bool {
+        let params = self.params.lock().unwrap();
+        if let Some(until) = params.lfo_speed_overlay_until {
+            Instant::now() <= until && params.lfo_speed_overlay_value.is_some()
+        } else {
+            false
+        }
+    }
+
+    fn lfo_wave_overlay_active(&self) -> bool {
+        let params = self.params.lock().unwrap();
+        if let Some(until) = params.lfo_wave_overlay_until {
+            Instant::now() <= until && params.lfo_wave_overlay_mode.is_some()
+        } else {
+            false
+        }
+    }
+
     fn tempo_overlay_active(&self) -> bool {
         if let Some(until) = self.tempo_overlay_until {
             Instant::now() <= until && self.tempo_overlay_value.is_some()
@@ -1683,11 +1726,59 @@ impl LoopGrid {
         }
     }
 
+    fn control_overlay_active(&self) -> bool {
+        if let Some(until) = self.control_overlay_until {
+            Instant::now() <= until && self.control_overlay_label.is_some()
+        } else {
+            false
+        }
+    }
+
+    fn control_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
+        if !self.control_overlay_active() {
+            return None;
+        }
+
+        let label = self.control_overlay_label?;
+        let value = self.control_overlay_value.as_deref();
+        Some(control_overlay_pixel(
+            label,
+            value,
+            self.control_overlay_mode,
+            row,
+            col,
+        ))
+    }
+
     fn tempo_overlay_display_light(&self, row: usize, col: usize) -> Option<Light> {
-        if let Some(light) = self.root_overlay_display_light(row, col) {
-            if light != Light::Off {
-                return Some(light);
-            }
+        if self.root_overlay_active() {
+            return self.root_overlay_display_light(row, col);
+        }
+
+        if self.lfo_speed_overlay_active() {
+            let params = self.params.lock().unwrap();
+            return Some(control_overlay_pixel(
+                "LFO_SPEED",
+                params.lfo_speed_overlay_value.as_deref(),
+                None,
+                row,
+                col,
+            ));
+        }
+
+        if self.lfo_wave_overlay_active() {
+            let params = self.params.lock().unwrap();
+            return Some(control_overlay_pixel(
+                "LFO_WAVE",
+                None,
+                params.lfo_wave_overlay_mode,
+                row,
+                col,
+            ));
+        }
+
+        if self.control_overlay_active() {
+            return self.control_overlay_display_light(row, col);
         }
 
         if !self.tempo_overlay_active() {
@@ -1724,6 +1815,10 @@ impl LoopGrid {
         Some(light)
     }
 
+    fn display_overlay_light(&self, row: usize, col: usize) -> Option<Light> {
+        self.tempo_overlay_display_light(row, col)
+    }
+
     fn tempo_overlay_light(&self, id: u32) -> Option<Light> {
         let coords = Coords::from(id);
         if coords.row < 10 || coords.row > 13 {
@@ -1732,7 +1827,7 @@ impl LoopGrid {
 
         let row = (coords.row - 9) as usize;
         let col = coords.col as usize;
-        self.tempo_overlay_display_light(row, col)
+        self.display_overlay_light(row, col)
     }
 
     fn refresh_selection_override(&mut self) {
@@ -2200,6 +2295,7 @@ impl LoopGrid {
         self.rate = value;
         self.repeat_button_out = Light::Off;
         self.loop_button_out = Light::Off;
+        self.show_control_overlay("RATE", Some(rate_overlay_value(value).to_string()));
         self.refresh_loop_length();
         self.refresh_loop_button();
         self.refresh_repeat_button();
@@ -2209,14 +2305,10 @@ impl LoopGrid {
 
     fn set_swing(&mut self, value: u8) {
         let mut params = self.params.lock().unwrap();
-        let linear_swing = (value as f64 - 64.0) / 64.0;
-        params.swing = if value == 63 || value == 64 {
-            0.0
-        } else if linear_swing < 0.0 {
-            -linear_swing.abs().powf(2.0)
-        } else {
-            linear_swing.powf(2.0)
-        };
+        let linear_swing = value as f64 / 127.0;
+        params.swing = linear_swing.powf(2.0);
+        drop(params);
+        self.show_control_overlay("SWING", Some(swing_overlay_value(value)));
     }
 
     fn set_tempo(&mut self, value: u8) {
@@ -2228,9 +2320,49 @@ impl LoopGrid {
 
     fn set_trigger_mode(&mut self, value: TriggerMode) {
         self.trigger_mode = value;
+        self.show_control_overlay("TRG", Some(trigger_mode_overlay_value(value).to_string()));
         self.refresh_loop_button();
         self.refresh_override_repeat();
         self.refresh_all_inputs();
+    }
+
+    fn show_control_overlay(&mut self, label: &'static str, value: Option<String>) {
+        self.show_control_overlay_with_mode(label, value, None);
+    }
+
+    fn show_control_overlay_with_mode(
+        &mut self,
+        label: &'static str,
+        value: Option<String>,
+        mode: Option<&'static str>,
+    ) {
+        self.control_overlay_label = Some(label);
+        self.control_overlay_value = value;
+        self.control_overlay_mode = mode;
+        self.control_overlay_until = Some(Instant::now() + Duration::from_millis(900));
+    }
+
+    fn show_peek_overlay_for_bank(&mut self, bank_id: usize) {
+        match bank_id {
+            0 => self.show_control_overlay("RATE", Some(rate_overlay_value(self.rate).to_string())),
+            1 => self.show_control_overlay(
+                "TRG",
+                Some(trigger_mode_overlay_value(self.trigger_mode).to_string()),
+            ),
+            2 => {
+                let swing_value = {
+                    let params = self.params.lock().unwrap();
+                    float_to_swing_cc(params.swing)
+                };
+                self.show_control_overlay("SWING", Some(swing_overlay_value(swing_value)));
+            }
+            3 => {
+                let bpm = *self.internal_bpm.lock().unwrap();
+                self.tempo_overlay_value = Some(bpm.round().min(199.0) as u16);
+                self.tempo_overlay_until = Some(Instant::now() + Duration::from_millis(900));
+            }
+            _ => {}
+        }
     }
 
     fn refresh_override_repeat(&mut self) {
@@ -2862,6 +2994,73 @@ fn pitch_class_name(pitch_class: u8) -> (char, bool) {
     }
 }
 
+fn control_overlay_pixel(
+    label: &str,
+    value: Option<&str>,
+    mode: Option<&str>,
+    row: usize,
+    col: usize,
+) -> Light {
+    match label {
+        "TRG" => trigger_mode_overlay_pixel(value, row, col),
+        "RATE" => {
+            if let Some(value) = value {
+                let light = if value.ends_with('T') {
+                    Light::Purple
+                } else {
+                    Light::Yellow
+                };
+                compact_text_pixel(value, row, col, light)
+            } else {
+                Light::Off
+            }
+        }
+        "LFO_WAVE" => lfo_wave_overlay_pixel(mode, row, col),
+        _ => {
+            if let Some(value) = value {
+                compact_text_pixel(value, row, col, Light::White)
+            } else {
+                Light::Off
+            }
+        }
+    }
+}
+
+fn compact_text_pixel(text: &str, row: usize, col: usize, light: Light) -> Light {
+    let chars: Vec<char> = text.chars().collect();
+    let start_col = compact_text_start(chars.len());
+
+    for (index, ch) in chars.iter().enumerate() {
+        let glyph_start = start_col + (index * 4);
+        if col >= glyph_start && col < glyph_start + 3 {
+            if compact_glyph_pixel(*ch, row, col - glyph_start) {
+                return light;
+            } else {
+                return Light::Off;
+            }
+        }
+    }
+
+    Light::Off
+}
+
+fn compact_text_start(len: usize) -> usize {
+    let width = if len == 0 { 0 } else { (len * 3) + (len - 1) };
+    if width >= 8 {
+        0
+    } else {
+        (8 - width) / 2
+    }
+}
+
+fn compact_glyph_pixel(glyph: char, row: usize, col: usize) -> bool {
+    match glyph {
+        '0'..='9' => wide_digit_pixel(glyph.to_digit(10).unwrap() as u8, row, col),
+        'A' | 'B' | 'Q' | 'R' | 'T' => note_letter_pixel(glyph, row, col),
+        _ => false,
+    }
+}
+
 fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
     const C: [[bool; 3]; 5] = [
         [true, true, true],
@@ -2876,6 +3075,27 @@ fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
         [true, false, true],
         [true, false, true],
         [true, true, false],
+    ];
+    const L: [[bool; 3]; 5] = [
+        [true, false, false],
+        [true, false, false],
+        [true, false, false],
+        [true, false, false],
+        [true, true, true],
+    ];
+    const P: [[bool; 3]; 5] = [
+        [true, true, false],
+        [true, false, true],
+        [true, true, false],
+        [true, false, false],
+        [true, false, false],
+    ];
+    const Q: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, true],
+        [true, false, true],
+        [true, true, true],
+        [false, false, true],
     ];
     const E: [[bool; 3]; 5] = [
         [true, true, true],
@@ -2898,6 +3118,55 @@ fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
         [true, false, true],
         [true, true, true],
     ];
+    const I: [[bool; 3]; 5] = [
+        [true, true, true],
+        [false, true, false],
+        [false, true, false],
+        [false, true, false],
+        [true, true, true],
+    ];
+    const N: [[bool; 3]; 5] = [
+        [true, false, true],
+        [true, true, true],
+        [true, true, true],
+        [true, false, true],
+        [true, false, true],
+    ];
+    const R: [[bool; 3]; 5] = [
+        [true, true, false],
+        [true, false, true],
+        [true, true, false],
+        [true, false, true],
+        [true, false, true],
+    ];
+    const S: [[bool; 3]; 5] = [
+        [true, true, true],
+        [true, false, false],
+        [true, true, true],
+        [false, false, true],
+        [true, true, true],
+    ];
+    const T: [[bool; 3]; 5] = [
+        [true, true, true],
+        [false, true, false],
+        [false, true, false],
+        [false, true, false],
+        [false, true, false],
+    ];
+    const U: [[bool; 3]; 5] = [
+        [true, false, true],
+        [true, false, true],
+        [true, false, true],
+        [true, false, true],
+        [true, true, true],
+    ];
+    const W: [[bool; 3]; 5] = [
+        [true, false, true],
+        [true, false, true],
+        [true, true, true],
+        [true, true, true],
+        [true, false, true],
+    ];
     const A: [[bool; 3]; 5] = [
         [true, true, true],
         [true, false, true],
@@ -2912,6 +3181,13 @@ fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
         [true, false, true],
         [true, true, false],
     ];
+    const Z: [[bool; 3]; 5] = [
+        [true, true, true],
+        [false, false, true],
+        [false, true, false],
+        [true, false, false],
+        [true, true, true],
+    ];
 
     let pixels = match letter {
         'C' => &C,
@@ -2919,8 +3195,25 @@ fn note_letter_pixel(letter: char, row: usize, col: usize) -> bool {
         'E' => &E,
         'F' => &F,
         'G' => &G,
+        'I' => &I,
+        'L' => &L,
+        'N' => &N,
+        'P' => &P,
+        'Q' => &Q,
+        'R' => &R,
+        'S' => &S,
+        'T' => &T,
+        'U' => &U,
+        'W' => &W,
         'A' => &A,
         'B' => &B,
+        '1' => &I,
+        '2' => &Z,
+        '3' => &E,
+        '4' => &A,
+        '5' => &S,
+        '6' => &G,
+        '8' => &B,
         _ => return false,
     };
 
@@ -3034,6 +3327,178 @@ fn wide_digit_pixel(digit: u8, row: usize, col: usize) -> bool {
         .and_then(|cols| cols.get(col))
         .copied()
         .unwrap_or(false)
+}
+
+fn trigger_mode_overlay_value(mode: TriggerMode) -> &'static str {
+    match mode {
+        TriggerMode::Immediate => "T",
+        TriggerMode::Quantized => "Q",
+        TriggerMode::Repeat => "R",
+        TriggerMode::Cycle => "A",
+    }
+}
+
+fn lfo_wave_overlay_pixel(mode: Option<&str>, row: usize, col: usize) -> Light {
+    let wave = match mode {
+        Some("TRI") => Some((
+            [
+                [false, false, true, false, false, false, false, false],
+                [false, true, false, true, false, false, false, false],
+                [true, false, false, false, true, false, false, false],
+                [false, false, false, false, false, true, false, true],
+                [false, false, false, false, false, false, true, false],
+            ],
+            Light::White,
+        )),
+        Some("UP") => Some((
+            [
+                [false, false, false, false, true, false, false, false],
+                [false, false, false, true, true, false, false, true],
+                [false, false, true, false, true, false, true, false],
+                [false, true, false, false, true, true, false, false],
+                [true, false, false, false, true, false, false, false],
+            ],
+            Light::Yellow,
+        )),
+        Some("HUP") => Some((
+            [
+                [false, false, false, false, true, true, true, true],
+                [false, false, false, true, false, false, false, true],
+                [false, false, true, false, false, false, false, true],
+                [false, true, false, false, false, false, false, true],
+                [true, false, false, false, false, false, false, true],
+            ],
+            Light::Purple,
+        )),
+        Some("HDN") => Some((
+            [
+                [true, true, true, true, false, false, false, false],
+                [true, false, false, false, true, false, false, false],
+                [true, false, false, false, false, true, false, false],
+                [true, false, false, false, false, false, true, false],
+                [true, false, false, false, false, false, false, true],
+            ],
+            Light::Purple,
+        )),
+        Some("DWN") => Some((
+            [
+                [true, false, false, false, true, false, false, false],
+                [false, true, false, false, true, true, false, false],
+                [false, false, true, false, true, false, true, false],
+                [false, false, false, true, true, false, false, true],
+                [false, false, false, false, true, false, false, false],
+            ],
+            Light::BlueDark,
+        )),
+        _ => None,
+    };
+
+    if let Some((pixels, light)) = wave {
+        if row >= 5 || col >= 8 {
+            return Light::Off;
+        }
+        if pixels[row][col] {
+            light
+        } else {
+            Light::Off
+        }
+    } else {
+        Light::Off
+    }
+}
+
+fn trigger_mode_overlay_pixel(value: Option<&str>, row: usize, col: usize) -> Light {
+    let mode = match value {
+        Some("T") => Some((
+            [
+                [false, false, true, false, false],
+                [false, false, true, true, false],
+                [true, true, true, true, true],
+                [false, false, true, true, false],
+                [false, false, true, false, false],
+            ],
+            Light::Green,
+        )),
+        Some("Q") => Some((
+            [
+                [false, true, true, true, false],
+                [true, false, false, false, true],
+                [true, false, true, false, true],
+                [true, false, false, false, true],
+                [false, true, true, true, false],
+            ],
+            Light::Yellow,
+        )),
+        Some("R") => Some((
+            [
+                [true, false, true, false, true],
+                [true, false, true, false, true],
+                [true, false, true, false, true],
+                [true, false, true, false, true],
+                [true, false, true, false, true],
+            ],
+            Light::Purple,
+        )),
+        Some("A") => Some((
+            [
+                [true, false, false, false, false],
+                [true, true, false, false, false],
+                [false, true, true, false, false],
+                [false, false, true, true, false],
+                [false, false, false, true, true],
+            ],
+            Light::BlueDark,
+        )),
+        _ => None,
+    };
+
+    if let Some((pixels, light)) = mode {
+        let start_col = 1usize;
+        if col < start_col || col >= start_col + 5 {
+            return Light::Off;
+        }
+        if row >= 5 {
+            return Light::Off;
+        }
+        if pixels[row][col - start_col] {
+            light
+        } else {
+            Light::Off
+        }
+    } else {
+        Light::Off
+    }
+}
+
+fn swing_overlay_value(value: u8) -> String {
+    let amount = ((value as f64 / 127.0) * 50.0).round() as u8;
+    amount.to_string()
+}
+
+fn rate_overlay_value(rate: MidiTime) -> &'static str {
+    if rate == MidiTime::from_measure(2, 1) {
+        "2B"
+    } else if rate == MidiTime::from_measure(1, 1) {
+        "1B"
+    } else if rate == MidiTime::from_measure(1, 2) {
+        "2"
+    } else if rate == MidiTime::from_measure(1, 4) {
+        "4"
+    } else if rate == MidiTime::from_measure(1, 8) {
+        "8"
+    } else if rate == MidiTime::from_measure(1, 6) {
+        "4T"
+    } else if rate == MidiTime::from_measure(1, 3) {
+        "2T"
+    } else if rate == MidiTime::from_measure(2, 3) {
+        "1T"
+    } else {
+        "RATE"
+    }
+}
+
+fn float_to_swing_cc(value: f64) -> u8 {
+    (value.max(0.0).min(1.0).sqrt() * 127.0).round() as u8
 }
 
 fn tempo_from_cc(value: u8) -> f64 {

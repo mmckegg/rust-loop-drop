@@ -1,6 +1,5 @@
 use crate::config::{
-    ActivityHighlight, BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot,
-    LfoMode,
+    ActivityHighlight, BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot, LfoMode,
 };
 use crate::controllers::{midi_to_float, midi_to_polar, Modulator};
 use crate::lfo::Lfo;
@@ -149,7 +148,7 @@ impl ModulationSurface {
 
             for (slot, config) in &configs {
                 base_values.insert(*slot, config.assignment.default_value());
-                lfo_amounts.insert(*slot, 64);
+                lfo_amounts.insert(*slot, neutral_lfo_amount(config));
                 last_sent_output.insert(*slot, 255);
                 recorder.allocate(lane_id(Lane::Base(*slot)), 50000);
                 recorder.allocate(lane_id(Lane::LfoAmount(*slot)), 50000);
@@ -211,6 +210,19 @@ impl ModulationSurface {
                                         &scale,
                                         &params,
                                     );
+                                    if let Some(config) = configs.get(&slot) {
+                                        if let EncoderAssignment::RootNote { .. } =
+                                            config.assignment
+                                        {
+                                            let note = root_note_from_value(value);
+                                            let mut params = params.lock().unwrap();
+                                            params.root_overlay_note = Some(note);
+                                            params.root_overlay_until = Some(
+                                                Instant::now()
+                                                    + Duration::from_millis(ROOT_OVERLAY_MS),
+                                            );
+                                        }
+                                    }
                                     recorder.add(LoopEvent {
                                         id: lane_id(Lane::Base(slot)),
                                         value: OutputValue::On(value),
@@ -253,6 +265,18 @@ impl ModulationSurface {
                         let lane = active_lane(slot, shift, &configs);
 
                         if pressed {
+                            if let EncoderAssignment::RootNote { .. } = configs
+                                .get(&slot)
+                                .map(|c| &c.assignment)
+                                .unwrap_or(&EncoderAssignment::None)
+                            {
+                                let mut params = params.lock().unwrap();
+                                params.root_overlay_note = Some(root_note_from_value(
+                                    *base_values.get(&slot).unwrap_or(&64),
+                                ));
+                                params.root_overlay_until =
+                                    Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+                            }
                             held_since.insert(slot, at);
                             active_record_lane.insert(slot, lane);
                             recording_started.insert(lane, last_pos);
@@ -283,8 +307,7 @@ impl ModulationSurface {
                                 let release_guard = recent_record_release_at
                                     .get(&slot)
                                     .map(|last| {
-                                        now.duration_since(*last)
-                                            <= Duration::from_millis(tap_ms)
+                                        now.duration_since(*last) <= Duration::from_millis(tap_ms)
                                     })
                                     .unwrap_or(false);
 
@@ -296,6 +319,10 @@ impl ModulationSurface {
                                                 <= Duration::from_millis(double_tap_ms)
                                         })
                                         .unwrap_or(false);
+
+                                    let id = match recorded_lane {
+                                        Lane::Base(id) | Lane::LfoAmount(id) => id,
+                                    };
 
                                     if double_tap {
                                         reset_lane(
@@ -310,6 +337,21 @@ impl ModulationSurface {
                                             &scale,
                                             &params,
                                         );
+                                        if let Lane::Base(value) = recorded_lane {
+                                            // clear both lanes for a double tap on Base
+                                            reset_lane(
+                                                Lane::LfoAmount(value),
+                                                &configs,
+                                                &mut base_values,
+                                                &mut lfo_amounts,
+                                                &mut loops,
+                                                &mut last_sent_output,
+                                                &mut modulators,
+                                                &mut lfo,
+                                                &scale,
+                                                &params,
+                                            );
+                                        }
                                     } else {
                                         loops.remove(&recorded_lane);
                                     }
@@ -373,14 +415,19 @@ impl ModulationSurface {
                             }
                         }
                         for (slot, amount) in &lfo_amounts {
-                            if *amount != 64 {
-                                slots_to_update.insert(*slot);
+                            if let Some(config) = configs.get(slot) {
+                                if lfo_amount_is_active(*amount, config) {
+                                    slots_to_update.insert(*slot);
+                                }
                             }
                         }
                         for slot in slots_to_update {
-                            let value = *base_values
-                                .get(&slot)
-                                .unwrap_or(&configs.get(&slot).map(|c| c.assignment.default_value()).unwrap_or(0));
+                            let value = *base_values.get(&slot).unwrap_or(
+                                &configs
+                                    .get(&slot)
+                                    .map(|c| c.assignment.default_value())
+                                    .unwrap_or(0),
+                            );
                             send_lane_value(
                                 slot,
                                 Lane::Base(slot),
@@ -666,17 +713,23 @@ fn send_lane_value(
                 last_sent_output.insert(slot, output_value);
             }
         }
-        Modulator::LfoSpeed(..) => lfo.speed = value,
+        Modulator::LfoSpeed(..) => {
+            lfo.speed = value;
+            let mut params = params.lock().unwrap();
+            params.lfo_speed_overlay_value = Some(lfo_speed_overlay_value(value));
+            params.lfo_speed_overlay_until =
+                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+        }
         Modulator::LfoWave(..) => {
             lfo.wave = value;
+            let mut params = params.lock().unwrap();
+            params.lfo_wave_overlay_mode = Some(lfo_wave_overlay_mode(value));
+            params.lfo_wave_overlay_until =
+                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
         }
         Modulator::RootNote(..) => {
             let note = root_note_from_value(value);
             scale.lock().unwrap().root = note;
-            let mut params = params.lock().unwrap();
-            params.root_overlay_note = Some(note);
-            params.root_overlay_until =
-                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
         }
     }
 }
@@ -688,12 +741,12 @@ fn apply_lfo_to_value(
     config: &EncoderConfig,
     lfo: &Lfo,
 ) -> u8 {
-    if !config.assignment.supports_lfo_lane() || lfo_amount == 64 {
+    if !config.assignment.supports_lfo_lane() || !lfo_amount_is_active(lfo_amount, config) {
         return base_value;
     }
 
     let phase = (lfo.get_value_at(pos) * 2.0) - 1.0;
-    let depth = crate::controllers::midi_to_polar(lfo_amount).abs();
+    let depth = lfo_depth(lfo_amount, config);
 
     match config.lfo_mode {
         LfoMode::None => base_value,
@@ -708,6 +761,24 @@ fn apply_lfo_to_value(
             let amount = base * (1.0 + (uni * depth));
             crate::controllers::float_to_midi(amount.max(0.0).min(1.0))
         }
+    }
+}
+
+fn neutral_lfo_amount(config: &EncoderConfig) -> u8 {
+    match config.lfo_mode {
+        LfoMode::UnipolarMultiply => 0,
+        _ => 64,
+    }
+}
+
+fn lfo_amount_is_active(value: u8, config: &EncoderConfig) -> bool {
+    value != neutral_lfo_amount(config)
+}
+
+fn lfo_depth(value: u8, config: &EncoderConfig) -> f64 {
+    match config.lfo_mode {
+        LfoMode::UnipolarMultiply => crate::controllers::midi_to_float(value),
+        _ => crate::controllers::midi_to_polar(value).abs(),
     }
 }
 
@@ -745,7 +816,9 @@ fn reset_lane(
             }
         }
         Lane::LfoAmount(slot) => {
-            lfo_amounts.insert(slot, 64);
+            if let Some(config) = configs.get(&slot) {
+                lfo_amounts.insert(slot, neutral_lfo_amount(config));
+            }
         }
     }
 }
@@ -881,8 +954,11 @@ fn render_slot(
         SWITCH_IDLE_INTENSITY
     };
 
-    let lfo_amount = lfo_amounts.get(&slot).copied().unwrap_or(64);
-    let has_lfo = config.assignment.supports_lfo_lane() && lfo_amount != 64;
+    let lfo_amount = lfo_amounts
+        .get(&slot)
+        .copied()
+        .unwrap_or_else(|| neutral_lfo_amount(config));
+    let has_lfo = config.assignment.supports_lfo_lane() && lfo_amount_is_active(lfo_amount, config);
     let lfo_color_phase = if has_lfo && !shift {
         let interval = MidiTime::from_ticks(LFO_ACTIVE_COLOR_SWAP_INTERVAL_TICKS);
         (pos % (interval * 2)).as_float() < interval.as_float()
@@ -891,7 +967,10 @@ fn render_slot(
     };
 
     let ring_value = if shift && config.assignment.supports_lfo_lane() {
-        *lfo_amounts.get(&slot).unwrap_or(&64)
+        lfo_amounts
+            .get(&slot)
+            .copied()
+            .unwrap_or_else(|| neutral_lfo_amount(config))
     } else {
         *base_values
             .get(&slot)
@@ -993,6 +1072,27 @@ fn is_centered_banked_encoder(
     match slot {
         EncoderSlot::Banked { .. } => assignment.default_value() == 64 && value == 64,
         _ => false,
+    }
+}
+
+fn lfo_speed_overlay_value(value: u8) -> String {
+    let labels = ["3B", "2B", "3/2", "1B", "1T", "2", "2T", "4", "4T", "8"];
+    let index = (value as f64 * (labels.len() as f64 / 128.0)) as usize;
+    labels[index.min(labels.len() - 1)].to_string()
+}
+
+fn lfo_wave_overlay_mode(value: u8) -> &'static str {
+    let wave = value as f64 / 127.0;
+    if wave < 0.2 {
+        "TRI"
+    } else if wave < 0.4 {
+        "UP"
+    } else if wave < 0.6 {
+        "HUP"
+    } else if wave < 0.8 {
+        "HDN"
+    } else {
+        "DWN"
     }
 }
 
