@@ -3,13 +3,14 @@ mod sample_mixer;
 mod umi3;
 
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 use midi_time::MidiTime;
 
 use crate::scheduler::ScheduleRange;
 
-pub use self::modulation_surface::ModulationSurface;
-pub use self::sample_mixer::SampleMixer;
+pub use self::modulation_surface::{ModulationSurface, ModulationSurfaceShared};
+pub use self::sample_mixer::{SampleMixer, SampleMixerState};
 pub use self::umi3::Umi3;
 
 pub enum Modulator {
@@ -18,6 +19,10 @@ pub enum Modulator {
     LfoSpeed(u8),
     LfoWave(u8),
     RootNote(u8),
+    SampleLevelMultiplier {
+        sample: u8,
+        state: Arc<Mutex<SampleMixerState>>,
+    },
 }
 
 pub struct MidiModulator {

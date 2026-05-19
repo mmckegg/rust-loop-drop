@@ -92,6 +92,8 @@ fn main() {
         slicer_pitches: HashMap::new(),
     }));
 
+    let sample_mixer_state = Arc::new(Mutex::new(controllers::SampleMixerState::new()));
+
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
     let chunks = build_chunks(
@@ -117,6 +119,9 @@ fn main() {
             myconfig.modulation.hold_ms,
             Arc::clone(&params),
             Arc::clone(&scale),
+            controllers::ModulationSurfaceShared {
+                sample_mixer_state: Arc::clone(&sample_mixer_state),
+            },
             &mut output_ports,
         )),
         Box::new(controllers::SampleMixer::new(
@@ -125,6 +130,7 @@ fn main() {
             myconfig.samples.volume_ccs.to_vec(),
             vec![2, 3, 10, 11, 12, 13, 14, 15],
             Arc::clone(&params),
+            Arc::clone(&sample_mixer_state),
         )),
     ];
 

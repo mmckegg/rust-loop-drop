@@ -433,10 +433,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(0)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 41,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 0,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -449,10 +448,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(1)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 42,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 1,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -465,10 +463,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(2)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 43,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 2,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -481,10 +478,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(3)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 44,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 3,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -497,10 +493,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 47,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 4,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -513,10 +508,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 48,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 5,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -529,10 +523,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(6)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 49,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 6,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -545,10 +538,9 @@ impl Config {
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::Sample(7)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 50,
-                            default: 127,
+                        assignment: EncoderAssignment::SampleLevelMultiplier {
+                            sample: 7,
+                            default: 90,
                         },
                     },
                     EncoderConfig {
@@ -621,13 +613,13 @@ impl Config {
                             row: 2,
                             col: 1,
                         },
-                        label: String::from("EFX 1"),
+                        label: String::from("Send B1"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
-                            cc: 63,
+                            cc: 53,
                             default: 0,
                         },
                     },
@@ -637,13 +629,13 @@ impl Config {
                             row: 2,
                             col: 2,
                         },
-                        label: String::from("EFX 2"),
+                        label: String::from("Send B2"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
-                            cc: 64,
+                            cc: 54,
                             default: 0,
                         },
                     },
@@ -653,13 +645,13 @@ impl Config {
                             row: 2,
                             col: 3,
                         },
-                        label: String::from("EFX 3"),
+                        label: String::from("Send B3"),
                         color: EncoderColor::Yellow,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
-                            cc: 65,
+                            cc: 55,
                             default: 0,
                         },
                     },
@@ -669,13 +661,13 @@ impl Config {
                             row: 2,
                             col: 4,
                         },
-                        label: String::from("EFX 4"),
+                        label: String::from("Send B4"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
                         activity_highlights: vec![ActivityHighlight::SampleRange(4, 7)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
-                            cc: 66,
+                            cc: 56,
                             default: 0,
                         },
                     },
@@ -980,6 +972,10 @@ pub enum EncoderAssignment {
     RootNote {
         default: u8,
     },
+    SampleLevelMultiplier {
+        sample: u8,
+        default: u8,
+    },
 }
 
 impl EncoderAssignment {
@@ -995,7 +991,8 @@ impl EncoderAssignment {
             | EncoderAssignment::Aftertouch { default, .. }
             | EncoderAssignment::LfoSpeed { default }
             | EncoderAssignment::LfoWave { default }
-            | EncoderAssignment::RootNote { default } => *default,
+            | EncoderAssignment::RootNote { default }
+            | EncoderAssignment::SampleLevelMultiplier { default, .. } => *default,
         }
     }
 

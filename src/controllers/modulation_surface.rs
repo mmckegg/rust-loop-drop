@@ -44,6 +44,11 @@ pub struct ModulationSurface {
     _midi_input: midi_connection::ThreadReference,
 }
 
+#[derive(Clone)]
+pub struct ModulationSurfaceShared {
+    pub sample_mixer_state: Arc<Mutex<crate::controllers::SampleMixerState>>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Lane {
     Base(EncoderSlot),
@@ -91,6 +96,7 @@ impl ModulationSurface {
         hold_ms: u64,
         params: Arc<Mutex<LoopGridParams>>,
         scale: Arc<Mutex<Scale>>,
+        shared: ModulationSurfaceShared,
         output_ports: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>,
     ) -> Self {
         let (tx, rx) = mpsc::channel();
@@ -128,7 +134,7 @@ impl ModulationSurface {
 
         let configs: HashMap<EncoderSlot, EncoderConfig> =
             encoders.into_iter().map(|c| (c.slot, c)).collect();
-        let mut modulators = build_modulators(&configs, output_ports);
+        let mut modulators = build_modulators(&configs, &shared, output_ports);
 
         thread::spawn(move || {
             let mut recorder = LoopRecorder::new();
@@ -166,6 +172,15 @@ impl ModulationSurface {
                     Modulator::LfoWave(..) => lfo.wave = value,
                     Modulator::RootNote(..) => {
                         scale.lock().unwrap().root = root_note_from_value(value);
+                    }
+                    Modulator::SampleLevelMultiplier { sample, state } => {
+                        let index = *sample as usize;
+                        let mut state = state.lock().unwrap();
+                        if index < state.multipliers.len() {
+                            state.multipliers[index] = value;
+                            state.dirty[index] = true;
+                            last_sent_output.insert(*slot, value);
+                        }
                     }
                 }
             }
@@ -484,6 +499,7 @@ impl ::controllers::Schedulable for ModulationSurface {
 
 fn build_modulators(
     configs: &HashMap<EncoderSlot, EncoderConfig>,
+    shared: &ModulationSurfaceShared,
     output_ports: &mut HashMap<String, midi_connection::SharedMidiOutputConnection>,
 ) -> HashMap<EncoderSlot, Modulator> {
     let mut modulators = HashMap::new();
@@ -574,6 +590,12 @@ fn build_modulators(
             EncoderAssignment::LfoSpeed { default } => Modulator::LfoSpeed(*default),
             EncoderAssignment::LfoWave { default } => Modulator::LfoWave(*default),
             EncoderAssignment::RootNote { default } => Modulator::RootNote(*default),
+            EncoderAssignment::SampleLevelMultiplier { sample, .. } => {
+                Modulator::SampleLevelMultiplier {
+                    sample: *sample,
+                    state: Arc::clone(&shared.sample_mixer_state),
+                }
+            }
         };
         modulators.insert(*slot, modulator);
     }
@@ -690,7 +712,10 @@ fn send_lane_value(
     let output_value = if let Some(config) = configs.get(&slot) {
         apply_lfo_to_value(
             value,
-            lfo_amounts.get(&slot).copied().unwrap_or(64),
+            lfo_amounts
+                .get(&slot)
+                .copied()
+                .unwrap_or_else(|| neutral_lfo_amount(config)),
             pos,
             config,
             lfo,
@@ -730,6 +755,17 @@ fn send_lane_value(
         Modulator::RootNote(..) => {
             let note = root_note_from_value(value);
             scale.lock().unwrap().root = note;
+        }
+        Modulator::SampleLevelMultiplier { sample, state } => {
+            if should_send {
+                let mut state = state.lock().unwrap();
+                let index = *sample as usize;
+                if index < state.multipliers.len() {
+                    state.multipliers[index] = output_value;
+                    state.dirty[index] = true;
+                    last_sent_output.insert(slot, output_value);
+                }
+            }
         }
     }
 }
