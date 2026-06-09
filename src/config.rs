@@ -365,27 +365,27 @@ impl Config {
                         ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(17, 100)), // T7 Volume
                         ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(18, 100)), // T8 Volume
                         ////////////////////////
-                        // TELEPATHY
+                        // L6 MIXER
                         // row 1
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(14, 63)), // PITCH
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(70, 0)),  // WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(11, 0)),  // PW
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(10, 0)),  // NOISE
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(43, 0)), // Send A1
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(44, 0)), // Send A2
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(45, 0)), // Send A3
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(46, 0)), // Send A4
                         // row 2
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(74, 63)), // CUTOFF
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(81, 0)),  // HPF
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(71, 0)),  // RES
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(23, 0)),  // FFM
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(53, 0)), // Send B1
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(54, 0)), // Send B2
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(55, 0)), // Send B3
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(56, 0)), // Send B4
                         // row 3
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(25, 0)), // VCF ENV WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(26, 32)), // VCF ENV TIME
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(29, 63)), // VCF ENV SUSTAIN
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(3, 63)), // VCF ENV AMOUNT
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(73, 64)), // Pan 1
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(74, 64)), // Pan 2
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(75, 64)), // Pan 3
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(76, 64)), // Pan 4
                         // row 4
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(27, 0)), // VCA ENV WAVE
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(28, 63)), // VCA ENV TIME
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(31, 63)), // VCA ENV SUSTAIN
-                        ModulatorConfig::new(rig_port_name, 15, Modulator::Cc(13, 0)),  // PITCH ENV
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(12, 0)), // Reverb Time
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(13, 0)), // Delay Time
+                        ModulatorConfig::new(rig_port_name, 11, Modulator::Cc(14, 64)), // Tone
+                        ModulatorConfig::new(rig_port_name, 10, Modulator::Cc(51, 64)), // DJ Filter
                         ////////////////////////
                         // BITBOX SLICERS
                         // row 1
