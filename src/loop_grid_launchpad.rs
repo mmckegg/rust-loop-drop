@@ -237,6 +237,7 @@ pub struct LoopGridLaunchpad {
     _input: midi_connection::ThreadReference,
     params: Arc<Mutex<LoopGridParams>>,
     use_internal_clock: Arc<AtomicBool>,
+    straight_trigger_ids: HashSet<u32>,
 
     input_queue: mpsc::Receiver<LaunchpadEvent>,
 
@@ -282,6 +283,7 @@ pub struct LoopGridLaunchpad {
     last_pos: MidiTime,
     last_raw_pos: MidiTime,
     last_length: MidiTime,
+    last_raw_length: MidiTime,
 
     current_bank: u8,
 
@@ -325,6 +327,7 @@ impl LoopGridLaunchpad {
         chunk_map: Vec<Box<ChunkMap>>,
         params: Arc<Mutex<LoopGridParams>>,
         use_internal_clock: Arc<AtomicBool>,
+        straight_trigger_ids: HashSet<u32>,
     ) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
@@ -430,6 +433,7 @@ impl LoopGridLaunchpad {
             loop_length,
             params,
             use_internal_clock,
+            straight_trigger_ids,
             id_to_midi,
 
             trigger_mode: TriggerMode::Immediate,
@@ -480,6 +484,7 @@ impl LoopGridLaunchpad {
             last_pos: MidiTime::from_ticks(0),
             last_raw_pos: MidiTime::from_ticks(0),
             last_length: MidiTime::from_ticks(0),
+            last_raw_length: MidiTime::from_ticks(0),
 
             current_bank: 0,
 
@@ -824,6 +829,7 @@ impl LoopGridLaunchpad {
         }
 
         self.last_raw_pos = range.from;
+        self.last_raw_length = range.to - range.from;
         self.last_pos = range.from.swing(self.current_swing);
         self.last_length = range.to.swing(self.current_swing) - self.last_pos;
 
@@ -853,18 +859,23 @@ impl LoopGridLaunchpad {
         let mut to_refresh = Vec::new();
 
         for (id, repeat_state) in &mut self.repeat_states {
-            if repeat_state.phase != RepeatPhase::None && self.last_pos >= repeat_state.to {
+            let pos = if self.straight_trigger_ids.contains(id) {
+                self.last_raw_pos
+            } else {
+                self.last_pos
+            };
+            if repeat_state.phase != RepeatPhase::None && pos >= repeat_state.to {
                 if let Some(LoopTransform::Repeat { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
                     repeat_state.to =
-                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
+                        next_repeat(pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Cycle { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
                     repeat_state.to =
-                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
+                        next_repeat(pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Value { .. }) = self.override_values.get(&id) {
                     // extend quantize
@@ -1328,7 +1339,8 @@ impl LoopGridLaunchpad {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Repeat { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset);
+                        let pos = self.pos_for_id(id);
+                        let to = next_repeat(pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1358,7 +1370,8 @@ impl LoopGridLaunchpad {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Cycle { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset);
+                        let pos = self.pos_for_id(id);
+                        let to = next_repeat(pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1400,7 +1413,8 @@ impl LoopGridLaunchpad {
                             } else {
                                 MidiTime::zero()
                             };
-                            let to = next_repeat(self.last_pos, self.rate, offset);
+                            let pos = self.pos_for_id(id);
+                            let to = next_repeat(pos, self.rate, offset);
                             self.queue_quantized_trigger(id, transform.clone(), to);
                         }
                     }
@@ -1521,16 +1535,13 @@ impl LoopGridLaunchpad {
                 self.mark_cycle_group_changed(id);
             }
 
-            self.last_changed_triggers.insert(id, self.last_pos);
+            let pos = self.pos_for_id(id);
+            self.last_changed_triggers.insert(id, pos);
             self.out_transforms.insert(id, transform);
 
             // send new value
-            if let Some(value) = self.get_value(id, self.last_pos, last_transform) {
-                self.event(LoopEvent {
-                    id,
-                    value,
-                    pos: self.last_pos,
-                });
+            if let Some(value) = self.get_value(id, pos, last_transform) {
+                self.event(LoopEvent { id, value, pos });
             }
 
             self.refresh_cycle_group_for(id);
@@ -2333,16 +2344,13 @@ impl LoopGridLaunchpad {
                 self.get_transform(id, &loop_collection, selection_override_loop_collection);
 
             if self.out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
+                let pos = self.pos_for_id(id);
                 self.out_transforms.insert(id, transform);
-                self.last_changed_triggers.insert(id, self.last_pos);
+                self.last_changed_triggers.insert(id, pos);
 
                 // send new value
-                if let Some(value) = self.get_value(id, self.last_pos, None) {
-                    self.event(LoopEvent {
-                        id: id,
-                        value,
-                        pos: self.last_pos,
-                    });
+                if let Some(value) = self.get_value(id, pos, None) {
+                    self.event(LoopEvent { id, value, pos });
                 }
             }
         }
@@ -2504,11 +2512,12 @@ impl LoopGridLaunchpad {
 
     fn get_events(&self) -> Vec<LoopEvent> {
         let mut result = Vec::new();
-        let position = self.last_pos;
-        let length = self.last_length;
 
-        if length > MidiTime::zero() {
-            for (id, transform) in &self.out_transforms {
+        for (id, transform) in &self.out_transforms {
+            let position = self.pos_for_id(*id);
+            let length = self.length_for_id(*id);
+
+            if length > MidiTime::zero() {
                 match transform {
                     &LoopTransform::Range {
                         pos: range_pos,
@@ -2609,6 +2618,22 @@ impl LoopGridLaunchpad {
         }
 
         result
+    }
+
+    fn pos_for_id(&self, id: u32) -> MidiTime {
+        if self.straight_trigger_ids.contains(&id) {
+            self.last_raw_pos
+        } else {
+            self.last_pos
+        }
+    }
+
+    fn length_for_id(&self, id: u32) -> MidiTime {
+        if self.straight_trigger_ids.contains(&id) {
+            self.last_raw_length
+        } else {
+            self.last_length
+        }
     }
 
     fn get_transform(

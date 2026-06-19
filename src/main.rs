@@ -98,6 +98,8 @@ fn main() {
     let mut output_ports = HashMap::new();
     let mut offset_lookup = HashMap::new();
 
+    let straight_trigger_ids: HashSet<u32> = myconfig.straight_trigger_ids.iter().cloned().collect();
+
     for chunk in myconfig.chunks {
         chunks.push(ChunkMap::new(
             make_device(
@@ -121,6 +123,7 @@ fn main() {
         chunks,
         Arc::clone(&params),
         Arc::clone(&use_internal_clock),
+        straight_trigger_ids,
     );
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();

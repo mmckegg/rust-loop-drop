@@ -85,6 +85,25 @@ impl Config {
 
         Config {
             chunks: vec![
+                // Triggers B (schedule early to better handle clip start sync on bitbox)
+                ChunkConfig {
+                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
+                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
+                        output: MidiPortConfig::new(rig_port_name, 10),
+                        triggers: vec![
+                            MidiTrigger::NoteVelocity(10, 36),
+                            MidiTrigger::NoteVelocity(10, 37),
+                            MidiTrigger::NoteVelocity(10, 38),
+                            MidiTrigger::NoteVelocity(10, 39),
+                        ],
+                    }]),
+                    coords: Coords::new(0, 4),
+                    shape: Shape::new(1, 4),
+                    color: 15, // yellow
+                    channel: None,
+                    trigger_channels: Some(vec![12, 13, 14, 15]),
+                    repeat_mode: RepeatMode::NoCycle,
+                },
                 // EXT SYNTH OFFSET
                 // (also sends pitch mod on channel 2 for slicer)
                 ChunkConfig {
@@ -163,21 +182,6 @@ impl Config {
                     trigger_channels: None,
                     repeat_mode: RepeatMode::OnlyQuant,
                 },
-                // Bitbox granular slice
-                ChunkConfig {
-                    device: DeviceConfig::CcSlicer {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 3),
-                        slicer_channel: 0,
-                        cc: 20,
-                    },
-                    coords: Coords::new(1, 0),
-                    shape: Shape::new(1, 4),
-                    color: 9, // orange
-                    channel: Some(2),
-                    trigger_channels: Some(vec![16, 17, 18, 19]),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
                 // Slicer
                 ChunkConfig {
                     device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
@@ -226,25 +230,6 @@ impl Config {
                     color: 8, // warm white
                     channel: None,
                     trigger_channels: Some(vec![2, 3, 10, 11]),
-                    repeat_mode: RepeatMode::NoCycle,
-                },
-                // Triggers B
-                ChunkConfig {
-                    device: DeviceConfig::multi(vec![DeviceConfig::CcTriggers {
-                        velocity_map: Some(vec![80, 80, 100, 100, 100, 127]),
-                        output: MidiPortConfig::new(rig_port_name, 10),
-                        triggers: vec![
-                            MidiTrigger::NoteVelocity(10, 36),
-                            MidiTrigger::NoteVelocity(10, 37),
-                            MidiTrigger::NoteVelocity(10, 38),
-                            MidiTrigger::NoteVelocity(10, 39),
-                        ],
-                    }]),
-                    coords: Coords::new(0, 4),
-                    shape: Shape::new(1, 4),
-                    color: 15, // yellow
-                    channel: None,
-                    trigger_channels: Some(vec![12, 13, 14, 15]),
                     repeat_mode: RepeatMode::NoCycle,
                 },
                 // Telepathy
@@ -307,6 +292,7 @@ impl Config {
                     }]),
                 },
             ],
+            straight_trigger_ids: vec![Coords::id_from(0, 6)],
             clock_input_port_name: String::from("Launchpad Pro MK3"),
             clock_output_port_names: vec![rig_port_name.to_string()],
             resync_port_names: vec![rig_port_name.to_string()],
@@ -592,6 +578,7 @@ impl Config {
                     }]),
                 },
             ],
+            straight_trigger_ids: vec![],
             clock_input_port_name: String::from("Launchpad Pro MK3"),
             clock_output_port_names: vec![rig_port_name.to_string()],
             resync_port_names: vec![rig_port_name.to_string()],
@@ -611,6 +598,7 @@ impl Config {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub chunks: Vec<ChunkConfig>,
+    pub straight_trigger_ids: Vec<u32>,
     pub clock_input_port_name: String,
     pub clock_output_port_names: Vec<String>,
     pub keep_alive_port_names: Vec<String>,
