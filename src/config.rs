@@ -112,7 +112,7 @@ impl Config {
                     color: 12,
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                     device: DeviceConfig::multi(vec![DeviceConfig::offset("poly")]),
                 },
                 // INCUS OFFSET
@@ -123,7 +123,7 @@ impl Config {
                     color: 55, // pink
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // SYNTH OFFSET
                 ChunkConfig {
@@ -133,7 +133,7 @@ impl Config {
                     color: 43, // blue
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // ROOT NOTE SELECTOR
                 ChunkConfig {
@@ -143,7 +143,7 @@ impl Config {
                     color: 35, // soft green
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // SCALE MODE SELECTOR
                 ChunkConfig {
@@ -153,7 +153,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
@@ -162,7 +162,7 @@ impl Config {
                     color: 95, // black
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
@@ -171,7 +171,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
@@ -180,7 +180,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // Slicer
                 ChunkConfig {
@@ -437,7 +437,7 @@ impl Config {
                     color: 12, // soft yellow
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                     device: DeviceConfig::multi(vec![DeviceConfig::offset("ext")]),
                 },
                 // BASS OFFSET
@@ -448,7 +448,7 @@ impl Config {
                     color: 62,
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // SYNTH OFFSET
                 ChunkConfig {
@@ -458,7 +458,7 @@ impl Config {
                     color: 94,
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // ROOT NOTE SELECTOR
                 ChunkConfig {
@@ -468,7 +468,7 @@ impl Config {
                     color: 35, // soft green
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // SCALE MODE SELECTOR
                 ChunkConfig {
@@ -478,7 +478,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Third),
@@ -487,7 +487,7 @@ impl Config {
                     color: 95, // black
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Sixth),
@@ -496,7 +496,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 ChunkConfig {
                     device: DeviceConfig::ScaleDegreeToggle(ScaleDegree::Seventh),
@@ -505,7 +505,7 @@ impl Config {
                     color: 95, // purple
                     channel: None,
                     trigger_channels: None,
-                    repeat_mode: RepeatMode::OnlyQuant,
+                    repeat_mode: RepeatMode::None,
                 },
                 // SP-404mk2 samples (schedule first so that samples coinciding with drum triggers don't get delayed, drums are fine because running on USB midi)
                 ChunkConfig {
@@ -601,6 +601,7 @@ impl Config {
 pub struct Config {
     pub chunks: Vec<ChunkConfig>,
     pub straight_trigger_ids: Vec<u32>,
+    pub no_suppress_held_trigger_ids: Vec<u32>,
     pub clock_input_port_name: String,
     pub clock_output_port_names: Vec<String>,
     pub keep_alive_port_names: Vec<String>,
