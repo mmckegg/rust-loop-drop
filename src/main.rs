@@ -99,6 +99,11 @@ fn main() {
     let mut offset_lookup = HashMap::new();
 
     let straight_trigger_ids: HashSet<u32> = myconfig.straight_trigger_ids.iter().cloned().collect();
+    let no_suppress_held_trigger_ids: HashSet<u32> = myconfig
+        .no_suppress_held_trigger_ids
+        .iter()
+        .cloned()
+        .collect();
 
     for chunk in myconfig.chunks {
         chunks.push(ChunkMap::new(
@@ -124,6 +129,7 @@ fn main() {
         Arc::clone(&params),
         Arc::clone(&use_internal_clock),
         straight_trigger_ids,
+        no_suppress_held_trigger_ids,
     );
 
     let mut controller_references: Vec<Box<dyn controllers::Schedulable>> = Vec::new();

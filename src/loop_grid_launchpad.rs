@@ -328,6 +328,7 @@ impl LoopGridLaunchpad {
         params: Arc<Mutex<LoopGridParams>>,
         use_internal_clock: Arc<AtomicBool>,
         straight_trigger_ids: HashSet<u32>,
+        no_suppress_held_trigger_ids: HashSet<u32>,
     ) -> Self {
         let (midi_to_id, _id_to_midi) = get_grid_map();
 
@@ -455,7 +456,7 @@ impl LoopGridLaunchpad {
             chunk_trigger_ids: Vec::new(),
 
             no_suppress: HashSet::new(),
-            no_suppress_held: HashSet::new(),
+            no_suppress_held: no_suppress_held_trigger_ids,
 
             repeat_off_beat: false,
 
