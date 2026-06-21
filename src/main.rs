@@ -161,6 +161,10 @@ fn main() {
                     output.send(&[250]).unwrap();
                     output.send(&[242, 0, 0]).unwrap();
                 }
+
+                for output in &mut keep_alive_outputs {
+                    output.send(&[254]).unwrap();
+                }
             }
 
             for output in &mut clock_outputs {
@@ -180,10 +184,6 @@ fn main() {
         }
 
         if range.ticked {
-            for output in &mut keep_alive_outputs {
-                output.send(&[254]).unwrap();
-            }
-
             // reset shared per-tick flags after all controllers have consumed them
             let mut params = params.lock().unwrap();
             params.duck_triggered = false;

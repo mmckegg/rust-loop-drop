@@ -25,8 +25,8 @@ impl Config {
         Config {
             clock_input_port_name: None,
             clock_output_port_names: vec![rig_port_name.to_string()],
-            resync_port_names: vec![],
-            keep_alive_port_names: vec![],
+            resync_port_names: vec![rig_port_name.to_string()],
+            keep_alive_port_names: vec![rig_port_name.to_string()],
             samples: SampleRackConfig {
                 output: MidiPortConfig::new(rig_port_name, 10),
                 notes: [40, 41, 42, 43, 36, 37, 38, 39],
