@@ -82,6 +82,8 @@ pub struct ChunkMap {
     pub trigger_channels: Option<Vec<u32>>,
     pub color: u8,
     pub repeat_mode: RepeatMode,
+    pub no_suppress_held: bool,
+    pub straight_timing_local_ids: Vec<u32>,
 }
 
 impl ChunkMap {
@@ -102,7 +104,19 @@ impl ChunkMap {
             channel,
             trigger_channels,
             repeat_mode,
+            no_suppress_held: false,
+            straight_timing_local_ids: Vec::new(),
         })
+    }
+
+    pub fn with_no_suppress_held(mut self: Box<Self>) -> Box<Self> {
+        self.no_suppress_held = true;
+        self
+    }
+
+    pub fn with_straight_timing_local_ids(mut self: Box<Self>, ids: Vec<u32>) -> Box<Self> {
+        self.straight_timing_local_ids = ids;
+        self
     }
 }
 

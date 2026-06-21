@@ -35,6 +35,7 @@ use scale::{Offset, Scale};
 use scheduler::Scheduler;
 
 const APP_NAME: &str = "Loop Drop";
+const YTX_DUMP_CONTROLLER_STATE_SYSEX: [u8; 9] = [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1B, 0xF7];
 // const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
 
 type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
@@ -134,6 +135,8 @@ fn main() {
         )),
     ];
 
+    request_yaeltex_controller_state_on_connect(&mut output_ports);
+
     let mut clock_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
     for name in myconfig.clock_output_port_names {
         clock_outputs.push(get_port(&mut output_ports, &name))
@@ -195,6 +198,13 @@ fn main() {
 }
 
 // Helper functions
+fn request_yaeltex_controller_state_on_connect(ports_lookup: &mut PortLookup) {
+    let mut output = get_port(ports_lookup, midi_connection::YAELTEX_PORT_NAME);
+    output.on_connect(|port| {
+        port.send(&YTX_DUMP_CONTROLLER_STATE_SYSEX).unwrap();
+    });
+}
+
 fn get_port(
     ports_lookup: &mut PortLookup,
     port_name: &str,
@@ -269,6 +279,24 @@ fn build_chunks(
             )) as Box<dyn Triggerable + Send>
         };
 
+    chunks.push(
+        ChunkMap::new(
+            make_note_triggers(
+                &config.samples.output,
+                &config.samples.notes[4..8],
+                output_ports,
+            ),
+            chunk::Coords::new(0, 4),
+            Shape::new(1, 4),
+            config.samples.color.to_midi(),
+            None,
+            Some(vec![12, 13, 14, 15]),
+            RepeatMode::NoCycle,
+        )
+        .with_no_suppress_held()
+        .with_straight_timing_local_ids(vec![2]),
+    );
+
     chunks.push(ChunkMap::new(
         make_offset("voice_a", offset_lookup),
         chunk::Coords::new(10, 0),
@@ -276,7 +304,7 @@ fn build_chunks(
         config.voice_a.color.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
     chunks.push(ChunkMap::new(
         make_offset("voice_b", offset_lookup),
@@ -285,7 +313,7 @@ fn build_chunks(
         config.voice_b.color.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
     chunks.push(ChunkMap::new(
         make_offset("voice_c", offset_lookup),
@@ -294,7 +322,7 @@ fn build_chunks(
         config.voice_c.color.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
 
     chunks.push(ChunkMap::new(
@@ -308,7 +336,7 @@ fn build_chunks(
         config::ChunkColor::Yellow.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
     chunks.push(ChunkMap::new(
         Box::new(devices::ScaleDegreeToggle::new(
@@ -321,7 +349,7 @@ fn build_chunks(
         config::ChunkColor::Yellow.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
     chunks.push(ChunkMap::new(
         Box::new(devices::ScaleDegreeToggle::new(
@@ -334,7 +362,7 @@ fn build_chunks(
         config::ChunkColor::Yellow.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
     chunks.push(ChunkMap::new(
         Box::new(devices::ScaleDegreeToggle::new(
@@ -347,7 +375,7 @@ fn build_chunks(
         config::ChunkColor::Yellow.to_midi(),
         None,
         None,
-        RepeatMode::OnlyQuant,
+        RepeatMode::None,
     ));
 
     chunks.push(ChunkMap::new(
@@ -377,20 +405,6 @@ fn build_chunks(
         Some(vec![2, 3, 10, 11]),
         RepeatMode::NoCycle,
     ));
-    chunks.push(ChunkMap::new(
-        make_note_triggers(
-            &config.samples.output,
-            &config.samples.notes[4..8],
-            output_ports,
-        ),
-        chunk::Coords::new(0, 4),
-        Shape::new(1, 4),
-        config.samples.color.to_midi(),
-        None,
-        Some(vec![12, 13, 14, 15]),
-        RepeatMode::NoCycle,
-    ));
-
     chunks.push(ChunkMap::new(
         make_voice(
             &config.voice_a,

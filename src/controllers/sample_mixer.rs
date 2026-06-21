@@ -18,6 +18,7 @@ const EXPRESSION_CURVE_EXPONENT: f64 = 0.75;
 
 pub struct SampleMixerState {
     pub sliders: [u8; 8],
+    pub slider_seen: [bool; 8],
     pub multipliers: [u8; 8],
     pub muted: [bool; 8],
     pub last_sent: [u8; 8],
@@ -28,10 +29,11 @@ impl SampleMixerState {
     pub fn new() -> Self {
         Self {
             sliders: [0; 8],
+            slider_seen: [false; 8],
             multipliers: [127; 8],
             muted: [false; 8],
             last_sent: [255; 8],
-            dirty: [true; 8],
+            dirty: [false; 8],
         }
     }
 }
@@ -78,6 +80,7 @@ impl SampleMixer {
                 if let Some(index) = SLIDER_CCS.iter().position(|mapped_cc| mapped_cc == cc) {
                     let mut state = input_state.lock().unwrap();
                     state.sliders[index] = *value;
+                    state.slider_seen[index] = true;
                     state.dirty[index] = true;
                 }
             }
@@ -140,6 +143,10 @@ impl SampleMixer {
         let mut state = self.state.lock().unwrap();
         for index in 0..8 {
             if !state.dirty[index] {
+                continue;
+            }
+
+            if !state.slider_seen[index] {
                 continue;
             }
 

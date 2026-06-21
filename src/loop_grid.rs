@@ -115,6 +115,13 @@ impl TriggerMode {
     fn to_id(&self) -> usize {
         *self as usize
     }
+
+    fn override_mode(&self) -> TriggerMode {
+        match self {
+            TriggerMode::Immediate => TriggerMode::Repeat,
+            _ => TriggerMode::Immediate,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -268,6 +275,7 @@ pub struct LoopGrid {
 
     no_suppress: HashSet<u32>,
     no_suppress_held: HashSet<u32>,
+    straight_timing_ids: HashSet<u32>,
     chunk_repeat_mode: HashMap<usize, RepeatMode>,
     loop_length: MidiTime,
 
@@ -304,6 +312,7 @@ pub struct LoopGrid {
     last_pos: MidiTime,
     last_raw_pos: MidiTime,
     last_length: MidiTime,
+    last_raw_length: MidiTime,
 
     current_bank: u8,
 
@@ -322,10 +331,13 @@ pub struct LoopGrid {
     length_row_out: HashMap<u8, Light>,
     repeat_button_out: Light,
     loop_button_out: Light,
+    prepare_button_out: Light,
     select_out: Light,
     last_triggered: HashMap<usize, CircularQueue<u32>>,
 
     trigger_mode: TriggerMode,
+    trigger_override_held: bool,
+    preserve_immediate_until_release: HashSet<u32>,
     chunk_cycle_step: HashMap<usize, CycleStep>,
     chunk_cycle_next_pos: HashMap<usize, MidiTime>,
     cycle_groups: HashMap<usize, Vec<CycleStep>>,
@@ -361,6 +373,14 @@ impl LoopGrid {
         let input = midi_connection::get_input(
             midi_connection::YAELTEX_PORT_NAME,
             move |stamp, message| {
+                if message == [0xF0, 0x79, 0x74, 0x78, 0x01, 0xF7] {
+                    return;
+                }
+
+                if message.is_empty() {
+                    return;
+                }
+
                 let status = message[0];
                 let channel = (status & 0x0F) + 1;
                 let message_type = status & 0xF0;
@@ -463,6 +483,8 @@ impl LoopGrid {
             id_to_midi,
 
             trigger_mode: TriggerMode::Immediate,
+            trigger_override_held: false,
+            preserve_immediate_until_release: HashSet::new(),
             chunk_cycle_step: HashMap::new(),
             chunk_cycle_next_pos: HashMap::new(),
             cycle_groups: HashMap::new(),
@@ -482,6 +504,7 @@ impl LoopGrid {
 
             no_suppress: HashSet::new(),
             no_suppress_held: HashSet::new(),
+            straight_timing_ids: HashSet::new(),
 
             repeat_off_beat: false,
 
@@ -514,6 +537,7 @@ impl LoopGrid {
             last_pos: MidiTime::from_ticks(0),
             last_raw_pos: MidiTime::from_ticks(0),
             last_length: MidiTime::from_ticks(0),
+            last_raw_length: MidiTime::from_ticks(0),
 
             current_bank: 0,
 
@@ -533,6 +557,7 @@ impl LoopGrid {
             length_row_out: HashMap::new(),
             repeat_button_out: Light::Off,
             loop_button_out: Light::Off,
+            prepare_button_out: Light::Off,
             select_out: Light::Off,
             last_triggered: HashMap::new(),
 
@@ -574,9 +599,15 @@ impl LoopGrid {
                 }
             }
 
-            if item.repeat_mode == RepeatMode::OnlyQuant {
+            if item.repeat_mode == RepeatMode::OnlyQuant || item.no_suppress_held {
                 for id in &trigger_ids {
                     instance.no_suppress_held.insert(*id);
+                }
+            }
+
+            for local_id in &item.straight_timing_local_ids {
+                if let Some(id) = trigger_ids.get(*local_id as usize) {
+                    instance.straight_timing_ids.insert(*id);
                 }
             }
 
@@ -618,6 +649,7 @@ impl LoopGrid {
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
                 self.loop_button_out = Light::Off;
+                self.prepare_button_out = Light::Off;
                 self.delayed_refresh_at = Some(Instant::now() + Duration::from_millis(1000));
                 self.delayed_refresh_done = false;
                 self.refresh_grid_buttons();
@@ -627,6 +659,7 @@ impl LoopGrid {
                 self.refresh_selected_bank();
                 self.refresh_loop_length();
                 self.refresh_repeat_button();
+                self.refresh_prepare_button();
                 self.refresh_select_state();
             }
             GridEvent::DelayedRefresh => {
@@ -634,6 +667,7 @@ impl LoopGrid {
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
                 self.loop_button_out = Light::Off;
+                self.prepare_button_out = Light::Off;
                 self.refresh_grid_buttons();
                 self.refresh_loop_button();
                 self.refresh_undo_redo_lights();
@@ -641,6 +675,7 @@ impl LoopGrid {
                 self.refresh_selected_bank();
                 self.refresh_loop_length();
                 self.refresh_repeat_button();
+                self.refresh_prepare_button();
                 self.refresh_select_state();
             }
             GridEvent::LoopButton(pressed) => {
@@ -653,6 +688,12 @@ impl LoopGrid {
             GridEvent::FlattenButton(pressed) => {
                 if pressed {
                     if self.last_flatten_press_at.elapsed() > Duration::from_millis(200) {
+                        if self.trigger_override_held {
+                            for id in &self.currently_held_inputs {
+                                self.preserve_immediate_until_release.insert(*id);
+                            }
+                        }
+
                         self.commit_selection_override();
                         if self.should_flatten {
                             self.flatten();
@@ -766,7 +807,7 @@ impl LoopGrid {
                 }
             }
             GridEvent::PrepareButton(pressed) => {
-                self.freeze_button(pressed);
+                self.set_trigger_override_held(pressed);
             }
             GridEvent::None => (),
         }
@@ -787,7 +828,7 @@ impl LoopGrid {
                 }
             }
             LoopGridRemoteEvent::PrepareButton(pressed) => {
-                self.freeze_button(pressed);
+                self.set_trigger_override_held(pressed);
             }
         }
     }
@@ -847,6 +888,7 @@ impl LoopGrid {
         }
 
         self.last_raw_pos = range.from;
+        self.last_raw_length = range.to - range.from;
         self.last_pos = range.from.swing(self.current_swing);
         self.last_length = range.to.swing(self.current_swing) - self.last_pos;
 
@@ -858,9 +900,10 @@ impl LoopGrid {
             // handle revert of loop length button
 
             self.refresh_loop_length();
+            self.refresh_recording();
             self.refresh_loop_button();
             self.refresh_repeat_button();
-            self.refresh_recording();
+            self.refresh_prepare_button();
         }
 
         // consume controller and other controllers
@@ -870,18 +913,23 @@ impl LoopGrid {
         let mut to_refresh = Vec::new();
 
         for (id, repeat_state) in &mut self.repeat_states {
-            if repeat_state.phase != RepeatPhase::None && self.last_pos >= repeat_state.to {
+            let pos = if self.straight_timing_ids.contains(id) {
+                self.last_raw_pos
+            } else {
+                self.last_pos
+            };
+            if repeat_state.phase != RepeatPhase::None && pos >= repeat_state.to {
                 if let Some(LoopTransform::Repeat { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
                     repeat_state.to =
-                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
+                        next_repeat(pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Cycle { rate, offset, .. }) =
                     self.override_values.get(&id)
                 {
                     repeat_state.to =
-                        next_repeat(self.last_pos + MidiTime::from_sub_ticks(1), *rate, *offset);
+                        next_repeat(pos + MidiTime::from_sub_ticks(1), *rate, *offset);
                     repeat_state.phase = RepeatPhase::Current;
                 } else if let Some(LoopTransform::Value { .. }) = self.override_values.get(&id) {
                     // extend quantize
@@ -1031,47 +1079,31 @@ impl LoopGrid {
     }
 
     fn refresh_loop_button(&mut self) {
-        let offset = if self.repeat_off_beat {
-            self.rate / 2
-        } else {
-            MidiTime::zero()
-        };
-        let cycle_pos = (self.last_pos - offset) % self.rate;
-        let repeat_flash = cycle_pos < MidiTime::from_float(2.0);
-
         let light = if self.loop_held {
             Light::White
+        } else if self.has_loopable_material() {
+            Light::GreenLow
         } else {
-            match self.trigger_mode {
-                TriggerMode::Immediate => Light::Green,
-                TriggerMode::Quantized => {
-                    if repeat_flash {
-                        Light::White
-                    } else {
-                        Light::Green
-                    }
-                }
-                TriggerMode::Repeat => {
-                    if cycle_pos < self.rate.half() {
-                        Light::Green
-                    } else {
-                        Light::Off
-                    }
-                }
-                TriggerMode::Cycle => {
-                    if cycle_pos < self.rate.half() {
-                        Light::Green
-                    } else {
-                        Light::Purple
-                    }
-                }
-            }
+            Light::Off
         };
 
         if self.loop_button_out != light {
             self.send_note_color(1, LOOP_BUTTON, light);
             self.loop_button_out = light;
         }
+    }
+
+    fn has_loopable_material(&self) -> bool {
+        let from = self.last_pos - self.loop_length;
+
+        self.last_changed_triggers
+            .values()
+            .any(|last_changed| last_changed >= &from)
+            || self.input_values.values().any(|value| value.is_on())
+            || self
+                .override_values
+                .values()
+                .any(|value| value != &LoopTransform::None)
     }
 
     fn refresh_suppress_button(&mut self) {
@@ -1081,6 +1113,18 @@ impl LoopGrid {
             Light::Off
         };
         self.send_note_color(1, SUPPRESS_BUTTON, light);
+    }
+
+    fn refresh_prepare_button(&mut self) {
+        let light = trigger_mode_button_light(
+            self.effective_trigger_mode(),
+            self.trigger_override_held,
+        );
+
+        if self.prepare_button_out != light {
+            self.send_note_color(1, PREPARE_BUTTON, light);
+            self.prepare_button_out = light;
+        }
     }
 
     fn refresh_repeat_button(&mut self) {
@@ -1196,6 +1240,7 @@ impl LoopGrid {
             }
         } else if let Some(index) = current_index {
             self.currently_held_inputs.remove(index);
+            self.preserve_immediate_until_release.remove(&id);
         }
 
         if self.select_held && value.is_on() {
@@ -1233,6 +1278,7 @@ impl LoopGrid {
             self.input_values.insert(id, value);
             self.refresh_input(id);
         }
+        self.refresh_loop_button();
         self.refresh_should_flatten();
     }
 
@@ -1261,7 +1307,7 @@ impl LoopGrid {
                         RepeatMode::None | RepeatMode::OnlyQuant => {
                             LoopTransform::Value(OutputValue::On(velocity))
                         }
-                        RepeatMode::NoCycle => match self.trigger_mode {
+                        RepeatMode::NoCycle => match self.effective_trigger_mode_for_id(id) {
                             TriggerMode::Repeat | TriggerMode::Cycle => LoopTransform::Repeat {
                                 rate: self.rate,
                                 offset,
@@ -1269,7 +1315,7 @@ impl LoopGrid {
                             },
                             _ => LoopTransform::Value(OutputValue::On(velocity)),
                         },
-                        RepeatMode::Global => match self.trigger_mode {
+                        RepeatMode::Global => match self.effective_trigger_mode_for_id(id) {
                             TriggerMode::Repeat => LoopTransform::Repeat {
                                 rate: self.rate,
                                 offset,
@@ -1313,7 +1359,8 @@ impl LoopGrid {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Repeat { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset);
+                        let pos = self.pos_for_id(id);
+                        let to = next_repeat(pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1343,7 +1390,8 @@ impl LoopGrid {
                 } => {
                     if !matches!(original_value, Some(LoopTransform::Cycle { .. })) {
                         // we want to make sure this repeat does full gate cycle, calculate end time from current position
-                        let to = next_repeat(self.last_pos + rate, rate, offset);
+                        let pos = self.pos_for_id(id);
+                        let to = next_repeat(pos + rate, rate, offset);
                         self.queue_repeat_trigger(id, transform.clone(), to)
                     } else if let Some(repeat_state) = self.repeat_states.get_mut(&id) {
                         // handle changing velocity
@@ -1374,10 +1422,11 @@ impl LoopGrid {
                         &RepeatMode::Global
                     };
 
-                    if self.trigger_mode == TriggerMode::Quantized
+                    let trigger_mode = self.effective_trigger_mode_for_id(id);
+                    let should_quantize = trigger_mode == TriggerMode::Quantized
                         || (repeat_mode == &RepeatMode::OnlyQuant
-                            && self.trigger_mode != TriggerMode::Immediate)
-                    {
+                            && trigger_mode != TriggerMode::Immediate);
+                    if should_quantize {
                         if !matches!(original_value, Some(LoopTransform::Value { .. })) {
                             // we want to make sure this repeat does full gate cycle, calculate end time from current position
                             let offset = if self.repeat_off_beat {
@@ -1385,9 +1434,15 @@ impl LoopGrid {
                             } else {
                                 MidiTime::zero()
                             };
-                            let to = next_repeat(self.last_pos, self.rate, offset);
+                            let pos = self.pos_for_id(id);
+                            let to = next_repeat(pos, self.rate, offset);
                             self.queue_quantized_trigger(id, transform.clone(), to);
                         }
+                    } else {
+                        // When a held input moves from repeat/cycle back to plain trigger
+                        // because PREPARE was released, any existing repeat state must stop
+                        // immediately or it will keep overriding get_transform().
+                        self.repeat_states.remove(&id);
                     }
                 }
                 _ => (),
@@ -1506,16 +1561,13 @@ impl LoopGrid {
                 self.mark_cycle_group_changed(id);
             }
 
-            self.last_changed_triggers.insert(id, self.last_pos);
+            let pos = self.pos_for_id(id);
+            self.last_changed_triggers.insert(id, pos);
             self.out_transforms.insert(id, transform);
 
             // send new value
-            if let Some(value) = self.get_value(id, self.last_pos, last_transform) {
-                self.event(LoopEvent {
-                    id,
-                    value,
-                    pos: self.last_pos,
-                });
+            if let Some(value) = self.get_value(id, pos, last_transform) {
+                self.event(LoopEvent { id, value, pos });
             }
 
             self.refresh_cycle_group_for(id);
@@ -1540,7 +1592,8 @@ impl LoopGrid {
         if let Some(chunk_index) = self.chunk_index_for_id(id) {
             if let Some(steps) = self.cycle_groups.get(&chunk_index) {
                 for step in steps {
-                    self.last_changed_triggers.insert(step.id, self.last_pos);
+                    self.last_changed_triggers
+                        .insert(step.id, self.pos_for_id(step.id));
                 }
             }
         }
@@ -1956,6 +2009,7 @@ impl LoopGrid {
 
     fn clear_recording(&mut self) {
         self.last_changed_triggers.clear();
+        self.refresh_loop_button();
     }
 
     fn tap_tempo(&mut self) {
@@ -2322,8 +2376,41 @@ impl LoopGrid {
         self.trigger_mode = value;
         self.show_control_overlay("TRG", Some(trigger_mode_overlay_value(value).to_string()));
         self.refresh_loop_button();
+        self.refresh_prepare_button();
         self.refresh_override_repeat();
         self.refresh_all_inputs();
+    }
+
+    fn set_trigger_override_held(&mut self, pressed: bool) {
+        if self.trigger_override_held == pressed {
+            return;
+        }
+
+        self.trigger_override_held = pressed;
+        self.show_control_overlay(
+            "TRG",
+            Some(trigger_mode_overlay_value(self.effective_trigger_mode()).to_string()),
+        );
+        self.refresh_loop_button();
+        self.refresh_prepare_button();
+        self.refresh_override_repeat();
+        self.refresh_all_inputs();
+    }
+
+    fn effective_trigger_mode(&self) -> TriggerMode {
+        if self.trigger_override_held {
+            self.trigger_mode.override_mode()
+        } else {
+            self.trigger_mode
+        }
+    }
+
+    fn effective_trigger_mode_for_id(&self, id: u32) -> TriggerMode {
+        if self.preserve_immediate_until_release.contains(&id) {
+            TriggerMode::Immediate
+        } else {
+            self.effective_trigger_mode()
+        }
     }
 
     fn show_control_overlay(&mut self, label: &'static str, value: Option<String>) {
@@ -2440,16 +2527,13 @@ impl LoopGrid {
                 self.get_transform(id, &loop_collection, selection_override_loop_collection);
 
             if self.out_transforms.get(&id).unwrap_or(&LoopTransform::None) != &transform {
+                let pos = self.pos_for_id(id);
                 self.out_transforms.insert(id, transform);
-                self.last_changed_triggers.insert(id, self.last_pos);
+                self.last_changed_triggers.insert(id, pos);
 
                 // send new value
-                if let Some(value) = self.get_value(id, self.last_pos, None) {
-                    self.event(LoopEvent {
-                        id: id,
-                        value,
-                        pos: self.last_pos,
-                    });
+                if let Some(value) = self.get_value(id, pos, None) {
+                    self.event(LoopEvent { id, value, pos });
                 }
             }
         }
@@ -2617,11 +2701,12 @@ impl LoopGrid {
 
     fn get_events(&self) -> Vec<LoopEvent> {
         let mut result = Vec::new();
-        let position = self.last_pos;
-        let length = self.last_length;
 
-        if length > MidiTime::zero() {
-            for (id, transform) in &self.out_transforms {
+        for (id, transform) in &self.out_transforms {
+            let position = self.pos_for_id(*id);
+            let length = self.length_for_id(*id);
+
+            if length > MidiTime::zero() {
                 match transform {
                     &LoopTransform::Range {
                         pos: range_pos,
@@ -2722,6 +2807,22 @@ impl LoopGrid {
         }
 
         result
+    }
+
+    fn pos_for_id(&self, id: u32) -> MidiTime {
+        if self.straight_timing_ids.contains(&id) {
+            self.last_raw_pos
+        } else {
+            self.last_pos
+        }
+    }
+
+    fn length_for_id(&self, id: u32) -> MidiTime {
+        if self.straight_timing_ids.contains(&id) {
+            self.last_raw_length
+        } else {
+            self.last_length
+        }
     }
 
     fn get_transform(
@@ -3338,6 +3439,24 @@ fn trigger_mode_overlay_value(mode: TriggerMode) -> &'static str {
     }
 }
 
+fn trigger_mode_light(mode: TriggerMode) -> Light {
+    match mode {
+        TriggerMode::Immediate => Light::Green,
+        TriggerMode::Quantized => Light::Yellow,
+        TriggerMode::Repeat => Light::Purple,
+        TriggerMode::Cycle => Light::BlueDark,
+    }
+}
+
+fn trigger_mode_button_light(mode: TriggerMode, override_active: bool) -> Light {
+    let light = trigger_mode_light(mode);
+    if override_active {
+        light
+    } else {
+        Light::ValueLow(light_to_hue(light))
+    }
+}
+
 fn lfo_wave_overlay_pixel(mode: Option<&str>, row: usize, col: usize) -> Light {
     let wave = match mode {
         Some("TRI") => Some((
@@ -3417,7 +3536,7 @@ fn trigger_mode_overlay_pixel(value: Option<&str>, row: usize, col: usize) -> Li
                 [false, false, true, true, false],
                 [false, false, true, false, false],
             ],
-            Light::Green,
+            trigger_mode_light(TriggerMode::Immediate),
         )),
         Some("Q") => Some((
             [
@@ -3427,7 +3546,7 @@ fn trigger_mode_overlay_pixel(value: Option<&str>, row: usize, col: usize) -> Li
                 [true, false, false, false, true],
                 [false, true, true, true, false],
             ],
-            Light::Yellow,
+            trigger_mode_light(TriggerMode::Quantized),
         )),
         Some("R") => Some((
             [
@@ -3437,7 +3556,7 @@ fn trigger_mode_overlay_pixel(value: Option<&str>, row: usize, col: usize) -> Li
                 [true, false, true, false, true],
                 [true, false, true, false, true],
             ],
-            Light::Purple,
+            trigger_mode_light(TriggerMode::Repeat),
         )),
         Some("A") => Some((
             [
@@ -3447,7 +3566,7 @@ fn trigger_mode_overlay_pixel(value: Option<&str>, row: usize, col: usize) -> Li
                 [false, false, true, true, false],
                 [false, false, false, true, true],
             ],
-            Light::BlueDark,
+            trigger_mode_light(TriggerMode::Cycle),
         )),
         _ => None,
     };

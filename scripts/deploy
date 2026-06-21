@@ -15,7 +15,7 @@ SERVICE_LOCAL_PATH="scripts/$SERVICE_NAME.service"  # Local service unit file
 
 SYSROOT="$HOME/sysroots/raspi"     # Local sysroot path (auto-managed)
 TAIL_LOGS=1                        # 1 to follow logs after deploy, 0 to skip
-LOG_LINES=5
+LOG_LINES=150
 
 # SSH options: BatchMode + quick connect + auto-accept new host keys
 SSH_OPTS=(
@@ -151,6 +151,8 @@ echo "==> Uploading service unit to $PI_HOST:$REMOTE_SERVICE_TMP"
 [[ -f "$SERVICE_LOCAL_PATH" ]] || { echo "Missing $SERVICE_LOCAL_PATH"; exit 1; }
 scp_pi "$SERVICE_LOCAL_PATH" "$REMOTE_SERVICE_TMP"
 
+JOURNAL_SINCE="$(ssh_pi 'date "+%Y-%m-%d %H:%M:%S"')"
+
 echo "==> Installing binary and service; enabling and restarting"
 ssh_pi \
   PI_REMOTE_TMP="$REMOTE_TMP" \
@@ -200,9 +202,9 @@ REMOTE_CMDS
 
 # === LOGS =====================================================================
 if [[ "$TAIL_LOGS" -eq 1 ]]; then
-  echo "==> Tailing logs (Ctrl-C to stop; service keeps running)"
-  ssh_pi "journalctl -u $SERVICE_NAME -n $LOG_LINES -f --output=short-iso"
+  echo "==> Tailing logs since $JOURNAL_SINCE (Ctrl-C to stop; service keeps running)"
+  ssh_pi "journalctl -u $SERVICE_NAME --since '$JOURNAL_SINCE' -n $LOG_LINES -f --output=short-iso"
 else
   echo "==> Done. To view logs:"
-  echo "ssh $PI_HOST 'journalctl -u $SERVICE_NAME -n $LOG_LINES -f --output=short-iso'"
+  echo "ssh $PI_HOST 'journalctl -u $SERVICE_NAME --since '\''$JOURNAL_SINCE'\'' -n $LOG_LINES -f --output=short-iso'"
 fi
