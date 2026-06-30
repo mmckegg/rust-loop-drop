@@ -9,6 +9,7 @@ const SLIDER_CCS: [u8; 8] = [16, 17, 18, 19, 20, 21, 22, 23];
 const MUTE_NOTES: [u8; 8] = [61, 62, 63, 64, 65, 66, 67, 68];
 
 const NOTE_ON_STATUS_CH2: u8 = 144 - 1 + 2;
+const NOTE_OFF_STATUS_CH2: u8 = 128 - 1 + 2;
 const CC_STATUS_CH2: u8 = 176 - 1 + 2;
 
 const LED_OFF: u8 = 0;
@@ -21,6 +22,8 @@ pub struct SampleMixerState {
     pub slider_seen: [bool; 8],
     pub multipliers: [u8; 8],
     pub muted: [bool; 8],
+    pub mute_held: [bool; 8],
+    pub mute_latched: [bool; 8],
     pub last_sent: [u8; 8],
     pub dirty: [bool; 8],
 }
@@ -32,6 +35,8 @@ impl SampleMixerState {
             slider_seen: [false; 8],
             multipliers: [127; 8],
             muted: [false; 8],
+            mute_held: [false; 8],
+            mute_latched: [false; 8],
             last_sent: [255; 8],
             dirty: [false; 8],
         }
@@ -54,6 +59,24 @@ fn expression_gain(value: u8) -> f64 {
     (value as f64 / 127.0).powf(EXPRESSION_CURVE_EXPONENT)
 }
 
+fn release_mute(
+    index: usize,
+    state: &Arc<Mutex<SampleMixerState>>,
+    params: &Arc<Mutex<LoopGridParams>>,
+) {
+    let latch_on_release = params.lock().unwrap().select_held;
+    let mut state = state.lock().unwrap();
+
+    if !state.mute_held[index] {
+        return;
+    }
+
+    state.mute_held[index] = false;
+    state.mute_latched[index] = latch_on_release;
+    state.muted[index] = state.mute_latched[index];
+    state.dirty[index] = true;
+}
+
 impl SampleMixer {
     pub fn new(
         output: midi_connection::SharedMidiOutputConnection,
@@ -74,6 +97,7 @@ impl SampleMixer {
             midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
 
         let input_state = Arc::clone(&state);
+        let input_params = Arc::clone(&params);
 
         let midi_input = midi_connection::get_input(midi_connection::YAELTEX_PORT_NAME, move |_stamp, message| match message {
             [status, cc, value] if *status == CC_STATUS_CH2 => {
@@ -85,12 +109,20 @@ impl SampleMixer {
                 }
             }
             [status, note, velocity] if *status == NOTE_ON_STATUS_CH2 => {
-                if *velocity > 0 {
-                    if let Some(index) = MUTE_NOTES.iter().position(|mapped_note| mapped_note == note) {
+                if let Some(index) = MUTE_NOTES.iter().position(|mapped_note| mapped_note == note) {
+                    if *velocity > 0 {
                         let mut state = input_state.lock().unwrap();
-                        state.muted[index] = !state.muted[index];
+                        state.mute_held[index] = true;
+                        state.muted[index] = true;
                         state.dirty[index] = true;
+                    } else {
+                        release_mute(index, &input_state, &input_params);
                     }
+                }
+            }
+            [status, note, _velocity] if *status == NOTE_OFF_STATUS_CH2 => {
+                if let Some(index) = MUTE_NOTES.iter().position(|mapped_note| mapped_note == note) {
+                    release_mute(index, &input_state, &input_params);
                 }
             }
             _ => {}
