@@ -69,6 +69,19 @@ impl Config {
                 encoders: vec![
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 1, col: 5 },
+
+                        label: String::from("Filter 1-4"),
+                        color: EncoderColor::Orange,
+                        lfo_mode: LfoMode::BipolarOffset,
+                        activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 51,
+                            default: 64,
+                        },
+                    },
+                    EncoderConfig {
+                        slot: EncoderSlot::Fixed { row: 1, col: 6 },
                         label: String::from("Voice A Bend"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::BipolarOffset,
@@ -80,7 +93,7 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Fixed { row: 1, col: 6 },
+                        slot: EncoderSlot::Fixed { row: 1, col: 7 },
                         label: String::from("Voice B Bend"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::BipolarOffset,
@@ -92,7 +105,7 @@ impl Config {
                         },
                     },
                     EncoderConfig {
-                        slot: EncoderSlot::Fixed { row: 1, col: 7 },
+                        slot: EncoderSlot::Fixed { row: 1, col: 8 },
                         label: String::from("Voice C Bend"),
                         color: EncoderColor::Purple,
                         lfo_mode: LfoMode::BipolarOffset,
@@ -102,14 +115,6 @@ impl Config {
                             bipolar: true,
                             default: 64,
                         },
-                    },
-                    EncoderConfig {
-                        slot: EncoderSlot::Fixed { row: 1, col: 8 },
-                        label: String::from("Root Note"),
-                        color: EncoderColor::White,
-                        lfo_mode: LfoMode::UnipolarMultiply,
-                        activity_highlights: vec![],
-                        assignment: EncoderAssignment::RootNote { default: 64 },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 1 },
@@ -161,7 +166,7 @@ impl Config {
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 5 },
-                        label: String::from("Filter 1"),
+                        label: String::from("Filter 5"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
@@ -173,7 +178,7 @@ impl Config {
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 6 },
-                        label: String::from("Filter 2"),
+                        label: String::from("Filter 6"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
@@ -185,7 +190,7 @@ impl Config {
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 7 },
-                        label: String::from("Filter 3"),
+                        label: String::from("Filter 7"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
                         activity_highlights: vec![ActivityHighlight::Sample(6)],
@@ -197,7 +202,7 @@ impl Config {
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Fixed { row: 2, col: 8 },
-                        label: String::from("Filter 4"),
+                        label: String::from("Filter 8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
                         activity_highlights: vec![ActivityHighlight::Sample(7)],
@@ -789,15 +794,11 @@ impl Config {
                             row: 2,
                             col: 4,
                         },
-                        label: String::from("DJ Filter"),
-                        color: EncoderColor::Orange,
-                        lfo_mode: LfoMode::BipolarOffset,
-                        activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
-                        assignment: EncoderAssignment::MidiCc {
-                            output: MidiPortConfig::new(rig_port_name, 10),
-                            cc: 51,
-                            default: 64,
-                        },
+                        label: String::from("Root Note"),
+                        color: EncoderColor::White,
+                        lfo_mode: LfoMode::UnipolarMultiply,
+                        activity_highlights: vec![],
+                        assignment: EncoderAssignment::RootNote { default: 64 },
                     },
                 ],
             },
