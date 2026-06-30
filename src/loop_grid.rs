@@ -118,8 +118,8 @@ impl TriggerMode {
 
     fn override_mode(&self) -> TriggerMode {
         match self {
-            TriggerMode::Immediate => TriggerMode::Repeat,
-            _ => TriggerMode::Immediate,
+            TriggerMode::Repeat => TriggerMode::Quantized,
+            _ => TriggerMode::Repeat,
         }
     }
 }
@@ -232,7 +232,6 @@ enum GridEvent {
     RedoButton(bool),
     SuppressButton(bool),
     RepeatButton(bool),
-    // retained as a no-op placeholder for old controller layout; unused on Yaeltex
     SelectButton(bool),
     PrepareButton(bool),
 
@@ -1116,10 +1115,8 @@ impl LoopGrid {
     }
 
     fn refresh_prepare_button(&mut self) {
-        let light = trigger_mode_button_light(
-            self.effective_trigger_mode(),
-            self.trigger_override_held,
-        );
+        let light =
+            trigger_mode_button_light(self.effective_trigger_mode(), self.trigger_override_held);
 
         if self.prepare_button_out != light {
             self.send_note_color(1, PREPARE_BUTTON, light);
