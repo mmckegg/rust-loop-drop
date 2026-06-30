@@ -79,6 +79,12 @@ struct AutomationLoop {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UiFeedback {
+    Manual,
+    Silent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SlotFeedback {
     switch_color: u8,
     switch_intensity: u8,
@@ -224,6 +230,7 @@ impl ModulationSurface {
                                         &mut lfo,
                                         &scale,
                                         &params,
+                                        UiFeedback::Manual,
                                     );
                                     if let Some(config) = configs.get(&slot) {
                                         if let EncoderAssignment::RootNote { .. } =
@@ -455,6 +462,7 @@ impl ModulationSurface {
                                 &mut lfo,
                                 &scale,
                                 &params,
+                                UiFeedback::Silent,
                             );
                         }
 
@@ -704,6 +712,7 @@ fn send_lane_value(
     lfo: &mut Lfo,
     scale: &Arc<Mutex<Scale>>,
     params: &Arc<Mutex<LoopGridParams>>,
+    ui_feedback: UiFeedback,
 ) {
     if let Lane::LfoAmount(_) = lane {
         return;
@@ -740,17 +749,21 @@ fn send_lane_value(
         }
         Modulator::LfoSpeed(..) => {
             lfo.speed = value;
-            let mut params = params.lock().unwrap();
-            params.lfo_speed_overlay_value = Some(lfo_speed_overlay_value(value));
-            params.lfo_speed_overlay_until =
-                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+            if ui_feedback == UiFeedback::Manual {
+                let mut params = params.lock().unwrap();
+                params.lfo_speed_overlay_value = Some(lfo_speed_overlay_value(value));
+                params.lfo_speed_overlay_until =
+                    Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+            }
         }
         Modulator::LfoWave(..) => {
             lfo.wave = value;
-            let mut params = params.lock().unwrap();
-            params.lfo_wave_overlay_mode = Some(lfo_wave_overlay_mode(value));
-            params.lfo_wave_overlay_until =
-                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+            if ui_feedback == UiFeedback::Manual {
+                let mut params = params.lock().unwrap();
+                params.lfo_wave_overlay_mode = Some(lfo_wave_overlay_mode(value));
+                params.lfo_wave_overlay_until =
+                    Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+            }
         }
         Modulator::RootNote(..) => {
             let note = root_note_from_value(value);
@@ -848,6 +861,7 @@ fn reset_lane(
                     lfo,
                     scale,
                     params,
+                    UiFeedback::Manual,
                 );
             }
         }
