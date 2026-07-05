@@ -10,8 +10,8 @@ mod root_offset_chunk;
 mod root_select;
 mod scale_select;
 
-pub use self::midi_triggers::MidiTriggers;
 pub use self::midi_keys::MidiKeys;
+pub use self::midi_triggers::MidiTriggers;
 pub use self::offset::OffsetChunk;
 pub use self::scale_select::ScaleDegreeToggle;
 

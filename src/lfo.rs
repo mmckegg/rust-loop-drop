@@ -1,4 +1,4 @@
-use ::MidiTime;
+use MidiTime;
 
 lazy_static! {
     static ref RATES: [MidiTime; 10] = [
@@ -24,7 +24,10 @@ pub struct Lfo {
 impl Lfo {
     // Returns a value between 0 and 1
     pub fn new() -> Self {
-        Lfo { speed: 50, wave: 64 }
+        Lfo {
+            speed: 50,
+            wave: 64,
+        }
     }
 
     pub fn get_value_at(&self, pos: MidiTime) -> f64 {

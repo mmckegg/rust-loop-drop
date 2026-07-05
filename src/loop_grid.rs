@@ -67,6 +67,7 @@ pub struct LoopGridParams {
     pub swing: f64,
     pub bank: u8,
     pub select_held: bool,
+    pub prepare_held: bool,
     pub root_overlay_until: Option<Instant>,
     pub root_overlay_note: Option<i32>,
     pub lfo_speed_overlay_until: Option<Instant>,
@@ -2384,6 +2385,7 @@ impl LoopGrid {
         }
 
         self.trigger_override_held = pressed;
+        self.params.lock().unwrap().prepare_held = pressed;
         self.show_control_overlay(
             "TRG",
             Some(trigger_mode_overlay_value(self.effective_trigger_mode()).to_string()),

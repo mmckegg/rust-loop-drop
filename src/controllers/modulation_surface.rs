@@ -152,6 +152,7 @@ impl ModulationSurface {
             let mut active_record_lane: HashMap<EncoderSlot, Lane> = HashMap::new();
             let mut base_values: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut lfo_amounts: HashMap<EncoderSlot, u8> = HashMap::new();
+            let mut prepared_values: HashMap<Lane, u8> = HashMap::new();
             let mut last_sent_output: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut last_feedback: HashMap<u8, SlotFeedback> = HashMap::new();
             let mut last_pos = MidiTime::zero();
@@ -199,9 +200,13 @@ impl ModulationSurface {
 
                 match msg {
                     Message::Turn { slot, value } => {
-                        let (shift, current_bank) = {
+                        let (shift, current_bank, prepare_held) = {
                             let params = params.lock().unwrap();
-                            (params.select_held, bank_id_from_u8(params.bank))
+                            (
+                                params.select_held,
+                                bank_id_from_u8(params.bank),
+                                params.prepare_held,
+                            )
                         };
                         let slot = slot_in_current_bank(slot, current_bank);
                         let lane = active_lane(slot, shift, &configs);
@@ -214,52 +219,28 @@ impl ModulationSurface {
                             .unwrap_or(false);
 
                         if !release_guard {
-                            match lane {
-                                Lane::Base(slot) => {
-                                    base_values.insert(slot, value);
-                                    loops.remove(&Lane::Base(slot));
-                                    send_lane_value(
-                                        slot,
-                                        Lane::Base(slot),
-                                        value,
-                                        last_pos,
-                                        &configs,
-                                        &lfo_amounts,
-                                        &mut last_sent_output,
-                                        &mut modulators,
-                                        &mut lfo,
-                                        &scale,
-                                        &params,
-                                        UiFeedback::Manual,
-                                    );
-                                    if let Some(config) = configs.get(&slot) {
-                                        if let EncoderAssignment::RootNote { .. } =
-                                            config.assignment
-                                        {
-                                            let note = root_note_from_value(value);
-                                            let mut params = params.lock().unwrap();
-                                            params.root_overlay_note = Some(note);
-                                            params.root_overlay_until = Some(
-                                                Instant::now()
-                                                    + Duration::from_millis(ROOT_OVERLAY_MS),
-                                            );
-                                        }
-                                    }
-                                    recorder.add(LoopEvent {
-                                        id: lane_id(Lane::Base(slot)),
-                                        value: OutputValue::On(value),
-                                        pos: last_pos,
-                                    });
+                            if prepare_held {
+                                prepared_values.insert(lane, value);
+                                if let Lane::Base(slot) = lane {
+                                    show_manual_internal_overlay(slot, value, &configs, &params);
                                 }
-                                Lane::LfoAmount(slot) => {
-                                    lfo_amounts.insert(slot, value);
-                                    loops.remove(&Lane::LfoAmount(slot));
-                                    recorder.add(LoopEvent {
-                                        id: lane_id(Lane::LfoAmount(slot)),
-                                        value: OutputValue::On(value),
-                                        pos: last_pos,
-                                    });
-                                }
+                            } else {
+                                commit_lane_value(
+                                    lane,
+                                    value,
+                                    last_pos,
+                                    &configs,
+                                    &mut base_values,
+                                    &mut lfo_amounts,
+                                    &mut loops,
+                                    &mut recorder,
+                                    &mut last_sent_output,
+                                    &mut modulators,
+                                    &mut lfo,
+                                    &scale,
+                                    &params,
+                                    UiFeedback::Manual,
+                                );
                             }
                         }
 
@@ -267,6 +248,7 @@ impl ModulationSurface {
                             &configs,
                             &base_values,
                             &lfo_amounts,
+                            &prepared_values,
                             &loops,
                             &recording_started,
                             &params,
@@ -305,6 +287,7 @@ impl ModulationSurface {
                         } else if let Some(pressed_at) = held_since.remove(&slot) {
                             let held_for = at.duration_since(pressed_at);
                             let recorded_lane = active_record_lane.remove(&slot).unwrap_or(lane);
+                            prepared_values.remove(&recorded_lane);
 
                             if held_for >= Duration::from_millis(hold_ms) {
                                 recent_record_release_at.insert(slot, at);
@@ -361,6 +344,7 @@ impl ModulationSurface {
                                         );
                                         if let Lane::Base(value) = recorded_lane {
                                             // clear both lanes for a double tap on Base
+                                            prepared_values.remove(&Lane::LfoAmount(value));
                                             reset_lane(
                                                 Lane::LfoAmount(value),
                                                 &configs,
@@ -386,6 +370,7 @@ impl ModulationSurface {
                             &configs,
                             &base_values,
                             &lfo_amounts,
+                            &prepared_values,
                             &loops,
                             &recording_started,
                             &params,
@@ -401,10 +386,31 @@ impl ModulationSurface {
                         last_pos = pos;
                         pulsing = ((pos.as_float() / 12.0).sin() + 1.0) * 0.5;
 
-                        let (shift, current_bank) = {
+                        let (shift, current_bank, prepare_held) = {
                             let params = params.lock().unwrap();
-                            (params.select_held, bank_id_from_u8(params.bank))
+                            (
+                                params.select_held,
+                                bank_id_from_u8(params.bank),
+                                params.prepare_held,
+                            )
                         };
+
+                        if !prepare_held && !prepared_values.is_empty() {
+                            commit_prepared_values(
+                                &mut prepared_values,
+                                pos,
+                                &configs,
+                                &mut base_values,
+                                &mut lfo_amounts,
+                                &mut loops,
+                                &mut recorder,
+                                &mut last_sent_output,
+                                &mut modulators,
+                                &mut lfo,
+                                &scale,
+                                &params,
+                            );
+                        }
 
                         for (lane, looper) in loops.clone() {
                             let offset = looper.offset % looper.length;
@@ -470,6 +476,7 @@ impl ModulationSurface {
                             &configs,
                             &base_values,
                             &lfo_amounts,
+                            &prepared_values,
                             &loops,
                             &recording_started,
                             &params,
@@ -700,6 +707,135 @@ fn fixed_slots() -> Vec<EncoderSlot> {
     ]
 }
 
+fn show_manual_internal_overlay(
+    slot: EncoderSlot,
+    value: u8,
+    configs: &HashMap<EncoderSlot, EncoderConfig>,
+    params: &Arc<Mutex<LoopGridParams>>,
+) {
+    if let Some(config) = configs.get(&slot) {
+        if let EncoderAssignment::RootNote { .. } = config.assignment {
+            let note = root_note_from_value(value);
+            let mut params = params.lock().unwrap();
+            params.root_overlay_note = Some(note);
+            params.root_overlay_until =
+                Some(Instant::now() + Duration::from_millis(ROOT_OVERLAY_MS));
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_prepared_values(
+    prepared_values: &mut HashMap<Lane, u8>,
+    pos: MidiTime,
+    configs: &HashMap<EncoderSlot, EncoderConfig>,
+    base_values: &mut HashMap<EncoderSlot, u8>,
+    lfo_amounts: &mut HashMap<EncoderSlot, u8>,
+    loops: &mut HashMap<Lane, AutomationLoop>,
+    recorder: &mut LoopRecorder,
+    last_sent_output: &mut HashMap<EncoderSlot, u8>,
+    modulators: &mut HashMap<EncoderSlot, Modulator>,
+    lfo: &mut Lfo,
+    scale: &Arc<Mutex<Scale>>,
+    params: &Arc<Mutex<LoopGridParams>>,
+) {
+    let pending: Vec<(Lane, u8)> = prepared_values.drain().collect();
+    for (lane, value) in pending {
+        commit_lane_value(
+            lane,
+            value,
+            pos,
+            configs,
+            base_values,
+            lfo_amounts,
+            loops,
+            recorder,
+            last_sent_output,
+            modulators,
+            lfo,
+            scale,
+            params,
+            UiFeedback::Manual,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_lane_value(
+    lane: Lane,
+    value: u8,
+    pos: MidiTime,
+    configs: &HashMap<EncoderSlot, EncoderConfig>,
+    base_values: &mut HashMap<EncoderSlot, u8>,
+    lfo_amounts: &mut HashMap<EncoderSlot, u8>,
+    loops: &mut HashMap<Lane, AutomationLoop>,
+    recorder: &mut LoopRecorder,
+    last_sent_output: &mut HashMap<EncoderSlot, u8>,
+    modulators: &mut HashMap<EncoderSlot, Modulator>,
+    lfo: &mut Lfo,
+    scale: &Arc<Mutex<Scale>>,
+    params: &Arc<Mutex<LoopGridParams>>,
+    ui_feedback: UiFeedback,
+) {
+    match lane {
+        Lane::Base(slot) => {
+            base_values.insert(slot, value);
+            loops.remove(&Lane::Base(slot));
+            send_lane_value(
+                slot,
+                Lane::Base(slot),
+                value,
+                pos,
+                configs,
+                lfo_amounts,
+                last_sent_output,
+                modulators,
+                lfo,
+                scale,
+                params,
+                ui_feedback,
+            );
+            if ui_feedback == UiFeedback::Manual {
+                show_manual_internal_overlay(slot, value, configs, params);
+            }
+            recorder.add(LoopEvent {
+                id: lane_id(Lane::Base(slot)),
+                value: OutputValue::On(value),
+                pos,
+            });
+        }
+        Lane::LfoAmount(slot) => {
+            lfo_amounts.insert(slot, value);
+            loops.remove(&Lane::LfoAmount(slot));
+            let base_value = *base_values.get(&slot).unwrap_or(
+                &configs
+                    .get(&slot)
+                    .map(|c| c.assignment.default_value())
+                    .unwrap_or(0),
+            );
+            send_lane_value(
+                slot,
+                Lane::Base(slot),
+                base_value,
+                pos,
+                configs,
+                lfo_amounts,
+                last_sent_output,
+                modulators,
+                lfo,
+                scale,
+                params,
+                ui_feedback,
+            );
+            recorder.add(LoopEvent {
+                id: lane_id(Lane::LfoAmount(slot)),
+                value: OutputValue::On(value),
+                pos,
+            });
+        }
+    }
+}
+
 fn send_lane_value(
     slot: EncoderSlot,
     lane: Lane,
@@ -877,6 +1013,7 @@ fn refresh_feedback(
     configs: &HashMap<EncoderSlot, EncoderConfig>,
     base_values: &HashMap<EncoderSlot, u8>,
     lfo_amounts: &HashMap<EncoderSlot, u8>,
+    prepared_values: &HashMap<Lane, u8>,
     loops: &HashMap<Lane, AutomationLoop>,
     recording_started: &HashMap<Lane, MidiTime>,
     params: &Arc<Mutex<LoopGridParams>>,
@@ -894,6 +1031,7 @@ fn refresh_feedback(
             configs,
             base_values,
             lfo_amounts,
+            prepared_values,
             loops,
             recording_started,
             params,
@@ -919,6 +1057,7 @@ fn refresh_feedback(
             configs,
             base_values,
             lfo_amounts,
+            prepared_values,
             loops,
             recording_started,
             params,
@@ -958,6 +1097,7 @@ fn render_slot(
     configs: &HashMap<EncoderSlot, EncoderConfig>,
     base_values: &HashMap<EncoderSlot, u8>,
     lfo_amounts: &HashMap<EncoderSlot, u8>,
+    prepared_values: &HashMap<Lane, u8>,
     loops: &HashMap<Lane, AutomationLoop>,
     recording_started: &HashMap<Lane, MidiTime>,
     params: &Arc<Mutex<LoopGridParams>>,
@@ -985,6 +1125,7 @@ fn render_slot(
     let active_lane = active_lane(slot, shift, configs);
     let is_recording = recording_started.contains_key(&active_lane);
     let has_loop = loops.contains_key(&active_lane);
+    let has_prepared = prepared_values.contains_key(&active_lane);
 
     let activity_flash = has_activity_flash(&config.activity_highlights, params);
     let switch_color = if activity_flash {
@@ -994,6 +1135,8 @@ fn render_slot(
     };
     let switch_intensity = if activity_flash {
         ACTIVITY_FLASH_INTENSITY
+    } else if has_prepared {
+        AUTOMATION_BRIGHT_INTENSITY
     } else if has_loop {
         if pulse >= 0.5 {
             AUTOMATION_BRIGHT_INTENSITY
@@ -1004,9 +1147,10 @@ fn render_slot(
         SWITCH_IDLE_INTENSITY
     };
 
-    let lfo_amount = lfo_amounts
-        .get(&slot)
+    let lfo_amount = prepared_values
+        .get(&Lane::LfoAmount(slot))
         .copied()
+        .or_else(|| lfo_amounts.get(&slot).copied())
         .unwrap_or_else(|| neutral_lfo_amount(config));
     let has_lfo = config.assignment.supports_lfo_lane() && lfo_amount_is_active(lfo_amount, config);
     let lfo_color_phase = if has_lfo && !shift {
@@ -1017,14 +1161,17 @@ fn render_slot(
     };
 
     let ring_value = if shift && config.assignment.supports_lfo_lane() {
-        lfo_amounts
-            .get(&slot)
+        prepared_values
+            .get(&Lane::LfoAmount(slot))
             .copied()
+            .or_else(|| lfo_amounts.get(&slot).copied())
             .unwrap_or_else(|| neutral_lfo_amount(config))
     } else {
-        *base_values
-            .get(&slot)
-            .unwrap_or(&config.assignment.default_value())
+        prepared_values
+            .get(&Lane::Base(slot))
+            .copied()
+            .or_else(|| base_values.get(&slot).copied())
+            .unwrap_or_else(|| config.assignment.default_value())
     };
 
     let centered_banked = is_centered_banked_encoder(slot, &config.assignment, ring_value);

@@ -86,7 +86,11 @@ impl SampleMixer {
         params: Arc<Mutex<LoopGridParams>>,
         state: Arc<Mutex<SampleMixerState>>,
     ) -> Self {
-        assert_eq!(output_ccs.len(), 8, "SampleMixer requires exactly 8 output_ccs");
+        assert_eq!(
+            output_ccs.len(),
+            8,
+            "SampleMixer requires exactly 8 output_ccs"
+        );
         assert_eq!(
             activity_channels.len(),
             8,
@@ -99,34 +103,43 @@ impl SampleMixer {
         let input_state = Arc::clone(&state);
         let input_params = Arc::clone(&params);
 
-        let midi_input = midi_connection::get_input(midi_connection::YAELTEX_PORT_NAME, move |_stamp, message| match message {
-            [status, cc, value] if *status == CC_STATUS_CH2 => {
-                if let Some(index) = SLIDER_CCS.iter().position(|mapped_cc| mapped_cc == cc) {
-                    let mut state = input_state.lock().unwrap();
-                    state.sliders[index] = *value;
-                    state.slider_seen[index] = true;
-                    state.dirty[index] = true;
-                }
-            }
-            [status, note, velocity] if *status == NOTE_ON_STATUS_CH2 => {
-                if let Some(index) = MUTE_NOTES.iter().position(|mapped_note| mapped_note == note) {
-                    if *velocity > 0 {
+        let midi_input = midi_connection::get_input(
+            midi_connection::YAELTEX_PORT_NAME,
+            move |_stamp, message| match message {
+                [status, cc, value] if *status == CC_STATUS_CH2 => {
+                    if let Some(index) = SLIDER_CCS.iter().position(|mapped_cc| mapped_cc == cc) {
                         let mut state = input_state.lock().unwrap();
-                        state.mute_held[index] = true;
-                        state.muted[index] = true;
+                        state.sliders[index] = *value;
+                        state.slider_seen[index] = true;
                         state.dirty[index] = true;
-                    } else {
+                    }
+                }
+                [status, note, velocity] if *status == NOTE_ON_STATUS_CH2 => {
+                    if let Some(index) = MUTE_NOTES
+                        .iter()
+                        .position(|mapped_note| mapped_note == note)
+                    {
+                        if *velocity > 0 {
+                            let mut state = input_state.lock().unwrap();
+                            state.mute_held[index] = true;
+                            state.muted[index] = true;
+                            state.dirty[index] = true;
+                        } else {
+                            release_mute(index, &input_state, &input_params);
+                        }
+                    }
+                }
+                [status, note, _velocity] if *status == NOTE_OFF_STATUS_CH2 => {
+                    if let Some(index) = MUTE_NOTES
+                        .iter()
+                        .position(|mapped_note| mapped_note == note)
+                    {
                         release_mute(index, &input_state, &input_params);
                     }
                 }
-            }
-            [status, note, _velocity] if *status == NOTE_OFF_STATUS_CH2 => {
-                if let Some(index) = MUTE_NOTES.iter().position(|mapped_note| mapped_note == note) {
-                    release_mute(index, &input_state, &input_params);
-                }
-            }
-            _ => {}
-        });
+                _ => {}
+            },
+        );
 
         let mut instance = Self {
             _midi_input: midi_input,

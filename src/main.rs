@@ -35,7 +35,8 @@ use scale::{Offset, Scale};
 use scheduler::Scheduler;
 
 const APP_NAME: &str = "Loop Drop";
-const YTX_DUMP_CONTROLLER_STATE_SYSEX: [u8; 9] = [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1B, 0xF7];
+const YTX_DUMP_CONTROLLER_STATE_SYSEX: [u8; 9] =
+    [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1B, 0xF7];
 // const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
 
 type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
@@ -73,6 +74,7 @@ fn main() {
         swing: 0.0,
         bank: 0,
         select_held: false,
+        prepare_held: false,
         root_overlay_until: None,
         root_overlay_note: None,
         lfo_speed_overlay_until: None,
