@@ -19,6 +19,7 @@ pub struct Scheduler {
     internal_bpm: Arc<Mutex<f64>>,
     tx_int_tick: mpsc::SyncSender<Option<Duration>>,
     remote_state: Arc<Mutex<RemoteSchedulerState>>,
+    external_clock_configured: bool,
     _clock_source: Option<midi_connection::ThreadReference>,
 }
 
@@ -79,17 +80,23 @@ impl RemoteSchedulerState {
 
 impl Scheduler {
     pub fn start(
-        clock_port_name: &str,
+        clock_port_name: Option<&str>,
         use_internal_clock: Arc<AtomicBool>,
         internal_bpm: Arc<Mutex<f64>>,
     ) -> Self {
+        let external_clock_configured = clock_port_name.is_some();
+        let initial_clock_source = if external_clock_configured {
+            ClockSource::External
+        } else {
+            ClockSource::Internal
+        };
         let remote_state = Arc::new(Mutex::new(RemoteSchedulerState {
             tick_durations: CircularQueue::with_capacity(3),
             last_tick_at: None,
             started: true,
             last_tick_stamp: None,
             jumped: false,
-            clock_source: ClockSource::External,
+            clock_source: initial_clock_source,
             tick_start_at: Instant::now(),
             stamp_offset: 0,
         }));
@@ -103,11 +110,10 @@ impl Scheduler {
         let tx_int_tick_ext = tx_int_tick.clone();
 
         // track external clock and tick durations (to calculate bpm)
-        let state_m = remote_state.clone();
-        let _clock_source = Some(midi_connection::get_input(
-            clock_port_name,
-            move |stamp, message| {
-                if message[0] == 248 {
+        let _clock_source = clock_port_name.map(|clock_port_name| {
+            let state_m = remote_state.clone();
+            midi_connection::get_input(clock_port_name, move |stamp, message| {
+                if message == [248] {
                     if let Ok(mut state) = state_m.try_lock() {
                         if !state.started || state.clock_source == ClockSource::Internal {
                             return;
@@ -143,7 +149,7 @@ impl Scheduler {
                     } else {
                         println!("[WARN] External tick can't acquire state lock");
                     }
-                } else if message[0] == 250 {
+                } else if message == [250] {
                     // // play
                     // println!("restart clock");
                     // let mut state: std::sync::MutexGuard<RemoteSchedulerState> =
@@ -151,8 +157,8 @@ impl Scheduler {
                     // state.restart(stamp);
                     // state.jumped = true;
                 }
-            },
-        ));
+            })
+        });
 
         let tx_sub_clock = tx.clone();
         thread::spawn(move || {
@@ -201,6 +207,12 @@ impl Scheduler {
             }
         });
 
+        if clock_port_name.is_none() {
+            tx_int_tick
+                .send(Some(Duration::from_secs_f64(0.5 / 24.0)))
+                .unwrap();
+        }
+
         Scheduler {
             ticks: -1,
             sub_ticks: 0,
@@ -211,6 +223,7 @@ impl Scheduler {
             last_tick_at: Instant::now(),
             next_pos: MidiTime::zero(),
             remote_state,
+            external_clock_configured,
             _clock_source,
         }
     }
@@ -264,14 +277,16 @@ impl Scheduler {
             if use_internal_clock && clock_source == ClockSource::External {
                 // switch to internal clock on the next external tick (unless timeouts out)
                 self.switch_to_internal(true)
-            } else if !use_internal_clock && clock_source == ClockSource::Internal {
+            } else if self.external_clock_configured
+                && !use_internal_clock
+                && clock_source == ClockSource::Internal
+            {
                 self.switch_to_external()
             }
 
             match msg {
                 Err(_err) => {
                     // force a tick to trigger if the external clock has stopped
-                    println!("[INFO] Fallback to internal clock");
                     self.switch_to_internal(false)
                 }
                 Ok(ScheduleTick::MidiTick(jumped)) => {

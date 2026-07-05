@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Follow all Loop Drop logs from the current boot.
+
+set -Eeuo pipefail
+trap 'echo "Error on line $LINENO: $BASH_COMMAND" >&2' ERR
+
+PI_HOST="pi@raspberrypi.local"
+SERVICE_NAME="loop-drop"
+
+SSH_OPTS=(
+  -o BatchMode=yes
+  -o ConnectTimeout=15
+  -o StrictHostKeyChecking=accept-new
+)
+
+ssh_pi() { ssh "${SSH_OPTS[@]}" "$PI_HOST" "$@"; }
+
+echo "==> Following all $SERVICE_NAME logs from current boot on $PI_HOST"
+ssh_pi "journalctl -b -u $SERVICE_NAME --no-tail -f --output=short-iso"

@@ -6,7 +6,7 @@ extern crate serde;
 extern crate serde_json;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -35,8 +35,6 @@ use scale::{Offset, Scale};
 use scheduler::Scheduler;
 
 const APP_NAME: &str = "Loop Drop";
-const YTX_DUMP_CONTROLLER_STATE_SYSEX: [u8; 9] =
-    [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1B, 0xF7];
 // const CONFIG_FILEPATH: &str = "./loopdrop-config.json";
 
 type PortLookup = HashMap<String, midi_connection::SharedMidiOutputConnection>;
@@ -63,10 +61,10 @@ fn main() {
     println!("Midi Outputs: {:?}", midi_connection::get_outputs(&output));
     println!("Midi Inputs: {:?}", &inputs);
 
-    let clock_input_name = myconfig
-        .clock_input_port_name
-        .as_deref()
-        .unwrap_or(midi_connection::YAELTEX_PORT_NAME);
+    let clock_input_name = myconfig.clock_input_port_name.as_deref();
+    if clock_input_name.is_none() {
+        use_internal_clock.store(true, Ordering::Relaxed);
+    }
 
     let scale = Scale::new(60);
 
@@ -137,7 +135,8 @@ fn main() {
         )),
     ];
 
-    request_yaeltex_controller_state_on_connect(&mut output_ports);
+    // Encoder feedback is now driven by app config, so do not request the full
+    // controller state dump on connect.
 
     let mut clock_outputs: Vec<midi_connection::SharedMidiOutputConnection> = Vec::new();
     for name in myconfig.clock_output_port_names {
@@ -200,13 +199,6 @@ fn main() {
 }
 
 // Helper functions
-fn request_yaeltex_controller_state_on_connect(ports_lookup: &mut PortLookup) {
-    let mut output = get_port(ports_lookup, midi_connection::YAELTEX_PORT_NAME);
-    output.on_connect(|port| {
-        port.send(&YTX_DUMP_CONTROLLER_STATE_SYSEX).unwrap();
-    });
-}
-
 fn get_port(
     ports_lookup: &mut PortLookup,
     port_name: &str,

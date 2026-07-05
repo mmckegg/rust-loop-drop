@@ -54,6 +54,12 @@ if ! ssh_pi "echo Connected to \$(hostname)"; then
   exit 1
 fi
 
+# The Pi has no RTC, so journal timestamps can be wrong after boot. Sync it to
+# the deploy machine before capturing JOURNAL_SINCE / tailing logs.
+echo "==> Syncing Pi clock to local time"
+LOCAL_EPOCH="$(date +%s)"
+ssh_pi "sudo date -s '@$LOCAL_EPOCH' >/dev/null && date"
+
 echo "==> Detecting Pi architecture"
 PI_ARCH="$(ssh_pi 'uname -m' | tr -d '\r')"
 case "$PI_ARCH" in

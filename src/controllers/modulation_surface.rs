@@ -1,5 +1,6 @@
 use crate::config::{
-    ActivityHighlight, BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderSlot, LfoMode,
+    ActivityHighlight, BankId, EncoderAssignment, EncoderColor, EncoderConfig, EncoderRingType,
+    EncoderSlot, LfoMode,
 };
 use crate::controllers::{midi_to_float, midi_to_polar, Modulator};
 use crate::lfo::Lfo;
@@ -12,6 +13,7 @@ use crate::output_value::OutputValue;
 use crate::scale::Scale;
 use crate::scheduler::ScheduleRange;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -25,14 +27,26 @@ const LFO_ACTIVE_COLOR_SWAP_INTERVAL_TICKS: i32 = 24;
 
 const ROTARY_STATUS: u8 = 176;
 const SWITCH_FIRST_CC: u8 = 32;
-const RING_FIRST_CC: u8 = 0;
-const SWITCH_FEEDBACK_STATUS: u8 = 176;
-const RING_FEEDBACK_STATUS: u8 = 176;
-const RING_MODE_STATUS: u8 = 176;
+const BULK_ENCODER_FEEDBACK_FRAME_REQUEST: u8 = 0x1C;
+const BULK_ENCODER_FEEDBACK_FRAME_FLAGS: u8 = 0x00;
+const BULK_FEEDBACK_READY_POLL_INTERVAL_MS: u64 = 100;
+const BULK_FEEDBACK_READY_POLL_MAX_ATTEMPTS: usize = 50;
+const BULK_FEEDBACK_READY_POLL: [u8; 9] = [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1E, 0xF7];
+const BULK_FEEDBACK_READY_RESPONSE: [u8; 9] =
+    [0xF0, 0x79, 0x74, 0x78, 0x01, 0x00, 0x00, 0x1E, 0xF7];
+const BULK_ENCODER_FEEDBACK_FRAME_PREFIX: [u8; 10] = [
+    0xF0,
+    0x79,
+    0x74,
+    0x78,
+    0x00,
+    0x01,
+    0x00,
+    BULK_ENCODER_FEEDBACK_FRAME_REQUEST,
+    BULK_ENCODER_FEEDBACK_FRAME_FLAGS,
+    0x00,
+];
 
-include!(concat!(env!("OUT_DIR"), "/controller_modes.rs"));
-const FEEDBACK_INTENSITY_CHANNEL: u8 = 15;
-const FEEDBACK_COLOR_CHANNEL: u8 = 16;
 const COLOR_OFF: u8 = 0;
 const COLOR_WHITE: u8 = 127;
 const COLOR_RED: u8 = 1;
@@ -59,7 +73,7 @@ enum Lane {
 enum Message {
     Turn {
         slot: EncoderSlot,
-        value: u8,
+        delta: i8,
     },
     Switch {
         slot: EncoderSlot,
@@ -70,6 +84,8 @@ enum Message {
         pos: MidiTime,
         length: MidiTime,
     },
+    WaitForBulkFeedbackReady,
+    ForceFeedbackRefresh,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +98,15 @@ struct AutomationLoop {
 enum UiFeedback {
     Manual,
     Silent,
+}
+
+fn decode_relative_encoder_delta(value: u8) -> Option<i8> {
+    let delta = value as i16 - 64;
+    if delta == 0 {
+        None
+    } else {
+        Some(delta.clamp(-63, 63) as i8)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,21 +134,56 @@ impl ModulationSurface {
         let tx_input = tx.clone();
         let tx_clock = tx.clone();
         let mut feedback = midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
+        let bulk_feedback_ready_polling = Arc::new(AtomicBool::new(false));
+        let encoder_feedback_ready = Arc::new(AtomicBool::new(false));
+        let tx_reconnect = tx.clone();
+        let feedback_poll = feedback.clone();
+        let bulk_feedback_ready_polling_on_connect = bulk_feedback_ready_polling.clone();
+        let encoder_feedback_ready_on_connect = encoder_feedback_ready.clone();
+        feedback.on_connect(move |_| {
+            encoder_feedback_ready_on_connect.store(false, Ordering::SeqCst);
+            let _ = tx_reconnect.send(Message::WaitForBulkFeedbackReady);
+            if bulk_feedback_ready_polling_on_connect.swap(true, Ordering::SeqCst) {
+                return;
+            }
+
+            let bulk_feedback_ready_polling = bulk_feedback_ready_polling_on_connect.clone();
+            let mut feedback_poll = feedback_poll.clone();
+            thread::spawn(move || {
+                for _ in 0..BULK_FEEDBACK_READY_POLL_MAX_ATTEMPTS {
+                    if !bulk_feedback_ready_polling.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let _ = feedback_poll.send(&BULK_FEEDBACK_READY_POLL);
+                    thread::sleep(Duration::from_millis(BULK_FEEDBACK_READY_POLL_INTERVAL_MS));
+                }
+                bulk_feedback_ready_polling.store(false, Ordering::SeqCst);
+                eprintln!("[WARN] Timed out waiting for Yaeltex bulk feedback ready response");
+            });
+        });
 
         let slot_by_rotary = build_rotary_slot_map();
         let slot_by_switch = build_switch_slot_map();
+        let bulk_feedback_ready_polling_on_input = bulk_feedback_ready_polling.clone();
+        let encoder_feedback_ready_on_input = encoder_feedback_ready.clone();
 
         let input = midi_connection::get_input(
             midi_connection::YAELTEX_PORT_NAME,
             move |_stamp, message| match message {
+                message if message == BULK_FEEDBACK_READY_RESPONSE.as_slice() => {
+                    bulk_feedback_ready_polling_on_input.store(false, Ordering::SeqCst);
+                    if encoder_feedback_ready_on_input.swap(true, Ordering::SeqCst) {
+                        return;
+                    }
+
+                    println!("[INFO] Encoder bulk feedback ready");
+                    let _ = tx_input.send(Message::ForceFeedbackRefresh);
+                }
                 [status, cc, value] if *status == ROTARY_STATUS => {
                     if let Some(slot) = slot_by_rotary.get(cc) {
-                        tx_input
-                            .send(Message::Turn {
-                                slot: *slot,
-                                value: *value,
-                            })
-                            .unwrap();
+                        if let Some(delta) = decode_relative_encoder_delta(*value) {
+                            tx_input.send(Message::Turn { slot: *slot, delta }).unwrap();
+                        }
                     } else if let Some(slot) = slot_by_switch.get(cc) {
                         tx_input
                             .send(Message::Switch {
@@ -155,6 +215,7 @@ impl ModulationSurface {
             let mut prepared_values: HashMap<Lane, u8> = HashMap::new();
             let mut last_sent_output: HashMap<EncoderSlot, u8> = HashMap::new();
             let mut last_feedback: HashMap<u8, SlotFeedback> = HashMap::new();
+            let mut bulk_feedback_ready = false;
             let mut last_pos = MidiTime::zero();
             let mut lfo = Lfo::new();
             let mut pulsing = 0.0f64;
@@ -199,7 +260,7 @@ impl ModulationSurface {
                 };
 
                 match msg {
-                    Message::Turn { slot, value } => {
+                    Message::Turn { slot, delta } => {
                         let (shift, current_bank, prepare_held) = {
                             let params = params.lock().unwrap();
                             (
@@ -219,6 +280,14 @@ impl ModulationSurface {
                             .unwrap_or(false);
 
                         if !release_guard {
+                            let value = apply_encoder_delta(
+                                lane,
+                                delta,
+                                &configs,
+                                &base_values,
+                                &lfo_amounts,
+                                &prepared_values,
+                            );
                             if prepare_held {
                                 prepared_values.insert(lane, value);
                                 if let Lane::Base(slot) = lane {
@@ -244,21 +313,23 @@ impl ModulationSurface {
                             }
                         }
 
-                        refresh_feedback(
-                            &configs,
-                            &base_values,
-                            &lfo_amounts,
-                            &prepared_values,
-                            &loops,
-                            &recording_started,
-                            &params,
-                            shift,
-                            current_bank,
-                            pulsing,
-                            last_pos,
-                            &mut last_feedback,
-                            &mut feedback,
-                        );
+                        if bulk_feedback_ready {
+                            refresh_feedback(
+                                &configs,
+                                &base_values,
+                                &lfo_amounts,
+                                &prepared_values,
+                                &loops,
+                                &recording_started,
+                                &params,
+                                shift,
+                                current_bank,
+                                pulsing,
+                                last_pos,
+                                &mut last_feedback,
+                                &mut feedback,
+                            );
+                        }
                     }
                     Message::Switch { slot, pressed, at } => {
                         let (shift, current_bank) = {
@@ -366,6 +437,35 @@ impl ModulationSurface {
                             }
                         }
 
+                        if bulk_feedback_ready {
+                            refresh_feedback(
+                                &configs,
+                                &base_values,
+                                &lfo_amounts,
+                                &prepared_values,
+                                &loops,
+                                &recording_started,
+                                &params,
+                                shift,
+                                current_bank,
+                                pulsing,
+                                last_pos,
+                                &mut last_feedback,
+                                &mut feedback,
+                            );
+                        }
+                    }
+                    Message::WaitForBulkFeedbackReady => {
+                        bulk_feedback_ready = false;
+                        last_feedback.clear();
+                    }
+                    Message::ForceFeedbackRefresh => {
+                        let (shift, current_bank) = {
+                            let params = params.lock().unwrap();
+                            (params.select_held, bank_id_from_u8(params.bank))
+                        };
+                        bulk_feedback_ready = true;
+                        last_feedback.clear();
                         refresh_feedback(
                             &configs,
                             &base_values,
@@ -472,21 +572,23 @@ impl ModulationSurface {
                             );
                         }
 
-                        refresh_feedback(
-                            &configs,
-                            &base_values,
-                            &lfo_amounts,
-                            &prepared_values,
-                            &loops,
-                            &recording_started,
-                            &params,
-                            shift,
-                            current_bank,
-                            pulsing,
-                            pos,
-                            &mut last_feedback,
-                            &mut feedback,
-                        );
+                        if bulk_feedback_ready {
+                            refresh_feedback(
+                                &configs,
+                                &base_values,
+                                &lfo_amounts,
+                                &prepared_values,
+                                &loops,
+                                &recording_started,
+                                &params,
+                                shift,
+                                current_bank,
+                                pulsing,
+                                pos,
+                                &mut last_feedback,
+                                &mut feedback,
+                            );
+                        }
                     }
                 }
             }
@@ -967,6 +1069,33 @@ fn lfo_depth(value: u8, config: &EncoderConfig) -> f64 {
     }
 }
 
+fn apply_encoder_delta(
+    lane: Lane,
+    delta: i8,
+    configs: &HashMap<EncoderSlot, EncoderConfig>,
+    base_values: &HashMap<EncoderSlot, u8>,
+    lfo_amounts: &HashMap<EncoderSlot, u8>,
+    prepared_values: &HashMap<Lane, u8>,
+) -> u8 {
+    let current = prepared_values
+        .get(&lane)
+        .copied()
+        .unwrap_or_else(|| match lane {
+            Lane::Base(slot) => base_values
+                .get(&slot)
+                .copied()
+                .or_else(|| configs.get(&slot).map(|c| c.assignment.default_value()))
+                .unwrap_or(0),
+            Lane::LfoAmount(slot) => lfo_amounts
+                .get(&slot)
+                .copied()
+                .or_else(|| configs.get(&slot).map(neutral_lfo_amount))
+                .unwrap_or(64),
+        });
+
+    (current as i16 + delta as i16).clamp(0, 127) as u8
+}
+
 fn reset_lane(
     lane: Lane,
     configs: &HashMap<EncoderSlot, EncoderConfig>,
@@ -1024,6 +1153,8 @@ fn refresh_feedback(
     last_feedback: &mut HashMap<u8, SlotFeedback>,
     feedback: &mut midi_connection::SharedMidiOutputConnection,
 ) {
+    let mut dirty_feedback: Vec<(u8, SlotFeedback)> = Vec::new();
+
     for (index, slot) in fixed_slots().iter().enumerate() {
         render_slot(
             *slot,
@@ -1039,7 +1170,7 @@ fn refresh_feedback(
             pulse,
             pos,
             last_feedback,
-            feedback,
+            &mut dirty_feedback,
         );
     }
 
@@ -1065,9 +1196,11 @@ fn refresh_feedback(
             pulse,
             pos,
             last_feedback,
-            feedback,
+            &mut dirty_feedback,
         );
     }
+
+    send_encoder_feedback_frame(feedback, &dirty_feedback);
 }
 
 fn bank_id_from_u8(value: u8) -> BankId {
@@ -1105,7 +1238,7 @@ fn render_slot(
     pulse: f64,
     pos: MidiTime,
     last_feedback: &mut HashMap<u8, SlotFeedback>,
-    feedback: &mut midi_connection::SharedMidiOutputConnection,
+    dirty_feedback: &mut Vec<(u8, SlotFeedback)>,
 ) {
     let config = if let Some(config) = configs.get(&slot) {
         config
@@ -1115,10 +1248,10 @@ fn render_slot(
             switch_intensity: 0,
             ring_color: COLOR_OFF,
             ring_intensity: 0,
-            ring_mode: PHYSICAL_ENCODER_RING_MODES[physical_index as usize],
+            ring_mode: EncoderRingType::default().to_midi(),
             ring_value: 0,
         };
-        send_slot_feedback(physical_index, new_feedback, last_feedback, feedback);
+        queue_slot_feedback(physical_index, new_feedback, last_feedback, dirty_feedback);
         return;
     };
 
@@ -1174,7 +1307,16 @@ fn render_slot(
             .unwrap_or_else(|| config.assignment.default_value())
     };
 
-    let centered_banked = is_centered_banked_encoder(slot, &config.assignment, ring_value);
+    let ring_type = if shift && config.assignment.supports_lfo_lane() {
+        match config.lfo_mode {
+            LfoMode::BipolarOffset => EncoderRingType::Pivot,
+            _ => EncoderRingType::Fill,
+        }
+    } else {
+        config.ring_type
+    };
+
+    let centered = is_centered_encoder(ring_type, ring_value);
 
     let ring_color = if is_recording {
         COLOR_RED
@@ -1182,7 +1324,7 @@ fn render_slot(
         COLOR_PURPLE
     } else if lfo_color_phase {
         COLOR_PURPLE
-    } else if centered_banked {
+    } else if centered {
         45
     } else {
         COLOR_WHITE
@@ -1195,18 +1337,18 @@ fn render_slot(
         switch_intensity,
         ring_color,
         ring_intensity,
-        ring_mode: PHYSICAL_ENCODER_RING_MODES[physical_index as usize],
+        ring_mode: ring_type.to_midi(),
         ring_value,
     };
 
-    send_slot_feedback(physical_index, new_feedback, last_feedback, feedback);
+    queue_slot_feedback(physical_index, new_feedback, last_feedback, dirty_feedback);
 }
 
-fn send_slot_feedback(
+fn queue_slot_feedback(
     physical_index: u8,
     new_feedback: SlotFeedback,
     last_feedback: &mut HashMap<u8, SlotFeedback>,
-    feedback: &mut midi_connection::SharedMidiOutputConnection,
+    dirty_feedback: &mut Vec<(u8, SlotFeedback)>,
 ) {
     if last_feedback
         .get(&physical_index)
@@ -1218,58 +1360,46 @@ fn send_slot_feedback(
     }
 
     let _ = last_feedback.insert(physical_index, new_feedback);
-
-    send_switch_feedback(
-        feedback,
-        SWITCH_FEEDBACK_STATUS,
-        SWITCH_FIRST_CC + physical_index,
-        new_feedback.switch_color,
-        new_feedback.switch_intensity,
-    );
-    send_ring_feedback(
-        feedback,
-        RING_FIRST_CC + physical_index,
-        new_feedback.ring_color,
-        new_feedback.ring_intensity,
-        new_feedback.ring_mode,
-        new_feedback.ring_value,
-    );
+    dirty_feedback.push((physical_index, new_feedback));
 }
 
-fn send_ring_feedback(
+fn send_encoder_feedback_frame(
     feedback: &mut midi_connection::SharedMidiOutputConnection,
-    cc: u8,
-    color: u8,
-    intensity: u8,
-    mode: u8,
-    value: u8,
+    records: &[(u8, SlotFeedback)],
 ) {
-    let _ = feedback.send(&[RING_MODE_STATUS, cc, mode]);
-    let _ = feedback.send(&[RING_FEEDBACK_STATUS, cc, value]);
-    let _ = feedback.send(&[cc_status(FEEDBACK_COLOR_CHANNEL), cc, color]);
-    let _ = feedback.send(&[cc_status(FEEDBACK_INTENSITY_CHANNEL), cc, intensity]);
-}
-
-fn send_switch_feedback(
-    feedback: &mut midi_connection::SharedMidiOutputConnection,
-    status: u8,
-    cc: u8,
-    color: u8,
-    intensity: u8,
-) {
-    let _ = feedback.send(&[status, cc, color]);
-    let _ = feedback.send(&[cc_status(FEEDBACK_INTENSITY_CHANNEL), cc, intensity]);
-}
-
-fn is_centered_banked_encoder(
-    slot: EncoderSlot,
-    assignment: &EncoderAssignment,
-    value: u8,
-) -> bool {
-    match slot {
-        EncoderSlot::Banked { .. } => assignment.default_value() == 64 && value == 64,
-        _ => false,
+    if records.is_empty() {
+        return;
     }
+
+    let first_index = records.first().map(|(index, _)| *index).unwrap_or(0);
+    let last_index = records.last().map(|(index, _)| *index).unwrap_or(0);
+
+    let mut message =
+        Vec::with_capacity(BULK_ENCODER_FEEDBACK_FRAME_PREFIX.len() + records.len() * 7 + 1);
+    message.extend_from_slice(&BULK_ENCODER_FEEDBACK_FRAME_PREFIX);
+    message[9] = records.len().min(127) as u8;
+
+    for (physical_index, state) in records.iter().take(127) {
+        message.push(*physical_index);
+        message.push(state.ring_mode);
+        message.push(state.ring_value);
+        message.push(state.ring_color);
+        message.push(state.ring_intensity);
+        message.push(state.switch_color);
+        message.push(state.switch_intensity);
+    }
+
+    message.push(0xF7);
+    if let Err(err) = feedback.send(&message) {
+        println!(
+            "[WARN] Failed to queue encoder bulk frame: count={}, first_index={}, last_index={}, err={:?}",
+            records.len(), first_index, last_index, err
+        );
+    }
+}
+
+fn is_centered_encoder(ring_type: EncoderRingType, value: u8) -> bool {
+    ring_type == EncoderRingType::Pivot && value == 64
 }
 
 fn lfo_speed_overlay_value(value: u8) -> String {
@@ -1396,7 +1526,7 @@ fn sample_activity_channel(index: u8) -> u32 {
 fn encoder_color_to_midi(color: EncoderColor) -> u8 {
     match color {
         EncoderColor::White => COLOR_WHITE,
-        EncoderColor::Yellow => 13,
+        EncoderColor::Yellow => 19,
         EncoderColor::Orange => 10,
         EncoderColor::Blue => 75,
         EncoderColor::Purple => COLOR_PURPLE,
@@ -1406,10 +1536,6 @@ fn encoder_color_to_midi(color: EncoderColor) -> u8 {
         EncoderColor::Red => COLOR_RED,
         EncoderColor::Green => 43,
     }
-}
-
-fn cc_status(channel: u8) -> u8 {
-    176 - 1 + channel
 }
 
 fn get_port(

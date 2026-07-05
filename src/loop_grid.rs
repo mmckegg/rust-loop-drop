@@ -8,15 +8,36 @@ use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::{Add, Sub};
-use std::sync::atomic::{self, AtomicBool};
+use std::sync::atomic::{self, AtomicBool, Ordering as AtomicOrdering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 const PLAYABLE_GRID_SIZE: u32 = 112;
 const GRID_NOTE_START: u8 = 8;
 const GRID_2_NOTE_START: u8 = 96;
 const LENGTH_BUTTONS: [u8; 8] = [88, 89, 90, 91, 92, 93, 94, 95];
+const BULK_DIGITAL_FEEDBACK_FRAME_REQUEST: u8 = 0x1D;
+const BULK_DIGITAL_FEEDBACK_FRAME_FLAGS: u8 = 0x00;
+const BULK_DIGITAL_FEEDBACK_MAX_RECORDS: usize = 32;
+const BULK_FEEDBACK_READY_POLL_INTERVAL_MS: u64 = 100;
+const BULK_FEEDBACK_READY_POLL_MAX_ATTEMPTS: usize = 50;
+const BULK_FEEDBACK_READY_POLL: [u8; 9] = [0xF0, 0x79, 0x74, 0x78, 0x00, 0x00, 0x00, 0x1E, 0xF7];
+const BULK_FEEDBACK_READY_RESPONSE: [u8; 9] =
+    [0xF0, 0x79, 0x74, 0x78, 0x01, 0x00, 0x00, 0x1E, 0xF7];
+const BULK_DIGITAL_FEEDBACK_FRAME_PREFIX: [u8; 10] = [
+    0xF0,
+    0x79,
+    0x74,
+    0x78,
+    0x00,
+    0x01,
+    0x00,
+    BULK_DIGITAL_FEEDBACK_FRAME_REQUEST,
+    BULK_DIGITAL_FEEDBACK_FRAME_FLAGS,
+    0x00,
+];
 
 use midi_connection;
 use midi_time::MidiTime;
@@ -183,6 +204,12 @@ enum TransformTarget {
     Selected,
 }
 
+#[derive(Clone, Copy)]
+struct DigitalFeedback {
+    color: u8,
+    intensity: u8,
+}
+
 impl Light {
     pub fn unwrap_or(self, value: Light) -> Light {
         match self {
@@ -290,6 +317,8 @@ pub struct LoopGrid {
     select_held: bool,
     selection_override_offset: Option<isize>,
     id_to_midi: HashMap<u32, u8>,
+    pending_digital_feedback: HashMap<u16, DigitalFeedback>,
+    digital_feedback_ready: Arc<AtomicBool>,
 
     loop_held: bool,
     loop_from: MidiTime,
@@ -352,8 +381,42 @@ pub struct LoopGrid {
 
 impl LoopGrid {
     fn send_note_color(&mut self, channel: u8, note: u8, light: Light) {
-        for message in note_light_messages(channel, note, light) {
-            self.controller_output.send(&message).unwrap();
+        if let Some(index) = digital_index_for_note(channel, note) {
+            self.pending_digital_feedback.insert(
+                index,
+                DigitalFeedback {
+                    color: light_to_hue(light.clone()),
+                    intensity: light_to_intensity(light),
+                },
+            );
+        }
+    }
+
+    fn queue_all_digital_feedback_off(&mut self) {
+        for index in 0..140 {
+            self.pending_digital_feedback.insert(
+                index,
+                DigitalFeedback {
+                    color: 0,
+                    intensity: 0,
+                },
+            );
+        }
+    }
+
+    fn flush_digital_feedback(&mut self) {
+        if !self.digital_feedback_ready.load(AtomicOrdering::SeqCst)
+            || self.pending_digital_feedback.is_empty()
+        {
+            return;
+        }
+
+        let mut records: Vec<(u16, DigitalFeedback)> =
+            self.pending_digital_feedback.drain().collect();
+        records.sort_by_key(|(index, _)| *index);
+
+        for chunk in records.chunks(BULK_DIGITAL_FEEDBACK_MAX_RECORDS) {
+            send_digital_feedback_frame(&mut self.controller_output, chunk);
         }
     }
 
@@ -369,10 +432,25 @@ impl LoopGrid {
         let (remote_tx, remote_queue) = mpsc::channel();
 
         let input_queue_connect_tx = input_queue_tx.clone();
+        let digital_feedback_ready = Arc::new(AtomicBool::new(false));
+        let digital_feedback_ready_on_input = digital_feedback_ready.clone();
+        let bulk_feedback_ready_polling = Arc::new(AtomicBool::new(false));
+        let bulk_feedback_ready_polling_on_input = bulk_feedback_ready_polling.clone();
 
         let input = midi_connection::get_input(
             midi_connection::YAELTEX_PORT_NAME,
             move |stamp, message| {
+                if message == BULK_FEEDBACK_READY_RESPONSE.as_slice() {
+                    bulk_feedback_ready_polling_on_input.store(false, AtomicOrdering::SeqCst);
+                    if digital_feedback_ready_on_input.swap(true, AtomicOrdering::SeqCst) {
+                        return;
+                    }
+
+                    println!("[INFO] Grid digital bulk feedback ready");
+                    input_queue_connect_tx.send(GridEvent::Connected).unwrap();
+                    return;
+                }
+
                 if message == [0xF0, 0x79, 0x74, 0x78, 0x01, 0xF7] {
                     return;
                 }
@@ -469,8 +547,28 @@ impl LoopGrid {
 
         let mut controller_output =
             midi_connection::get_shared_output(midi_connection::YAELTEX_PORT_NAME);
+        let digital_feedback_ready_on_connect = digital_feedback_ready.clone();
+        let bulk_feedback_ready_polling_on_connect = bulk_feedback_ready_polling.clone();
+        let feedback_poll = controller_output.clone();
         controller_output.on_connect(move |_port| {
-            input_queue_connect_tx.send(GridEvent::Connected).unwrap();
+            digital_feedback_ready_on_connect.store(false, AtomicOrdering::SeqCst);
+            if bulk_feedback_ready_polling_on_connect.swap(true, AtomicOrdering::SeqCst) {
+                return;
+            }
+
+            let bulk_feedback_ready_polling = bulk_feedback_ready_polling_on_connect.clone();
+            let mut feedback_poll = feedback_poll.clone();
+            thread::spawn(move || {
+                for _ in 0..BULK_FEEDBACK_READY_POLL_MAX_ATTEMPTS {
+                    if !bulk_feedback_ready_polling.load(AtomicOrdering::SeqCst) {
+                        return;
+                    }
+                    let _ = feedback_poll.send(&BULK_FEEDBACK_READY_POLL);
+                    thread::sleep(Duration::from_millis(BULK_FEEDBACK_READY_POLL_INTERVAL_MS));
+                }
+                bulk_feedback_ready_polling.store(false, AtomicOrdering::SeqCst);
+                eprintln!("[WARN] Timed out waiting for Yaeltex bulk feedback ready response");
+            });
         });
 
         let mut instance = LoopGrid {
@@ -485,6 +583,8 @@ impl LoopGrid {
             trigger_mode: TriggerMode::Immediate,
             trigger_override_held: false,
             preserve_immediate_until_release: HashSet::new(),
+            pending_digital_feedback: HashMap::new(),
+            digital_feedback_ready,
             chunk_cycle_step: HashMap::new(),
             chunk_cycle_next_pos: HashMap::new(),
             cycle_groups: HashMap::new(),
@@ -645,6 +745,7 @@ impl LoopGrid {
         match event {
             GridEvent::Connected => {
                 println!("Controller Connected");
+                self.queue_all_digital_feedback_off();
                 self.grid_out.clear();
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
@@ -663,6 +764,7 @@ impl LoopGrid {
                 self.refresh_select_state();
             }
             GridEvent::DelayedRefresh => {
+                self.queue_all_digital_feedback_off();
                 self.grid_out.clear();
                 self.length_row_out.clear();
                 self.repeat_button_out = Light::Off;
@@ -799,7 +901,6 @@ impl LoopGrid {
                 value,
                 stamp: _,
             } => {
-                let value = adjust_velocity(value);
                 if value > 0 {
                     self.grid_input(id, OutputValue::On(value));
                 } else {
@@ -1035,6 +1136,7 @@ impl LoopGrid {
 
         self.refresh_active_notes();
         self.refresh_grid_buttons();
+        self.flush_digital_feedback();
     }
 
     fn refresh_active_notes(&mut self) {
@@ -3037,13 +3139,182 @@ enum GridLight {
     Pulsing(Light),
 }
 
-fn note_light_messages(channel: u8, note: u8, light: Light) -> Vec<[u8; 3]> {
-    let hue = light_to_hue(light);
-    let mut result = vec![[0x90 + (channel - 1), note, hue]];
-    if channel == 1 {
-        result.push([0x9E, note, light_to_intensity(light)]);
+fn send_digital_feedback_frame(
+    output: &mut midi_connection::SharedMidiOutputConnection,
+    records: &[(u16, DigitalFeedback)],
+) {
+    if records.is_empty() {
+        return;
     }
-    result
+
+    let first_index = records.first().map(|(index, _)| *index).unwrap_or(0);
+    let last_index = records.last().map(|(index, _)| *index).unwrap_or(0);
+
+    let mut message =
+        Vec::with_capacity(BULK_DIGITAL_FEEDBACK_FRAME_PREFIX.len() + records.len() * 4 + 1);
+    message.extend_from_slice(&BULK_DIGITAL_FEEDBACK_FRAME_PREFIX);
+    message[9] = records.len() as u8;
+
+    for (index, feedback) in records {
+        message.push((index & 0x7F) as u8);
+        message.push(((index >> 7) & 0x7F) as u8);
+        message.push(feedback.color);
+        message.push(feedback.intensity);
+    }
+
+    message.push(0xF7);
+    if let Err(err) = output.send(&message) {
+        println!(
+            "[WARN] Failed to queue grid digital bulk frame: count={}, first_index={}, last_index={}, err={:?}",
+            records.len(), first_index, last_index, err
+        );
+    }
+}
+
+fn digital_index_for_note(channel: u8, note: u8) -> Option<u16> {
+    match (channel, note) {
+        (1, 8) => Some(0),
+        (1, 9) => Some(1),
+        (1, 10) => Some(2),
+        (1, 11) => Some(3),
+        (1, 16) => Some(4),
+        (1, 17) => Some(5),
+        (1, 18) => Some(6),
+        (1, 19) => Some(7),
+        (1, 12) => Some(8),
+        (1, 13) => Some(9),
+        (1, 14) => Some(10),
+        (1, 15) => Some(11),
+        (1, 20) => Some(12),
+        (1, 21) => Some(13),
+        (1, 22) => Some(14),
+        (1, 23) => Some(15),
+        (2, 61) => Some(16),
+        (2, 62) => Some(17),
+        (2, 63) => Some(18),
+        (2, 64) => Some(19),
+        (2, 65) => Some(20),
+        (2, 66) => Some(21),
+        (2, 67) => Some(22),
+        (2, 68) => Some(23),
+        (1, 88) => Some(24),
+        (1, 89) => Some(25),
+        (1, 90) => Some(26),
+        (1, 91) => Some(27),
+        (1, 92) => Some(28),
+        (1, 93) => Some(29),
+        (1, 94) => Some(30),
+        (1, 95) => Some(31),
+        (1, 24) => Some(32),
+        (1, 25) => Some(33),
+        (1, 26) => Some(34),
+        (1, 27) => Some(35),
+        (1, 32) => Some(36),
+        (1, 33) => Some(37),
+        (1, 34) => Some(38),
+        (1, 35) => Some(39),
+        (1, 28) => Some(40),
+        (1, 29) => Some(41),
+        (1, 30) => Some(42),
+        (1, 31) => Some(43),
+        (1, 36) => Some(44),
+        (1, 37) => Some(45),
+        (1, 38) => Some(46),
+        (1, 39) => Some(47),
+        (1, 96) => Some(48),
+        (1, 97) => Some(49),
+        (1, 98) => Some(50),
+        (1, 99) => Some(51),
+        (1, 100) => Some(52),
+        (1, 101) => Some(53),
+        (1, 102) => Some(54),
+        (1, 103) => Some(55),
+        (1, 104) => Some(56),
+        (1, 105) => Some(57),
+        (1, 106) => Some(58),
+        (1, 107) => Some(59),
+        (1, 108) => Some(60),
+        (1, 109) => Some(61),
+        (1, 110) => Some(62),
+        (1, 111) => Some(63),
+        (1, 40) => Some(64),
+        (1, 41) => Some(65),
+        (1, 42) => Some(66),
+        (1, 43) => Some(67),
+        (1, 48) => Some(68),
+        (1, 49) => Some(69),
+        (1, 50) => Some(70),
+        (1, 51) => Some(71),
+        (1, 44) => Some(72),
+        (1, 45) => Some(73),
+        (1, 46) => Some(74),
+        (1, 47) => Some(75),
+        (1, 52) => Some(76),
+        (1, 53) => Some(77),
+        (1, 54) => Some(78),
+        (1, 55) => Some(79),
+        (1, 112) => Some(80),
+        (1, 113) => Some(81),
+        (1, 114) => Some(82),
+        (1, 115) => Some(83),
+        (1, 116) => Some(84),
+        (1, 117) => Some(85),
+        (1, 118) => Some(86),
+        (1, 119) => Some(87),
+        (1, 120) => Some(88),
+        (1, 121) => Some(89),
+        (1, 122) => Some(90),
+        (1, 123) => Some(91),
+        (1, 124) => Some(92),
+        (1, 125) => Some(93),
+        (1, 126) => Some(94),
+        (1, 127) => Some(95),
+        (1, 56) => Some(96),
+        (1, 57) => Some(97),
+        (1, 58) => Some(98),
+        (1, 59) => Some(99),
+        (1, 64) => Some(100),
+        (1, 65) => Some(101),
+        (1, 66) => Some(102),
+        (1, 67) => Some(103),
+        (1, 60) => Some(104),
+        (1, 61) => Some(105),
+        (1, 62) => Some(106),
+        (1, 63) => Some(107),
+        (1, 68) => Some(108),
+        (1, 69) => Some(109),
+        (1, 70) => Some(110),
+        (1, 71) => Some(111),
+        (1, 72) => Some(112),
+        (1, 73) => Some(113),
+        (1, 74) => Some(114),
+        (1, 75) => Some(115),
+        (1, 80) => Some(116),
+        (1, 81) => Some(117),
+        (1, 82) => Some(118),
+        (1, 83) => Some(119),
+        (1, 76) => Some(120),
+        (1, 77) => Some(121),
+        (1, 78) => Some(122),
+        (1, 79) => Some(123),
+        (1, 84) => Some(124),
+        (1, 85) => Some(125),
+        (1, 86) => Some(126),
+        (1, 87) => Some(127),
+        (1, 0) => Some(128),
+        (1, 1) => Some(129),
+        (1, 2) => Some(130),
+        (1, 3) => Some(131),
+        (1, 4) => Some(132),
+        (1, 5) => Some(133),
+        (1, 6) => Some(134),
+        (1, 7) => Some(135),
+        (2, 1) => Some(136),
+        (2, 2) => Some(137),
+        (2, 3) => Some(138),
+        (2, 4) => Some(139),
+        _ => None,
+    }
 }
 
 fn light_to_hue(light: Light) -> u8 {
@@ -3712,51 +3983,6 @@ fn is_active(transform: &LoopTransform, id: &u32, loop_recorder: &LoopRecorder) 
     }
 }
 
-fn adjust_velocity(input_velocity: u8) -> u8 {
-    if input_velocity == 0 {
-        0
-    } else {
-        127
-    }
-}
-
 fn cc_bucket(value: u8, count: usize) -> usize {
     ((value as usize * count) / 128).min(count.saturating_sub(1))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_adjust_velocity() {
-        assert_eq!(adjust_velocity(0), 0);
-        assert_eq!(adjust_velocity(1), 127);
-        assert_eq!(adjust_velocity(64), 127);
-        assert_eq!(adjust_velocity(127), 127);
-    }
-
-    #[test]
-    fn test_channel_1_light_sends_hue_and_intensity() {
-        assert_eq!(
-            note_light_messages(1, 7, Light::GreenLow),
-            vec![[0x90, 7, light_to_hue(Light::GreenLow)], [0x9E, 7, 48]]
-        );
-    }
-
-    #[test]
-    fn test_channel_2_light_sends_only_hue() {
-        assert_eq!(
-            note_light_messages(2, 3, Light::White),
-            vec![[0x91, 3, light_to_hue(Light::White)]]
-        );
-    }
-
-    #[test]
-    fn test_off_light_sends_zero_intensity_on_channel_1() {
-        assert_eq!(
-            note_light_messages(1, 12, Light::Off),
-            vec![[0x90, 12, 0], [0x9E, 12, 0]]
-        );
-    }
 }

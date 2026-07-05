@@ -194,7 +194,7 @@
       "encoders": {
         "0": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -244,12 +244,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 0,
             "parameter_lsb": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -259,11 +259,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 32,
             "parameter_lsb": 32,
             "parameter_msb": 0,
@@ -273,13 +273,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "1": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -329,12 +329,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 1,
             "parameter_lsb": 1,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -344,11 +344,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 33,
             "parameter_lsb": 33,
             "parameter_msb": 0,
@@ -358,13 +358,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "2": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -414,12 +414,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 2,
             "parameter_lsb": 2,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -429,11 +429,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 34,
             "parameter_lsb": 34,
             "parameter_msb": 0,
@@ -443,13 +443,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "3": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -499,12 +499,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 3,
             "parameter_lsb": 3,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -514,11 +514,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 35,
             "parameter_lsb": 35,
             "parameter_msb": 0,
@@ -528,13 +528,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "4": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -584,12 +584,12 @@
           },
           "rotation_feedback": {
             "mode": 2,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 4,
             "parameter_lsb": 4,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -599,11 +599,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 36,
             "parameter_lsb": 36,
             "parameter_msb": 0,
@@ -613,13 +613,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "5": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -669,12 +669,12 @@
           },
           "rotation_feedback": {
             "mode": 2,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 5,
             "parameter_lsb": 5,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -684,11 +684,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 37,
             "parameter_lsb": 37,
             "parameter_msb": 0,
@@ -698,13 +698,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "6": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -754,12 +754,12 @@
           },
           "rotation_feedback": {
             "mode": 2,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 6,
             "parameter_lsb": 6,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -769,11 +769,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 38,
             "parameter_lsb": 38,
             "parameter_msb": 0,
@@ -783,13 +783,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "7": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -839,12 +839,12 @@
           },
           "rotation_feedback": {
             "mode": 2,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 7,
             "parameter_lsb": 7,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -854,11 +854,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 39,
             "parameter_lsb": 39,
             "parameter_msb": 0,
@@ -868,13 +868,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "8": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -924,12 +924,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 8,
             "parameter_lsb": 8,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -939,11 +939,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 40,
             "parameter_lsb": 40,
             "parameter_msb": 0,
@@ -953,13 +953,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "9": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1009,12 +1009,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 9,
             "parameter_lsb": 9,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1024,11 +1024,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 41,
             "parameter_lsb": 41,
             "parameter_msb": 0,
@@ -1038,13 +1038,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "10": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1094,12 +1094,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 10,
             "parameter_lsb": 10,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1109,11 +1109,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 42,
             "parameter_lsb": 42,
             "parameter_msb": 0,
@@ -1123,13 +1123,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "11": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1179,12 +1179,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 11,
             "parameter_lsb": 11,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1194,11 +1194,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 43,
             "parameter_lsb": 43,
             "parameter_msb": 0,
@@ -1208,13 +1208,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "12": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1264,12 +1264,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 12,
             "parameter_lsb": 12,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1279,11 +1279,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 44,
             "parameter_lsb": 44,
             "parameter_msb": 0,
@@ -1293,13 +1293,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "13": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1349,12 +1349,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 13,
             "parameter_lsb": 13,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1364,11 +1364,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 45,
             "parameter_lsb": 45,
             "parameter_msb": 0,
@@ -1378,13 +1378,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "14": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1434,12 +1434,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 14,
             "parameter_lsb": 14,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1449,11 +1449,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 46,
             "parameter_lsb": 46,
             "parameter_msb": 0,
@@ -1463,13 +1463,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "15": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1519,12 +1519,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 15,
             "parameter_lsb": 15,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1534,11 +1534,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 47,
             "parameter_lsb": 47,
             "parameter_msb": 0,
@@ -1548,13 +1548,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "16": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1604,12 +1604,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 16,
             "parameter_lsb": 16,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1619,11 +1619,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 48,
             "parameter_lsb": 48,
             "parameter_msb": 0,
@@ -1633,13 +1633,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "17": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1689,12 +1689,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 17,
             "parameter_lsb": 17,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1704,11 +1704,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 49,
             "parameter_lsb": 49,
             "parameter_msb": 0,
@@ -1718,13 +1718,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "18": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1774,12 +1774,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 18,
             "parameter_lsb": 18,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1789,11 +1789,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 50,
             "parameter_lsb": 50,
             "parameter_msb": 0,
@@ -1803,13 +1803,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "19": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1859,12 +1859,12 @@
           },
           "rotation_feedback": {
             "mode": 3,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 19,
             "parameter_lsb": 19,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1874,11 +1874,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 51,
             "parameter_lsb": 51,
             "parameter_msb": 0,
@@ -1888,13 +1888,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "20": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -1944,12 +1944,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 20,
             "parameter_lsb": 20,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -1959,11 +1959,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 52,
             "parameter_lsb": 52,
             "parameter_msb": 0,
@@ -1973,13 +1973,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "21": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2029,12 +2029,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 21,
             "parameter_lsb": 21,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2044,11 +2044,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 53,
             "parameter_lsb": 53,
             "parameter_msb": 0,
@@ -2058,13 +2058,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "22": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2114,12 +2114,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 22,
             "parameter_lsb": 22,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2129,11 +2129,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 54,
             "parameter_lsb": 54,
             "parameter_msb": 0,
@@ -2143,13 +2143,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "23": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2199,12 +2199,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 23,
             "parameter_lsb": 23,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2214,11 +2214,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 55,
             "parameter_lsb": 55,
             "parameter_msb": 0,
@@ -2228,13 +2228,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "24": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2284,12 +2284,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 24,
             "parameter_lsb": 24,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2299,11 +2299,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 56,
             "parameter_lsb": 56,
             "parameter_msb": 0,
@@ -2313,13 +2313,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "25": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2369,12 +2369,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 25,
             "parameter_lsb": 25,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2384,11 +2384,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 57,
             "parameter_lsb": 57,
             "parameter_msb": 0,
@@ -2398,13 +2398,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "26": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2454,12 +2454,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 26,
             "parameter_lsb": 26,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2469,11 +2469,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 58,
             "parameter_lsb": 58,
             "parameter_msb": 0,
@@ -2483,13 +2483,13 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
         "27": {
           "encoder_mode": {
-            "hw_mode": 0,
+            "hw_mode": 1,
             "speed_value": 3
           },
           "rotary_config": {
@@ -2539,12 +2539,12 @@
           },
           "rotation_feedback": {
             "mode": 0,
-            "source": 7,
+            "source": 1,
             "channel": 0,
             "message": 2,
             "parameter": 27,
             "parameter_lsb": 27,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter_msb": 0,
             "value_to_intensity": 0,
             "color": [
@@ -2554,11 +2554,11 @@
             ]
           },
           "switch_feedback": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 59,
             "parameter_lsb": 59,
             "parameter_msb": 0,
@@ -2568,7 +2568,7 @@
               224
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         }
@@ -2594,11 +2594,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 8,
             "parameter_lsb": 8,
             "parameter_msb": 0,
@@ -2608,7 +2608,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2632,11 +2632,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 9,
             "parameter_lsb": 9,
             "parameter_msb": 0,
@@ -2646,7 +2646,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2670,11 +2670,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 10,
             "parameter_lsb": 10,
             "parameter_msb": 0,
@@ -2684,7 +2684,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2708,11 +2708,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 11,
             "parameter_lsb": 11,
             "parameter_msb": 0,
@@ -2722,7 +2722,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2746,11 +2746,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 16,
             "parameter_lsb": 16,
             "parameter_msb": 0,
@@ -2760,7 +2760,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2784,11 +2784,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 17,
             "parameter_lsb": 17,
             "parameter_msb": 0,
@@ -2798,7 +2798,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2822,11 +2822,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 18,
             "parameter_lsb": 18,
             "parameter_msb": 0,
@@ -2836,7 +2836,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2860,11 +2860,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 19,
             "parameter_lsb": 19,
             "parameter_msb": 0,
@@ -2874,7 +2874,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2898,11 +2898,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 12,
             "parameter_lsb": 12,
             "parameter_msb": 0,
@@ -2912,7 +2912,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2936,11 +2936,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 13,
             "parameter_lsb": 13,
             "parameter_msb": 0,
@@ -2950,7 +2950,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -2974,11 +2974,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 14,
             "parameter_lsb": 14,
             "parameter_msb": 0,
@@ -2988,7 +2988,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3012,11 +3012,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 15,
             "parameter_lsb": 15,
             "parameter_msb": 0,
@@ -3026,7 +3026,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3050,11 +3050,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 20,
             "parameter_lsb": 20,
             "parameter_msb": 0,
@@ -3064,7 +3064,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3088,11 +3088,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 21,
             "parameter_lsb": 21,
             "parameter_msb": 0,
@@ -3102,7 +3102,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3126,11 +3126,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 22,
             "parameter_lsb": 22,
             "parameter_msb": 0,
@@ -3140,7 +3140,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3164,11 +3164,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 23,
             "parameter_lsb": 23,
             "parameter_msb": 0,
@@ -3178,7 +3178,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3202,11 +3202,11 @@
             "comment": "Mute 1\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 61,
             "parameter_lsb": 61,
             "parameter_msb": 0,
@@ -3240,11 +3240,11 @@
             "comment": "Mute 2\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 62,
             "parameter_lsb": 62,
             "parameter_msb": 0,
@@ -3278,11 +3278,11 @@
             "comment": "Mute 3\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 63,
             "parameter_lsb": 63,
             "parameter_msb": 0,
@@ -3316,11 +3316,11 @@
             "comment": "Mute 4\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 64,
             "parameter_lsb": 64,
             "parameter_msb": 0,
@@ -3354,11 +3354,11 @@
             "comment": "Mute 5\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 65,
             "parameter_lsb": 65,
             "parameter_msb": 0,
@@ -3392,11 +3392,11 @@
             "comment": "Mute 6\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 66,
             "parameter_lsb": 66,
             "parameter_msb": 0,
@@ -3430,11 +3430,11 @@
             "comment": "Mute 7\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 67,
             "parameter_lsb": 67,
             "parameter_msb": 0,
@@ -3468,11 +3468,11 @@
             "comment": "Mute 8\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 68,
             "parameter_lsb": 68,
             "parameter_msb": 0,
@@ -3506,11 +3506,11 @@
             "comment": "Length 1"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 88,
             "parameter_lsb": 88,
             "parameter_msb": 0,
@@ -3520,7 +3520,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3544,11 +3544,11 @@
             "comment": "Length 2"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 89,
             "parameter_lsb": 89,
             "parameter_msb": 0,
@@ -3558,7 +3558,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3582,11 +3582,11 @@
             "comment": "Length 3"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 90,
             "parameter_lsb": 90,
             "parameter_msb": 0,
@@ -3596,7 +3596,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3620,11 +3620,11 @@
             "comment": "Length 4"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 91,
             "parameter_lsb": 91,
             "parameter_msb": 0,
@@ -3634,7 +3634,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3658,11 +3658,11 @@
             "comment": "Length 5"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 92,
             "parameter_lsb": 92,
             "parameter_msb": 0,
@@ -3672,7 +3672,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3696,11 +3696,11 @@
             "comment": "Length 6"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 93,
             "parameter_lsb": 93,
             "parameter_msb": 0,
@@ -3710,7 +3710,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3734,11 +3734,11 @@
             "comment": "Length 7"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 94,
             "parameter_lsb": 94,
             "parameter_msb": 0,
@@ -3748,7 +3748,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3772,11 +3772,11 @@
             "comment": "Length 8"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 95,
             "parameter_lsb": 95,
             "parameter_msb": 0,
@@ -3786,7 +3786,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3810,11 +3810,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 24,
             "parameter_lsb": 24,
             "parameter_msb": 0,
@@ -3824,7 +3824,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3848,11 +3848,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 25,
             "parameter_lsb": 25,
             "parameter_msb": 0,
@@ -3862,7 +3862,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3886,11 +3886,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 26,
             "parameter_lsb": 26,
             "parameter_msb": 0,
@@ -3900,7 +3900,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3924,11 +3924,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 27,
             "parameter_lsb": 27,
             "parameter_msb": 0,
@@ -3938,7 +3938,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -3962,11 +3962,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 32,
             "parameter_lsb": 32,
             "parameter_msb": 0,
@@ -3976,7 +3976,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4000,11 +4000,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 33,
             "parameter_lsb": 33,
             "parameter_msb": 0,
@@ -4014,7 +4014,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4038,11 +4038,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 34,
             "parameter_lsb": 34,
             "parameter_msb": 0,
@@ -4052,7 +4052,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4076,11 +4076,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 35,
             "parameter_lsb": 35,
             "parameter_msb": 0,
@@ -4090,7 +4090,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4114,11 +4114,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 28,
             "parameter_lsb": 28,
             "parameter_msb": 0,
@@ -4128,7 +4128,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4152,11 +4152,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 29,
             "parameter_lsb": 29,
             "parameter_msb": 0,
@@ -4166,7 +4166,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4190,11 +4190,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 30,
             "parameter_lsb": 30,
             "parameter_msb": 0,
@@ -4204,7 +4204,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4228,11 +4228,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 31,
             "parameter_lsb": 31,
             "parameter_msb": 0,
@@ -4242,7 +4242,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4266,11 +4266,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 36,
             "parameter_lsb": 36,
             "parameter_msb": 0,
@@ -4280,7 +4280,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4304,11 +4304,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 37,
             "parameter_lsb": 37,
             "parameter_msb": 0,
@@ -4318,7 +4318,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4342,11 +4342,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 38,
             "parameter_lsb": 38,
             "parameter_msb": 0,
@@ -4356,7 +4356,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4380,11 +4380,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 39,
             "parameter_lsb": 39,
             "parameter_msb": 0,
@@ -4394,7 +4394,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4418,11 +4418,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 96,
             "parameter_lsb": 96,
             "parameter_msb": 0,
@@ -4432,7 +4432,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4456,11 +4456,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 97,
             "parameter_lsb": 97,
             "parameter_msb": 0,
@@ -4470,7 +4470,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4494,11 +4494,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 98,
             "parameter_lsb": 98,
             "parameter_msb": 0,
@@ -4508,7 +4508,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4532,11 +4532,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 99,
             "parameter_lsb": 99,
             "parameter_msb": 0,
@@ -4546,7 +4546,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4570,11 +4570,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 100,
             "parameter_lsb": 100,
             "parameter_msb": 0,
@@ -4584,7 +4584,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4608,11 +4608,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 101,
             "parameter_lsb": 101,
             "parameter_msb": 0,
@@ -4622,7 +4622,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4646,11 +4646,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 102,
             "parameter_lsb": 102,
             "parameter_msb": 0,
@@ -4660,7 +4660,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4684,11 +4684,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 103,
             "parameter_lsb": 103,
             "parameter_msb": 0,
@@ -4698,7 +4698,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4722,11 +4722,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 104,
             "parameter_lsb": 104,
             "parameter_msb": 0,
@@ -4736,7 +4736,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4760,11 +4760,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 105,
             "parameter_lsb": 105,
             "parameter_msb": 0,
@@ -4774,7 +4774,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4798,11 +4798,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 106,
             "parameter_lsb": 106,
             "parameter_msb": 0,
@@ -4812,7 +4812,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4836,11 +4836,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 107,
             "parameter_lsb": 107,
             "parameter_msb": 0,
@@ -4850,7 +4850,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4874,11 +4874,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 108,
             "parameter_lsb": 108,
             "parameter_msb": 0,
@@ -4888,7 +4888,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4912,11 +4912,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 109,
             "parameter_lsb": 109,
             "parameter_msb": 0,
@@ -4926,7 +4926,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4950,11 +4950,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 110,
             "parameter_lsb": 110,
             "parameter_msb": 0,
@@ -4964,7 +4964,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -4988,11 +4988,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 111,
             "parameter_lsb": 111,
             "parameter_msb": 0,
@@ -5002,7 +5002,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5026,11 +5026,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 40,
             "parameter_lsb": 40,
             "parameter_msb": 0,
@@ -5040,7 +5040,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5064,11 +5064,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 41,
             "parameter_lsb": 41,
             "parameter_msb": 0,
@@ -5078,7 +5078,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5102,11 +5102,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 42,
             "parameter_lsb": 42,
             "parameter_msb": 0,
@@ -5116,7 +5116,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5140,11 +5140,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 43,
             "parameter_lsb": 43,
             "parameter_msb": 0,
@@ -5154,7 +5154,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5178,11 +5178,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 48,
             "parameter_lsb": 48,
             "parameter_msb": 0,
@@ -5192,7 +5192,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5216,11 +5216,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 49,
             "parameter_lsb": 49,
             "parameter_msb": 0,
@@ -5230,7 +5230,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5254,11 +5254,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 50,
             "parameter_lsb": 50,
             "parameter_msb": 0,
@@ -5268,7 +5268,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5292,11 +5292,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 51,
             "parameter_lsb": 51,
             "parameter_msb": 0,
@@ -5306,7 +5306,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5330,11 +5330,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 44,
             "parameter_lsb": 44,
             "parameter_msb": 0,
@@ -5344,7 +5344,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5368,11 +5368,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 45,
             "parameter_lsb": 45,
             "parameter_msb": 0,
@@ -5382,7 +5382,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5406,11 +5406,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 46,
             "parameter_lsb": 46,
             "parameter_msb": 0,
@@ -5420,7 +5420,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5444,11 +5444,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 47,
             "parameter_lsb": 47,
             "parameter_msb": 0,
@@ -5458,7 +5458,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5482,11 +5482,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 52,
             "parameter_lsb": 52,
             "parameter_msb": 0,
@@ -5496,7 +5496,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5520,11 +5520,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 53,
             "parameter_lsb": 53,
             "parameter_msb": 0,
@@ -5534,7 +5534,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5558,11 +5558,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 54,
             "parameter_lsb": 54,
             "parameter_msb": 0,
@@ -5572,7 +5572,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5596,11 +5596,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 55,
             "parameter_lsb": 55,
             "parameter_msb": 0,
@@ -5610,7 +5610,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5634,11 +5634,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 112,
             "parameter_lsb": 112,
             "parameter_msb": 0,
@@ -5648,7 +5648,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5672,11 +5672,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 113,
             "parameter_lsb": 113,
             "parameter_msb": 0,
@@ -5686,7 +5686,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5710,11 +5710,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 114,
             "parameter_lsb": 114,
             "parameter_msb": 0,
@@ -5724,7 +5724,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5748,11 +5748,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 115,
             "parameter_lsb": 115,
             "parameter_msb": 0,
@@ -5762,7 +5762,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5786,11 +5786,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 116,
             "parameter_lsb": 116,
             "parameter_msb": 0,
@@ -5800,7 +5800,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5824,11 +5824,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 117,
             "parameter_lsb": 117,
             "parameter_msb": 0,
@@ -5838,7 +5838,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5862,11 +5862,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 118,
             "parameter_lsb": 118,
             "parameter_msb": 0,
@@ -5876,7 +5876,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5900,11 +5900,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 119,
             "parameter_lsb": 119,
             "parameter_msb": 0,
@@ -5914,7 +5914,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5938,11 +5938,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 120,
             "parameter_lsb": 120,
             "parameter_msb": 0,
@@ -5952,7 +5952,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -5976,11 +5976,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 121,
             "parameter_lsb": 121,
             "parameter_msb": 0,
@@ -5990,7 +5990,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6014,11 +6014,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 122,
             "parameter_lsb": 122,
             "parameter_msb": 0,
@@ -6028,7 +6028,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6052,11 +6052,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 123,
             "parameter_lsb": 123,
             "parameter_msb": 0,
@@ -6066,7 +6066,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6090,11 +6090,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 124,
             "parameter_lsb": 124,
             "parameter_msb": 0,
@@ -6104,7 +6104,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6128,11 +6128,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 125,
             "parameter_lsb": 125,
             "parameter_msb": 0,
@@ -6142,7 +6142,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6166,11 +6166,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 126,
             "parameter_lsb": 126,
             "parameter_msb": 0,
@@ -6180,7 +6180,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6204,11 +6204,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 127,
             "parameter_lsb": 127,
             "parameter_msb": 0,
@@ -6218,7 +6218,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6242,11 +6242,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 56,
             "parameter_lsb": 56,
             "parameter_msb": 0,
@@ -6256,7 +6256,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6280,11 +6280,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 57,
             "parameter_lsb": 57,
             "parameter_msb": 0,
@@ -6294,7 +6294,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6318,11 +6318,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 58,
             "parameter_lsb": 58,
             "parameter_msb": 0,
@@ -6332,7 +6332,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6356,11 +6356,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 59,
             "parameter_lsb": 59,
             "parameter_msb": 0,
@@ -6370,7 +6370,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6394,11 +6394,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 64,
             "parameter_lsb": 64,
             "parameter_msb": 0,
@@ -6408,7 +6408,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6432,11 +6432,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 65,
             "parameter_lsb": 65,
             "parameter_msb": 0,
@@ -6446,7 +6446,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6470,11 +6470,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 66,
             "parameter_lsb": 66,
             "parameter_msb": 0,
@@ -6484,7 +6484,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6508,11 +6508,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 67,
             "parameter_lsb": 67,
             "parameter_msb": 0,
@@ -6522,7 +6522,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6546,11 +6546,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 60,
             "parameter_lsb": 60,
             "parameter_msb": 0,
@@ -6560,7 +6560,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6584,11 +6584,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 61,
             "parameter_lsb": 61,
             "parameter_msb": 0,
@@ -6598,7 +6598,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6622,11 +6622,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 62,
             "parameter_lsb": 62,
             "parameter_msb": 0,
@@ -6636,7 +6636,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6660,11 +6660,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 63,
             "parameter_lsb": 63,
             "parameter_msb": 0,
@@ -6674,7 +6674,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6698,11 +6698,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 68,
             "parameter_lsb": 68,
             "parameter_msb": 0,
@@ -6712,7 +6712,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6736,11 +6736,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 69,
             "parameter_lsb": 69,
             "parameter_msb": 0,
@@ -6750,7 +6750,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6774,11 +6774,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 70,
             "parameter_lsb": 70,
             "parameter_msb": 0,
@@ -6788,7 +6788,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6812,11 +6812,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 71,
             "parameter_lsb": 71,
             "parameter_msb": 0,
@@ -6826,7 +6826,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6850,11 +6850,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 72,
             "parameter_lsb": 72,
             "parameter_msb": 0,
@@ -6864,7 +6864,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6888,11 +6888,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 73,
             "parameter_lsb": 73,
             "parameter_msb": 0,
@@ -6902,7 +6902,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6926,11 +6926,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 74,
             "parameter_lsb": 74,
             "parameter_msb": 0,
@@ -6940,7 +6940,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -6964,11 +6964,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 75,
             "parameter_lsb": 75,
             "parameter_msb": 0,
@@ -6978,7 +6978,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7002,11 +7002,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 80,
             "parameter_lsb": 80,
             "parameter_msb": 0,
@@ -7016,7 +7016,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7040,11 +7040,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 81,
             "parameter_lsb": 81,
             "parameter_msb": 0,
@@ -7054,7 +7054,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7078,11 +7078,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 82,
             "parameter_lsb": 82,
             "parameter_msb": 0,
@@ -7092,7 +7092,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7116,11 +7116,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 83,
             "parameter_lsb": 83,
             "parameter_msb": 0,
@@ -7130,7 +7130,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7154,11 +7154,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 76,
             "parameter_lsb": 76,
             "parameter_msb": 0,
@@ -7168,7 +7168,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7192,11 +7192,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 77,
             "parameter_lsb": 77,
             "parameter_msb": 0,
@@ -7206,7 +7206,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7230,11 +7230,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 78,
             "parameter_lsb": 78,
             "parameter_msb": 0,
@@ -7244,7 +7244,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7268,11 +7268,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 79,
             "parameter_lsb": 79,
             "parameter_msb": 0,
@@ -7282,7 +7282,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7306,11 +7306,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 84,
             "parameter_lsb": 84,
             "parameter_msb": 0,
@@ -7320,7 +7320,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7344,11 +7344,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 85,
             "parameter_lsb": 85,
             "parameter_msb": 0,
@@ -7358,7 +7358,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7382,11 +7382,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 86,
             "parameter_lsb": 86,
             "parameter_msb": 0,
@@ -7396,7 +7396,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7420,11 +7420,11 @@
             "comment": "ytx Digi"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 87,
             "parameter_lsb": 87,
             "parameter_msb": 0,
@@ -7434,7 +7434,7 @@
               145
             ],
             "low_intensity_off_mode": 0,
-            "value_to_intensity": 1
+            "value_to_intensity": 0
           },
           "value": 0
         },
@@ -7458,11 +7458,11 @@
             "comment": "Loop\u0000\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 0,
             "parameter_lsb": 0,
             "parameter_msb": 0,
@@ -7496,11 +7496,11 @@
             "comment": "Clear\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 1,
             "parameter_lsb": 1,
             "parameter_msb": 0,
@@ -7534,11 +7534,11 @@
             "comment": "Undo\u0000\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 2,
             "parameter_lsb": 2,
             "parameter_msb": 0,
@@ -7572,11 +7572,11 @@
             "comment": "Redo\u0000\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 3,
             "parameter_lsb": 3,
             "parameter_msb": 0,
@@ -7610,11 +7610,11 @@
             "comment": "Suppress"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 4,
             "parameter_lsb": 4,
             "parameter_msb": 0,
@@ -7648,11 +7648,11 @@
             "comment": "Repeat\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 5,
             "parameter_lsb": 5,
             "parameter_msb": 0,
@@ -7686,11 +7686,11 @@
             "comment": "Prepare\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 6,
             "parameter_lsb": 6,
             "parameter_msb": 0,
@@ -7724,11 +7724,11 @@
             "comment": "Select\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 0,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 7,
             "parameter_lsb": 7,
             "parameter_msb": 0,
@@ -7762,11 +7762,11 @@
             "comment": "Bank A\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 1,
             "parameter_lsb": 1,
             "parameter_msb": 0,
@@ -7800,11 +7800,11 @@
             "comment": "Bank B\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 2,
             "parameter_lsb": 2,
             "parameter_msb": 0,
@@ -7838,11 +7838,11 @@
             "comment": "Bank C\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 3,
             "parameter_lsb": 3,
             "parameter_msb": 0,
@@ -7876,11 +7876,11 @@
             "comment": "Bank D\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 1,
             "channel": 1,
             "local_behaviour": 0,
-            "color_range_enable": 1,
+            "color_range_enable": 0,
             "parameter": 4,
             "parameter_lsb": 4,
             "parameter_msb": 0,
@@ -7920,7 +7920,7 @@
             "comment": "Rate\u0000\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -7963,7 +7963,7 @@
             "comment": "Trig\u0000\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8006,7 +8006,7 @@
             "comment": "Swing\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8049,7 +8049,7 @@
             "comment": "Tempo\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8092,7 +8092,7 @@
             "comment": "Vol 1\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8135,7 +8135,7 @@
             "comment": "Vol 2\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8178,7 +8178,7 @@
             "comment": "Vol 3\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8221,7 +8221,7 @@
             "comment": "Vol 4\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8264,7 +8264,7 @@
             "comment": "Vol 5\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8307,7 +8307,7 @@
             "comment": "Vol 6\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8350,7 +8350,7 @@
             "comment": "Vol 7\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,
@@ -8393,7 +8393,7 @@
             "comment": "Vol 8\u0000\u0000\u0000"
           },
           "feedback_config": {
-            "source": 3,
+            "source": 1,
             "message": 2,
             "channel": 0,
             "local_behaviour": 0,

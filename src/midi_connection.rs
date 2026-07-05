@@ -44,7 +44,28 @@ impl OutputState {
     }
 }
 
+lazy_static! {
+    static ref SHARED_OUTPUTS: Mutex<HashMap<String, SharedMidiOutputConnection>> =
+        Mutex::new(HashMap::new());
+}
+
 pub fn get_shared_output(port_name: &str) -> SharedMidiOutputConnection {
+    {
+        let outputs = SHARED_OUTPUTS.lock().unwrap();
+        if let Some(output) = outputs.get(port_name) {
+            return output.clone();
+        }
+    }
+
+    let output = create_shared_output(port_name);
+    let mut outputs = SHARED_OUTPUTS.lock().unwrap();
+    outputs
+        .entry(port_name.to_string())
+        .or_insert_with(|| output.clone())
+        .clone()
+}
+
+fn create_shared_output(port_name: &str) -> SharedMidiOutputConnection {
     let state = Arc::new(Mutex::new(OutputState {
         port: None,
         listeners: Vec::new(),
@@ -144,7 +165,11 @@ where
                     }
                     None => None,
                 };
-                last_port = current_port;
+                last_port = if current_input.is_some() {
+                    current_port
+                } else {
+                    None
+                };
             }
             thread::sleep(Duration::from_secs(1));
         }

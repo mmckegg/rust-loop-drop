@@ -72,6 +72,7 @@ impl Config {
                         label: String::from("Gran 5 Time"),
                         color: EncoderColor::Yellow,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -84,6 +85,7 @@ impl Config {
                         label: String::from("Gran 6 Time"),
                         color: EncoderColor::Yellow,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -96,6 +98,7 @@ impl Config {
                         label: String::from("Voice C Bend"),
                         color: EncoderColor::Purple,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceC],
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new(rig_port_name, 7),
@@ -107,7 +110,8 @@ impl Config {
                         slot: EncoderSlot::Fixed { row: 1, col: 8 },
                         label: String::from("Root Note"),
                         color: EncoderColor::White,
-                        lfo_mode: LfoMode::UnipolarMultiply,
+                        lfo_mode: LfoMode::None,
+                        ring_type: EncoderRingType::Spot,
                         activity_highlights: vec![],
                         assignment: EncoderAssignment::RootNote { default: 64 },
                     },
@@ -116,6 +120,7 @@ impl Config {
                         label: String::from("Decay 1"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(0)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -128,6 +133,7 @@ impl Config {
                         label: String::from("Decay 2"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(1)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -140,6 +146,7 @@ impl Config {
                         label: String::from("Decay 3"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(2)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -152,6 +159,7 @@ impl Config {
                         label: String::from("Decay 4"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -164,6 +172,7 @@ impl Config {
                         label: String::from("Gran 5 Start"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -176,6 +185,7 @@ impl Config {
                         label: String::from("Gran 6 Start"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -188,6 +198,7 @@ impl Config {
                         label: String::from("LFO Speed"),
                         color: EncoderColor::Purple,
                         lfo_mode: LfoMode::None,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![],
                         assignment: EncoderAssignment::LfoSpeed { default: 50 },
                     },
@@ -196,6 +207,7 @@ impl Config {
                         label: String::from("LFO Wave"),
                         color: EncoderColor::Purple,
                         lfo_mode: LfoMode::None,
+                        ring_type: EncoderRingType::Spot,
                         activity_highlights: vec![],
                         assignment: EncoderAssignment::LfoWave { default: 64 },
                     },
@@ -204,6 +216,7 @@ impl Config {
                         label: String::from("Expr 1"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(0)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 0,
@@ -215,6 +228,7 @@ impl Config {
                         label: String::from("Expr 2"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(1)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 1,
@@ -226,6 +240,7 @@ impl Config {
                         label: String::from("Expr 3"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(2)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 2,
@@ -237,6 +252,7 @@ impl Config {
                         label: String::from("Expr 4"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(3)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 3,
@@ -248,6 +264,7 @@ impl Config {
                         label: String::from("Expr 5"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 4,
@@ -259,6 +276,7 @@ impl Config {
                         label: String::from("Expr 6"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 5,
@@ -270,6 +288,7 @@ impl Config {
                         label: String::from("Expr 7"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(6)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 6,
@@ -281,6 +300,7 @@ impl Config {
                         label: String::from("Expr 8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::Sample(7)],
                         assignment: EncoderAssignment::SampleLevelMultiplier {
                             sample: 7,
@@ -296,6 +316,7 @@ impl Config {
                         label: String::from("Pan Voice A"),
                         color: EncoderColor::Red,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -312,6 +333,7 @@ impl Config {
                         label: String::from("EQ Tilt Voice A"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::None,
                     },
@@ -324,6 +346,7 @@ impl Config {
                         label: String::from("Send A Voice A"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -340,6 +363,7 @@ impl Config {
                         label: String::from("Send B Voice A"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -356,6 +380,7 @@ impl Config {
                         label: String::from("Mod A (CV)"),
                         color: EncoderColor::Cyan,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 2),
@@ -372,6 +397,7 @@ impl Config {
                         label: String::from("Mod B (CV)"),
                         color: EncoderColor::Cyan,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 2),
@@ -388,6 +414,7 @@ impl Config {
                         label: String::from("Rate"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Spot,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::None,
                     },
@@ -400,6 +427,7 @@ impl Config {
                         label: String::from("Voice A Bend"),
                         color: EncoderColor::Blue,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceA],
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new(rig_port_name, 15),
@@ -416,6 +444,7 @@ impl Config {
                         label: String::from("Pan Voice B"),
                         color: EncoderColor::Red,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -432,6 +461,7 @@ impl Config {
                         label: String::from("EQ Tilt Voice B"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::None,
                     },
@@ -444,6 +474,7 @@ impl Config {
                         label: String::from("Send A Voice B"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -460,6 +491,7 @@ impl Config {
                         label: String::from("Send B Voice B"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -476,6 +508,7 @@ impl Config {
                         label: String::from("Mod Wheel"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new("S-1", 14),
@@ -492,6 +525,7 @@ impl Config {
                         label: String::from("Expression Pedal"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new("S-1", 14),
@@ -508,6 +542,7 @@ impl Config {
                         label: String::from("LFO Rate"),
                         color: EncoderColor::Purple,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new("S-1", 14),
@@ -524,6 +559,7 @@ impl Config {
                         label: String::from("Voice B Bend"),
                         color: EncoderColor::Pink,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::VoiceB],
                         assignment: EncoderAssignment::PitchBend {
                             output: MidiPortConfig::new("S-1", 14),
@@ -540,6 +576,7 @@ impl Config {
                         label: String::from("Pan Samples 1-4"),
                         color: EncoderColor::Red,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -553,11 +590,16 @@ impl Config {
                             row: 1,
                             col: 2,
                         },
-                        label: String::from("EQ Tilt Samples 1-4"),
+                        label: String::from("DJ Filter Samples 1-4"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
-                        assignment: EncoderAssignment::None,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 51,
+                            default: 64,
+                        },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Banked {
@@ -568,6 +610,7 @@ impl Config {
                         label: String::from("Send A Samples 1-4"),
                         color: EncoderColor::Yellow,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -584,6 +627,7 @@ impl Config {
                         label: String::from("Send B Samples 1-4"),
                         color: EncoderColor::Yellow,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::SampleRange(0, 3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -600,6 +644,7 @@ impl Config {
                         label: String::from("Pitch 1"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(0)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -616,6 +661,7 @@ impl Config {
                         label: String::from("Pitch 2"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(1)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -632,6 +678,7 @@ impl Config {
                         label: String::from("Pitch 3"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(2)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -648,6 +695,7 @@ impl Config {
                         label: String::from("Pitch 4"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(3)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -664,6 +712,7 @@ impl Config {
                         label: String::from("Pan Samples 5-8"),
                         color: EncoderColor::Red,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::SampleRange(4, 7)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -680,8 +729,13 @@ impl Config {
                         label: String::from("EQ Tilt Samples 5-8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::SampleRange(4, 7)],
-                        assignment: EncoderAssignment::None,
+                        assignment: EncoderAssignment::MidiCc {
+                            output: MidiPortConfig::new(rig_port_name, 10),
+                            cc: 52,
+                            default: 64,
+                        },
                     },
                     EncoderConfig {
                         slot: EncoderSlot::Banked {
@@ -692,6 +746,7 @@ impl Config {
                         label: String::from("Send A Samples 5-8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::SampleRange(4, 7)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -708,6 +763,7 @@ impl Config {
                         label: String::from("Send B Samples 5-8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::UnipolarMultiply,
+                        ring_type: EncoderRingType::Fill,
                         activity_highlights: vec![ActivityHighlight::SampleRange(4, 7)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 11),
@@ -724,6 +780,7 @@ impl Config {
                         label: String::from("Pitch 5"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(4)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -740,6 +797,7 @@ impl Config {
                         label: String::from("Pitch 6"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(5)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -756,6 +814,7 @@ impl Config {
                         label: String::from("Pitch 7"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(6)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -772,6 +831,7 @@ impl Config {
                         label: String::from("Pitch 8"),
                         color: EncoderColor::Orange,
                         lfo_mode: LfoMode::BipolarOffset,
+                        ring_type: EncoderRingType::Pivot,
                         activity_highlights: vec![ActivityHighlight::Sample(7)],
                         assignment: EncoderAssignment::MidiCc {
                             output: MidiPortConfig::new(rig_port_name, 10),
@@ -841,6 +901,8 @@ pub struct EncoderConfig {
     #[serde(default)]
     pub lfo_mode: LfoMode,
     #[serde(default)]
+    pub ring_type: EncoderRingType,
+    #[serde(default)]
     pub activity_highlights: Vec<ActivityHighlight>,
     pub assignment: EncoderAssignment,
 }
@@ -874,6 +936,14 @@ pub enum EncoderColor {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum EncoderRingType {
+    Spot,
+    Mirror,
+    Fill,
+    Pivot,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum LfoMode {
     None,
     UnipolarMultiply,
@@ -899,6 +969,23 @@ impl Default for LfoMode {
 impl Default for EncoderColor {
     fn default() -> Self {
         EncoderColor::White
+    }
+}
+
+impl Default for EncoderRingType {
+    fn default() -> Self {
+        EncoderRingType::Fill
+    }
+}
+
+impl EncoderRingType {
+    pub fn to_midi(self) -> u8 {
+        match self {
+            EncoderRingType::Spot => 0,
+            EncoderRingType::Mirror => 1,
+            EncoderRingType::Fill => 2,
+            EncoderRingType::Pivot => 3,
+        }
     }
 }
 
